@@ -5,19 +5,24 @@
   "private": true,
   "author": "Oskari Kosonen",
   "license": "MIT",
+  "engines": {
+    "node": ">=20.19.5",
+    "npm": ">=10.8.0"
+  },
   "workspaces": [
     "frontend",
     "backend"
   ],
   "scripts": {
-    "dev": "concurrently --kill-others --prefix \"[{name}]\" --names \"backend,frontend\" \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:frontend": "cd frontend && npm start",
-    "dev:backend": "cd backend && npm start",
+    "predev": "export NVM_DIR=\"$HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && \\. \"$NVM_DIR/nvm.sh\" && nvm use",
+    "dev": "export NVM_DIR=\"$HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && \\. \"$NVM_DIR/nvm.sh\" && nvm use && concurrently --kill-others --prefix \"[{name}]\" --names \"backend,frontend\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "export NVM_DIR=\"$HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && \\. \"$NVM_DIR/nvm.sh\" && nvm use && cd frontend && npm start",
+    "dev:backend": "export NVM_DIR=\"$HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && \\. \"$NVM_DIR/nvm.sh\" && nvm use && cd backend && npm start",
     "start": "npm run dev",
-    "install:all": "npm install && npm install --prefix frontend && npm install --prefix backend",
+    "install:all": "export NVM_DIR=\"$HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && \\. \"$NVM_DIR/nvm.sh\" && nvm use && npm install && npm install --prefix frontend && npm install --prefix backend",
     "build": "npm run build:frontend && npm run build:backend",
-    "build:frontend": "cd frontend && npm run build",
-    "build:backend": "cd backend && npm run build"
+    "build:frontend": "export NVM_DIR=\"$HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && \\. \"$NVM_DIR/nvm.sh\" && nvm use && cd frontend && npm run build",
+    "build:backend": "export NVM_DIR=\"$HOME/.nvm\" && [ -s \"$NVM_DIR/nvm.sh\" ] && \\. \"$NVM_DIR/nvm.sh\" && nvm use && cd backend && npm run build"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
