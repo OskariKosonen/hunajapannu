@@ -41,9 +41,9 @@ interface LocationInfo {
 
 interface Analytics {
   totalEvents: number;
-  topSourceIPs?: Array<{ 
-    ip: string; 
-    count: number; 
+  topSourceIPs?: Array<{
+    ip: string;
+    count: number;
     location?: LocationInfo;
     firstSeen?: string;
     lastSeen?: string;
@@ -68,6 +68,14 @@ interface Analytics {
   attackPatterns?: {
     bruteForce?: Array<{ ip: string; failedAttempts: number }>;
   };
+  commands?: {
+    totalCommands: number;
+    uniqueCommands: number;
+    topCommands?: Array<{
+      command: string;
+      count: number;
+    }>;
+  };
   filesProcessed: number;
   totalLines: number;
 }
@@ -77,15 +85,16 @@ const Dashboard: React.FC = () => {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [timeRange, setTimeRange] = useState('7d');
+  const [timeRange, setTimeRange] = useState('24h');
 
-  const API_BASE_URL = 'http://localhost:3001/api';
+  // Use environment variable for API URL, fallback to localhost for development
+  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
-      
+
       try {
         // Fetch recent logs
         const logsResponse = await axios.get(`${API_BASE_URL}/logs?limit=100&timeRange=${timeRange}`);
@@ -108,7 +117,7 @@ const Dashboard: React.FC = () => {
   const retryFetch = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       // Fetch recent logs
       const logsResponse = await axios.get(`${API_BASE_URL}/logs?limit=100&timeRange=${timeRange}`);
@@ -148,7 +157,7 @@ const Dashboard: React.FC = () => {
             <strong className="font-bold">ERROR: </strong>
             <span className="block sm:inline">{error}</span>
           </div>
-          <button 
+          <button
             onClick={retryFetch}
             className="mt-4 bg-green-600 hover:bg-green-500 text-black font-bold py-2 px-4 rounded font-mono border border-green-400"
           >
@@ -170,7 +179,7 @@ const Dashboard: React.FC = () => {
               <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
               <div className="w-3 h-3 bg-green-500 rounded-full"></div>
             </div>
-            <div className="ml-4 text-green-400 text-sm">honeypot-terminal</div>
+            <div className="ml-4 text-green-400 text-sm">hunajapannu-terminal</div>
           </div>
           <div className="p-4">
             <h1 className="text-2xl font-bold text-green-400 mb-2">
@@ -178,9 +187,6 @@ const Dashboard: React.FC = () => {
             </h1>
             <div className="text-green-400 space-y-1">
               <div><span className="text-green-500">[INFO]</span> Honeypot monitoring system active 🍯</div>
-              <div><span className="text-cyan-400">[ARCH]</span> React Frontend → Node.js API → Azure Blob Storage</div>
-              <div><span className="text-yellow-400">[STACK]</span> Cowrie SSH/Telnet honeypot → JSON logs → Real-time analytics</div>
-              <div><span className="text-purple-400">[SERVICES]</span> Log analysis • IP geolocation • Attack pattern detection</div>
             </div>
           </div>
         </div>
@@ -212,13 +218,13 @@ const Dashboard: React.FC = () => {
               <p className="text-3xl font-bold text-green-500">{analytics.totalEvents}</p>
               <p className="text-sm text-green-600 mt-1">from {analytics.filesProcessed} files</p>
             </div>
-            
+
             <div className="bg-gray-900 border border-red-400 rounded-lg p-6">
               <h3 className="text-lg font-semibold text-red-400 mb-2">[LOGIN_ATTEMPTS]</h3>
               <p className="text-3xl font-bold text-red-500">{analytics.loginAttempts?.totalAttempts || 0}</p>
               <p className="text-sm text-red-600 mt-1">{analytics.loginAttempts?.failedLogins || 0} failed</p>
             </div>
-            
+
             <div className="bg-gray-900 border border-yellow-400 rounded-lg p-6">
               <h3 className="text-lg font-semibold text-yellow-400 mb-2">[TOP_ATTACKERS]</h3>
               <div className="space-y-1">
@@ -231,11 +237,11 @@ const Dashboard: React.FC = () => {
                     </div>
                   </div>
                 )) || (
-                  <div className="text-sm text-yellow-600">No attackers detected</div>
-                )}
+                    <div className="text-sm text-yellow-600">No attackers detected</div>
+                  )}
               </div>
             </div>
-            
+
             <div className="bg-gray-900 border border-cyan-400 rounded-lg p-6">
               <h3 className="text-lg font-semibold text-cyan-400 mb-2">[BRUTE_FORCE]</h3>
               <div className="space-y-1">
@@ -245,8 +251,8 @@ const Dashboard: React.FC = () => {
                     <span className="float-right text-cyan-500">{item.failedAttempts}</span>
                   </div>
                 )) || (
-                  <div className="text-sm text-cyan-600">No brute force attacks detected</div>
-                )}
+                    <div className="text-sm text-cyan-600">No brute force attacks detected</div>
+                  )}
               </div>
             </div>
           </div>
@@ -295,16 +301,16 @@ const Dashboard: React.FC = () => {
                       </div>
                       <div className="space-y-1">
                         <div className="text-sm">
-                          <span className="text-cyan-400">USER:</span> 
+                          <span className="text-cyan-400">USER:</span>
                           <span className="text-yellow-400 ml-2">{username || 'unknown'}</span>
                         </div>
                         <div className="text-sm">
-                          <span className="text-cyan-400">PASS:</span> 
+                          <span className="text-cyan-400">PASS:</span>
                           <span className="text-yellow-400 ml-2">{password || 'unknown'}</span>
                         </div>
                         <div className="text-xs text-gray-400 mt-2">
-                          <div>Success: {(cred.successful || 0) > 0 ? 
-                            <span className="text-red-500">{cred.successful || 0}</span> : 
+                          <div>Success: {(cred.successful || 0) > 0 ?
+                            <span className="text-red-500">{cred.successful || 0}</span> :
                             <span className="text-green-500">0</span>}
                           </div>
                           <div>IPs: <span className="text-purple-400">{cred.uniqueIPs || 0}</span></div>
@@ -318,6 +324,47 @@ const Dashboard: React.FC = () => {
           </div>
         )}
 
+        {/* Most Used Commands */}
+        {analytics && analytics.commands?.topCommands && analytics.commands.topCommands.length > 0 && (
+          <div className="bg-gray-900 border border-purple-400 rounded-lg mb-8">
+            <div className="px-6 py-4 border-b border-purple-400">
+              <h2 className="text-xl font-semibold text-purple-400">
+                <span className="text-purple-500">$</span> history | awk '{'{'}print $2{'}'}' | sort | uniq -c | sort -nr
+              </h2>
+              <p className="text-sm text-purple-600 mt-1">Most executed commands by attackers</p>
+            </div>
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {analytics.commands.topCommands.slice(0, 12).map((cmd, index) => (
+                  <div key={index} className="bg-black border border-purple-400 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-lg font-bold text-purple-400">#{index + 1}</span>
+                      <span className="text-sm text-purple-600">{cmd.count} times</span>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-sm">
+                        <span className="text-cyan-400">CMD:</span>
+                        <div className="text-yellow-400 ml-2 font-mono text-xs break-all leading-relaxed mt-1">
+                          {cmd.command}
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-2">
+                        <div>
+                          Frequency: <span className="text-purple-400">{((cmd.count / (analytics.commands?.totalCommands || 1)) * 100).toFixed(1)}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 text-center text-sm text-purple-600">
+                Total Commands: <span className="text-purple-400">{analytics.commands?.totalCommands || 0}</span> |
+                Unique Commands: <span className="text-purple-400">{analytics.commands?.uniqueCommands || 0}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Recent Logs */}
         <div className="bg-gray-900 border border-green-400 rounded-lg">
           <div className="px-6 py-4 border-b border-green-400">
@@ -325,7 +372,7 @@ const Dashboard: React.FC = () => {
               <span className="text-green-500">$</span> tail -f /var/log/honeypot.log ({logs.length})
             </h2>
           </div>
-          
+
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-green-400">
               <thead className="bg-black">
@@ -366,12 +413,11 @@ const Dashboard: React.FC = () => {
                       {log.location ? `${log.location.city}, ${log.location.country}` : 'UNKNOWN'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${
-                        log.eventid === 'cowrie.login.success' ? 'bg-red-900 text-red-400 border border-red-500' :
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded ${log.eventid === 'cowrie.login.success' ? 'bg-red-900 text-red-400 border border-red-500' :
                         log.eventid === 'cowrie.login.failed' ? 'bg-yellow-900 text-yellow-400 border border-yellow-500' :
-                        log.eventid === 'cowrie.session.connect' ? 'bg-blue-900 text-blue-400 border border-blue-500' :
-                        'bg-gray-800 text-gray-400 border border-gray-500'
-                      }`}>
+                          log.eventid === 'cowrie.session.connect' ? 'bg-blue-900 text-blue-400 border border-blue-500' :
+                            'bg-gray-800 text-gray-400 border border-gray-500'
+                        }`}>
                         {log.eventid}
                       </span>
                     </td>
@@ -388,7 +434,7 @@ const Dashboard: React.FC = () => {
                 ))}
               </tbody>
             </table>
-            
+
             {logs.length === 0 && (
               <div className="text-center py-8">
                 <p className="text-green-600">

@@ -1,0 +1,26 @@
+# Docker ignore file for Azure Container Apps
+node_modules
+npm-debug.log
+.npm
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.git
+.gitignore
+README.md
+.DS_Store
+.vscode
+.nyc_output
+coverage
+.coverage
+*.lcov
+frontend/
+docs/
+scripts/
+dev.bat
+dev.sh
+setup.bat
+setup.sh
+*.md

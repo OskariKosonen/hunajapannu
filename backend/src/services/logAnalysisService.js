@@ -10,7 +10,26 @@ class LogAnalysisService {
       'cowrie.session.closed': 'Session Closed',
       'cowrie.command.input': 'Command Executed',
       'cowrie.session.file_download': 'File Downloaded',
-      'cowrie.session.file_upload': 'File Uploaded'
+      'cowrie.session.file_upload': 'File Uploaded',
+      'cowrie.client.version': 'SSH Client Version',
+      'cowrie.client.kex': 'SSH Key Exchange',
+      'cowrie.direct-tcpip.request': 'TCP Tunnel Request',
+      'cowrie.direct-tcpip.data': 'TCP Tunnel Data'
+    };
+  }
+
+  getEmptyAnalytics() {
+    return {
+      totalEvents: 0,
+      timeRange: null,
+      eventsByType: {},
+      topSourceIPs: [],
+      topUsernames: [],
+      topPasswords: [],
+      topCommands: [],
+      sessionsOverTime: [],
+      loginAttempts: { totalAttempts: 0, successfulLogins: 0, failedLogins: 0 },
+      commands: { totalCommands: 0, uniqueCommands: 0 }
     };
   }
 
@@ -23,9 +42,14 @@ class LogAnalysisService {
   }
 
   analyzeLogs(logContent) {
+    if (!logContent || typeof logContent !== 'string') {
+      console.log('⚠️ No log content provided to analyze');
+      return this.getEmptyAnalytics();
+    }
+
     const lines = logContent.split('\n').filter(line => line.trim());
     const events = [];
-    
+
     for (const line of lines) {
       const event = this.parseLogEntry(line);
       if (event && event.timestamp) {
@@ -48,7 +72,7 @@ class LogAnalysisService {
 
   getTimeRange(events) {
     if (events.length === 0) return null;
-    
+
     const timestamps = events.map(e => new Date(e.timestamp)).sort();
     return {
       start: timestamps[0],
@@ -59,19 +83,19 @@ class LogAnalysisService {
 
   groupEventsByType(events) {
     const grouped = {};
-    
+
     for (const event of events) {
       const eventType = event.eventid || 'unknown';
       const displayName = this.eventTypes[eventType] || eventType;
-      
+
       if (!grouped[displayName]) {
         grouped[displayName] = 0;
       }
       grouped[displayName]++;
     }
-    
+
     return Object.entries(grouped)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .reduce((obj, [key, value]) => {
         obj[key] = value;
         return obj;
@@ -80,7 +104,7 @@ class LogAnalysisService {
 
   getTopSourceIPs(events, limit = 20) {
     const ipCounts = {};
-    
+
     for (const event of events) {
       const ip = event.src_ip;
       if (ip) {
@@ -91,9 +115,9 @@ class LogAnalysisService {
         ipCounts[ip].lastSeen = event.timestamp;
       }
     }
-    
+
     return Object.entries(ipCounts)
-      .sort(([,a], [,b]) => b.count - a.count)
+      .sort(([, a], [, b]) => b.count - a.count)
       .slice(0, limit)
       .map(([ip, data]) => ({
         ip,
@@ -106,7 +130,7 @@ class LogAnalysisService {
 
   getGeographicDistribution(events) {
     const countries = {};
-    
+
     for (const event of events) {
       const ip = event.src_ip;
       if (ip) {
@@ -121,7 +145,7 @@ class LogAnalysisService {
         }
       }
     }
-    
+
     return Object.entries(countries)
       .map(([country, data]) => ({
         country,
@@ -132,14 +156,14 @@ class LogAnalysisService {
   }
 
   analyzeLoginAttempts(events) {
-    const loginEvents = events.filter(e => 
+    const loginEvents = events.filter(e =>
       e.eventid === 'cowrie.login.success' || e.eventid === 'cowrie.login.failed'
     );
-    
+
     const credentials = {};
     const successfulLogins = loginEvents.filter(e => e.eventid === 'cowrie.login.success');
     const failedLogins = loginEvents.filter(e => e.eventid === 'cowrie.login.failed');
-    
+
     for (const event of loginEvents) {
       const cred = `${event.username || 'unknown'}:${event.password || 'unknown'}`;
       if (!credentials[cred]) {
@@ -153,9 +177,9 @@ class LogAnalysisService {
         credentials[cred].ips.add(event.src_ip);
       }
     }
-    
+
     const topCredentials = Object.entries(credentials)
-      .sort(([,a], [,b]) => b.attempts - a.attempts)
+      .sort(([, a], [, b]) => b.attempts - a.attempts)
       .slice(0, 20)
       .map(([cred, data]) => ({
         credential: cred,
@@ -163,7 +187,7 @@ class LogAnalysisService {
         successful: data.successful,
         uniqueIPs: data.ips.size
       }));
-    
+
     return {
       totalAttempts: loginEvents.length,
       successfulLogins: successfulLogins.length,
@@ -175,60 +199,91 @@ class LogAnalysisService {
 
   analyzeCommands(events) {
     const commandEvents = events.filter(e => e.eventid === 'cowrie.command.input');
+    const tcpDataEvents = events.filter(e => e.eventid === 'cowrie.direct-tcpip.data');
     const commands = {};
-    
+    let totalCommands = 0;
+
+    // Process traditional command input events
     for (const event of commandEvents) {
       const input = event.input;
-      if (input) {
-        const command = input.split(' ')[0]; // First word is the command
-        if (!commands[command]) {
-          commands[command] = 0;
+      if (input && input.trim()) {
+        // Store full command instead of just first word
+        const fullCommand = input.trim();
+        if (!commands[fullCommand]) {
+          commands[fullCommand] = 0;
         }
-        commands[command]++;
+        commands[fullCommand]++;
+        totalCommands++;
       }
     }
-    
+
+    // Process HTTP requests from TCP tunnel data (like in your sample)
+    for (const event of tcpDataEvents) {
+      const data = event.data;
+      if (data && typeof data === 'string') {
+        // Extract HTTP requests from TCP data
+        const httpMatch = data.match(/GET\s+([^\s]+)\s+HTTP|POST\s+([^\s]+)\s+HTTP/i);
+        if (httpMatch) {
+          const method = data.includes('GET') ? 'GET' : 'POST';
+          const path = httpMatch[1] || httpMatch[2] || '/';
+          const host = data.match(/Host:\s*([^\r\n\\]+)/i);
+          const hostName = host ? host[1].trim() : 'unknown';
+
+          const httpCommand = `${method} ${hostName}${path}`;
+          if (!commands[httpCommand]) {
+            commands[httpCommand] = 0;
+          }
+          commands[httpCommand]++;
+          totalCommands++;
+        }
+      }
+    }
+
     const topCommands = Object.entries(commands)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 20)
-      .map(([command, count]) => ({ command, count }));
-    
+      .map(([command, count]) => ({
+        command: command.length > 100 ? command.substring(0, 97) + '...' : command,
+        count,
+        fullCommand: command // Keep full command for potential future use
+      }));
+
     return {
-      totalCommands: commandEvents.length,
+      totalCommands: totalCommands,
       uniqueCommands: Object.keys(commands).length,
       topCommands
     };
   }
 
   getSessionsOverTime(events, intervalHours = 1) {
-    const sessionEvents = events.filter(e => 
+    const sessionEvents = events.filter(e =>
       e.eventid === 'cowrie.session.connect' || e.eventid === 'cowrie.session.closed'
     );
-    
+
     if (sessionEvents.length === 0) return [];
-    
+
     const timeRange = this.getTimeRange(sessionEvents);
     if (!timeRange) return [];
-    
+
     const intervals = {};
     const intervalMs = intervalHours * 60 * 60 * 1000;
-    
+
     for (const event of sessionEvents) {
       const timestamp = new Date(event.timestamp);
       const intervalStart = new Date(Math.floor(timestamp.getTime() / intervalMs) * intervalMs);
       const key = intervalStart.toISOString();
-      
+
       if (!intervals[key]) {
         intervals[key] = { connects: 0, disconnects: 0 };
       }
-      
+
       if (event.eventid === 'cowrie.session.connect') {
         intervals[key].connects++;
       } else {
         intervals[key].disconnects++;
       }
     }
-    
+
     return Object.entries(intervals)
       .sort(([a], [b]) => new Date(a) - new Date(b))
       .map(([timestamp, data]) => ({
@@ -245,17 +300,17 @@ class LogAnalysisService {
       privilegeEscalation: this.detectPrivilegeEscalation(events),
       reconCommands: this.detectReconCommands(events)
     };
-    
+
     return patterns;
   }
 
   detectBruteForceAttacks(events) {
-    const loginEvents = events.filter(e => 
+    const loginEvents = events.filter(e =>
       e.eventid === 'cowrie.login.failed' || e.eventid === 'cowrie.login.success'
     );
-    
+
     const ipAttempts = {};
-    
+
     for (const event of loginEvents) {
       const ip = event.src_ip;
       if (ip) {
@@ -270,22 +325,22 @@ class LogAnalysisService {
         });
       }
     }
-    
+
     const bruteForceIPs = [];
     const threshold = 10; // 10+ failed attempts in 1 hour
     const timeWindow = 60 * 60 * 1000; // 1 hour
-    
+
     for (const [ip, attempts] of Object.entries(ipAttempts)) {
       attempts.sort((a, b) => a.timestamp - b.timestamp);
-      
+
       for (let i = 0; i < attempts.length; i++) {
         const windowStart = attempts[i].timestamp;
         const windowEnd = new Date(windowStart.getTime() + timeWindow);
-        
-        const windowAttempts = attempts.filter(a => 
+
+        const windowAttempts = attempts.filter(a =>
           a.timestamp >= windowStart && a.timestamp <= windowEnd && !a.success
         );
-        
+
         if (windowAttempts.length >= threshold) {
           bruteForceIPs.push({
             ip,
@@ -297,14 +352,14 @@ class LogAnalysisService {
         }
       }
     }
-    
+
     return bruteForceIPs;
   }
 
   detectMalwareDownloads(events) {
-    return events.filter(e => 
-      e.eventid === 'cowrie.session.file_download' && 
-      e.url && 
+    return events.filter(e =>
+      e.eventid === 'cowrie.session.file_download' &&
+      e.url &&
       (e.url.includes('.exe') || e.url.includes('.sh') || e.url.includes('.py'))
     ).map(e => ({
       ip: e.src_ip,
@@ -316,9 +371,9 @@ class LogAnalysisService {
 
   detectPrivilegeEscalation(events) {
     const escalationCommands = ['sudo', 'su', 'chmod +s', 'passwd'];
-    return events.filter(e => 
-      e.eventid === 'cowrie.command.input' && 
-      e.input && 
+    return events.filter(e =>
+      e.eventid === 'cowrie.command.input' &&
+      e.input &&
       escalationCommands.some(cmd => e.input.toLowerCase().includes(cmd))
     ).map(e => ({
       ip: e.src_ip,
@@ -330,9 +385,9 @@ class LogAnalysisService {
 
   detectReconCommands(events) {
     const reconCommands = ['whoami', 'uname', 'ps', 'netstat', 'ifconfig', 'ls /etc'];
-    return events.filter(e => 
-      e.eventid === 'cowrie.command.input' && 
-      e.input && 
+    return events.filter(e =>
+      e.eventid === 'cowrie.command.input' &&
+      e.input &&
       reconCommands.some(cmd => e.input.toLowerCase().includes(cmd))
     ).map(e => ({
       ip: e.src_ip,

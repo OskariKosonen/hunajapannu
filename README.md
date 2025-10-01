@@ -4,29 +4,66 @@ A personal analytics dashboard for monitoring SSH honeypot logs from my Cowrie s
 
 ## Setup
 
-1. Clone and install dependencies:
+### Prerequisites
+- Node.js 20.19.5 or later
+- npm 10.8.0 or later
+
+### Quick Setup
+
 ```bash
 git clone https://github.com/OskariKosonen/hunajapannu.git
 cd hunajapannu
-npm run install:all
+
+# Setup (multiple options)
+setup.bat           # Windows convenience
+./setup.sh          # Linux/macOS convenience  
+npm run setup       # Cross-platform
+
+# Start development (multiple options)
+dev.bat             # Windows convenience
+./dev.sh            # Linux/macOS convenience
+npm run start:dev   # Cross-platform with setup checks
+npm run dev         # Direct start (faster)
 ```
 
-2. Configure Azure Blob Storage:
-```bash
-cp backend/.env.example backend/.env
-# Edit backend/.env with your Azure credentials
-```
-
-3. Start the application:
-```bash
-make start
-# Or: npm run dev
-```
+The setup automatically creates `backend/.env` from the template.
 
 ## Usage
 
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:3001
+
+## Azure Storage Configuration
+
+### VM Uploader Integration
+This dashboard works with the VM log uploader script that:
+- Uploads daily logs as `cowrie-YYYY-MM-DD.json` 
+- Uploads historical logs to `historical/cowrie.json*`
+- Uses container `hunajapannulogs`
+
+### 1. Configure Backend
+Edit `backend/.env`:
+```env
+# Use same storage account as VM uploader
+AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=https;AccountName=hunajapannulogs;AccountKey=your_key;EndpointSuffix=core.windows.net
+
+# Or use SAS URL (same as VM script)
+# AZURE_SAS_URL=https://hunajapannulogs.blob.core.windows.net/?sp=w&st=...
+
+# Container name (matches VM uploader)
+AZURE_CONTAINER_NAME=hunajapannulogs
+```
+
+### 2. Test Connection & Structure
+```bash
+curl http://localhost:3001/api/test-connection
+curl http://localhost:3001/api/log-structure
+```
+
+### 3. VM Uploader Endpoints
+- `/api/daily-logs` - Daily logs from VM uploader
+- `/api/historical-logs` - Historical logs uploaded by VM
+- `/api/log-structure` - Shows log organization
 
 ## Stack
 

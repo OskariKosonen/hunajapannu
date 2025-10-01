@@ -1,0 +1,34 @@
+# Azure Container App Configuration
+# This file defines the Container App setup for the backend
+
+location: eastus
+resourceGroup: rg-hunajapannu
+containerAppEnvironment: hunajapannu-env
+containerApp: hunajapannu-backend
+
+# Container configuration
+image: hunajapannuacr.azurecr.io/hunajapannu-backend:latest
+targetPort: 3001
+externalIngress: true
+
+# Scaling configuration (free tier)
+minReplicas: 0
+maxReplicas: 1
+
+# Resource limits (free tier)
+cpu: "0.25"
+memory: "0.5Gi"
+
+# Environment variables
+environmentVariables:
+  - name: PORT
+    value: "3001"
+  - name: NODE_ENV
+    value: "production"
+  - name: FRONTEND_URL
+    value: "https://hunajapannu-frontend.azurestaticapps.net"
+  # Add your Azure Storage connection string as a secret:
+  - name: AZURE_STORAGE_CONNECTION_STRING
+    secretRef: azure-storage-connection
+  - name: AZURE_CONTAINER_NAME
+    value: "hunajapannulogs"
