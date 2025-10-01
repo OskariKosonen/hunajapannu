@@ -28,5 +28,8 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "react-scripts": "^5.0.1"
   }
 }
