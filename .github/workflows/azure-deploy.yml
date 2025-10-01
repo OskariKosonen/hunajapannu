@@ -57,6 +57,11 @@ jobs:
           docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/hunajapannu-backend:${{ github.sha }} .
           docker push ${{ secrets.ACR_LOGIN_SERVER }}/hunajapannu-backend:${{ github.sha }}
 
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
       - name: Deploy to Azure Container Apps
         uses: azure/container-apps-deploy-action@v1
         with:
