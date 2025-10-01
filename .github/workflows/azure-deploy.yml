@@ -24,8 +24,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          npm ci
-          npm run install:all
+          npm ci --legacy-peer-deps
+          npm install --prefix frontend --legacy-peer-deps
+          npm install --prefix backend
 
       - name: Build frontend
         env:
