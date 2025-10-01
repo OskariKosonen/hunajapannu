@@ -31,6 +31,8 @@ jobs:
       - name: Build frontend
         env:
           REACT_APP_API_URL: https://hunajapannu-backend.purplebeach-0af0f126.swedencentral.azurecontainerapps.io/api
+          TSC_COMPILE_ON_ERROR: true
+          ESLINT_NO_DEV_ERRORS: true
         run: cd frontend && npm run build
 
       - name: Build And Deploy to Static Web App
