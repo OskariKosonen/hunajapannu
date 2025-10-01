@@ -19,19 +19,20 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '18'
           cache: 'npm'
 
       - name: Install dependencies
         run: |
-          npm ci --legacy-peer-deps
-          npm install --prefix frontend --legacy-peer-deps
-          npm install --prefix backend
+          npm install --legacy-peer-deps
+          cd frontend && rm -rf node_modules package-lock.json
+          cd frontend && npm install --legacy-peer-deps
+          cd ../backend && npm install
 
       - name: Build frontend
         env:
           REACT_APP_API_URL: https://hunajapannu-backend.purplebeach-0af0f126.swedencentral.azurecontainerapps.io/api
-        run: npm run build:frontend
+        run: cd frontend && npm run build
 
       - name: Build And Deploy to Static Web App
         id: builddeploy
