@@ -4,8 +4,8 @@
   "description": "Backend API for Cowrie honeypot analytics",
   "main": "src/index.js",
   "engines": {
-    "node": ">=20.19.5",
-    "npm": ">=10.8.0"
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
   },
   "scripts": {
     "dev": "nodemon src/index.js",
@@ -13,7 +13,7 @@
     "build": "echo 'No build step required'"
   },
   "dependencies": {
-    "@azure/storage-blob": "^12.28.0",
+    "@azure/storage-blob": "^12.17.0",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.21.2",

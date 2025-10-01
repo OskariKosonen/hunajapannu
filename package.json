@@ -6,8 +6,8 @@
   "author": "Oskari Kosonen",
   "license": "MIT",
   "engines": {
-    "node": ">=20.19.5",
-    "npm": ">=10.8.0"
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
   },
   "workspaces": [
     "frontend",
