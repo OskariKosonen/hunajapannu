@@ -1,0 +1,22 @@
+[Unit]
+Description=Cowrie -> backend log forwarder
+After=network-online.target cowrie.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=forwarder
+Group=forwarder
+EnvironmentFile=/etc/cowrie-forwarder.env
+ExecStart=/usr/bin/python3 /opt/cowrie-forwarder/forwarder.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=false
+ReadOnlyPaths=/home/cowrie/var/log/cowrie
+ReadWritePaths=/var/lib/cowrie-forwarder
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
