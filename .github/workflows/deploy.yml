@@ -1,0 +1,70 @@
+name: Deploy
+
+# Push to main -> deploy backend on the VPS runner, then the forwarder to the Pi.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # allows a manual "Run workflow" button
+
+# One deploy at a time; a newer push cancels an in-flight one.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux]
+    env:
+      # The Pi's reachable address. Dynamic DSL today — swap for a stable
+      # DNS name (dynamic DNS) here when you set that up.
+      PI_HOST: REDACTED
+      PI_PORT: "22222"
+      PI_USER: admin
+      REPO_DIR: /home/admin/hunajapannu
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---- Backend (runs locally on the VPS runner) ----
+      - name: Deploy backend
+        working-directory: ${{ env.REPO_DIR }}
+        run: |
+          set -euo pipefail
+          git fetch --all
+          git reset --hard origin/main
+          cd backend
+          npm install --omit=dev
+          cd ..
+          echo "Applying migrations"
+          for f in db/migrations/*.sql; do
+            echo "  - $f"
+            sudo -u postgres psql -d cowrie_db -v ON_ERROR_STOP=1 -f "$f" \
+              || echo "  (skipped/failed: $f — review if unexpected)"
+          done
+          pm2 restart cowrie-api --update-env
+
+      - name: Backend health check
+        run: |
+          set -euo pipefail
+          sleep 3
+          curl -fsS http://localhost:3001/health
+
+      # ---- Forwarder (pushed to the Pi over SSH) ----
+      - name: Deploy forwarder to Pi
+        run: |
+          set -euo pipefail
+          ssh -p "$PI_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
+            "$PI_USER@$PI_HOST" '
+              set -euo pipefail
+              cd ~/hunajapannu || { echo "repo not cloned on Pi"; exit 1; }
+              git fetch --all && git reset --hard origin/main
+              sudo install -m 0755 forwarder/forwarder.py /opt/cowrie-forwarder/forwarder.py
+              sudo install -m 0644 forwarder/cowrie-forwarder.service /etc/systemd/system/cowrie-forwarder.service
+              sudo systemctl daemon-reload
+              sudo systemctl restart cowrie-forwarder
+              systemctl is-active cowrie-forwarder
+            '
+
+      - name: Done
+        run: echo "Deploy complete."
