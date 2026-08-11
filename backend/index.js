@@ -841,54 +841,30 @@ app.get('/api/public/cowrie/files', async (req, res) => {
   }
 
   try {
+    // cowrie_files_agg is a pre-aggregated, trigger-maintained mirror of
+    // cowrie_files (see db/migrations/004_add_cowrie_files_agg.sql), so this
+    // is an indexed LIMIT instead of a GROUP BY/DISTINCT ON over every
+    // download ever recorded.
     const { rows } = await pool.query(
-      `WITH file_agg AS (
-         SELECT
-           sha256,
-           MAX(size_bytes) AS size_bytes,
-           MIN(mtime) AS first_seen
-         FROM cowrie_files
-         GROUP BY sha256
-       ),
-       vt_latest AS (
-         SELECT DISTINCT ON (sha256)
-           sha256,
-           vt_last_fetched,
-           vt_found,
-           vt_malicious,
-           vt_suspicious,
-           vt_harmless,
-           vt_undetected,
-           vt_timeout,
-           vt_reputation,
-           vt_type,
-           vt_magic,
-           vt_first_submission_date,
-           vt_last_analysis_date,
-           vt_tags
-         FROM cowrie_files
-         ORDER BY sha256, vt_last_fetched DESC NULLS LAST, mtime DESC
-       )
-       SELECT
-         file_agg.sha256,
-         file_agg.size_bytes,
-         file_agg.first_seen,
-         vt_latest.vt_last_fetched,
-         vt_latest.vt_found,
-         vt_latest.vt_malicious,
-         vt_latest.vt_suspicious,
-         vt_latest.vt_harmless,
-         vt_latest.vt_undetected,
-         vt_latest.vt_timeout,
-         vt_latest.vt_reputation,
-         vt_latest.vt_type,
-         vt_latest.vt_magic,
-         vt_latest.vt_first_submission_date,
-         vt_latest.vt_last_analysis_date,
-         vt_latest.vt_tags
-       FROM file_agg
-       LEFT JOIN vt_latest ON vt_latest.sha256 = file_agg.sha256
-       ORDER BY file_agg.first_seen DESC
+      `SELECT
+         sha256,
+         size_bytes,
+         first_seen,
+         vt_last_fetched,
+         vt_found,
+         vt_malicious,
+         vt_suspicious,
+         vt_harmless,
+         vt_undetected,
+         vt_timeout,
+         vt_reputation,
+         vt_type,
+         vt_magic,
+         vt_first_submission_date,
+         vt_last_analysis_date,
+         vt_tags
+       FROM cowrie_files_agg
+       ORDER BY first_seen DESC
        LIMIT $1`,
       [limit]
     );

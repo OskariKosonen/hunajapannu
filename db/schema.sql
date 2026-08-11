@@ -152,6 +152,36 @@ CREATE TABLE public.cowrie_unique_creds (
 ALTER TABLE public.cowrie_unique_creds OWNER TO cowrie_user;
 
 --
+-- Name: cowrie_files_agg; Type: TABLE; Schema: public; Owner: cowrie_user
+--
+-- Pre-aggregated mirror of cowrie_files (one row per sha256), kept in sync by
+-- trg_sync_cowrie_files_agg. Backs GET /api/public/cowrie/files with an
+-- indexed LIMIT instead of a live GROUP BY/DISTINCT ON over the whole table.
+--
+
+CREATE TABLE public.cowrie_files_agg (
+    sha256 text NOT NULL,
+    size_bytes bigint,
+    first_seen timestamp with time zone,
+    vt_last_fetched timestamp with time zone,
+    vt_found boolean,
+    vt_malicious integer,
+    vt_suspicious integer,
+    vt_harmless integer,
+    vt_undetected integer,
+    vt_timeout integer,
+    vt_reputation integer,
+    vt_type text,
+    vt_magic text,
+    vt_first_submission_date timestamp with time zone,
+    vt_last_analysis_date timestamp with time zone,
+    vt_tags text[]
+);
+
+
+ALTER TABLE public.cowrie_files_agg OWNER TO cowrie_user;
+
+--
 -- Name: cowrie_events id; Type: DEFAULT; Schema: public; Owner: postgres
 --
 
@@ -198,6 +228,14 @@ ALTER TABLE ONLY public.cowrie_unique_creds
 
 
 --
+-- Name: cowrie_files_agg cowrie_files_agg_pkey; Type: CONSTRAINT; Schema: public; Owner: cowrie_user
+--
+
+ALTER TABLE ONLY public.cowrie_files_agg
+    ADD CONSTRAINT cowrie_files_agg_pkey PRIMARY KEY (sha256);
+
+
+--
 -- Name: idx_cowrie_events_asn; Type: INDEX; Schema: public; Owner: postgres
 --
 
@@ -216,6 +254,13 @@ CREATE INDEX idx_cowrie_events_country_iso ON public.cowrie_events USING btree (
 --
 
 CREATE INDEX idx_cowrie_files_sha256 ON public.cowrie_files USING btree (sha256);
+
+
+--
+-- Name: idx_cowrie_files_agg_first_seen; Type: INDEX; Schema: public; Owner: cowrie_user
+--
+
+CREATE INDEX idx_cowrie_files_agg_first_seen ON public.cowrie_files_agg USING btree (first_seen DESC);
 
 
 --
@@ -244,6 +289,82 @@ CREATE INDEX idx_cowrie_timestamp ON public.cowrie_events USING btree ("timestam
 --
 
 CREATE INDEX idx_events_timestamp ON public.cowrie_events USING btree ("timestamp");
+
+
+--
+-- Name: sync_cowrie_files_agg(); Type: FUNCTION; Schema: public; Owner: cowrie_user
+--
+
+CREATE FUNCTION public.sync_cowrie_files_agg() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  INSERT INTO cowrie_files_agg (
+    sha256, size_bytes, first_seen,
+    vt_last_fetched, vt_found, vt_malicious, vt_suspicious, vt_harmless,
+    vt_undetected, vt_timeout, vt_reputation, vt_type, vt_magic,
+    vt_first_submission_date, vt_last_analysis_date, vt_tags
+  )
+  VALUES (
+    NEW.sha256, NEW.size_bytes, NEW.mtime,
+    NEW.vt_last_fetched, NEW.vt_found, NEW.vt_malicious, NEW.vt_suspicious, NEW.vt_harmless,
+    NEW.vt_undetected, NEW.vt_timeout, NEW.vt_reputation, NEW.vt_type, NEW.vt_magic,
+    NEW.vt_first_submission_date, NEW.vt_last_analysis_date, NEW.vt_tags
+  )
+  ON CONFLICT (sha256) DO UPDATE SET
+    size_bytes = GREATEST(cowrie_files_agg.size_bytes, EXCLUDED.size_bytes),
+    first_seen = LEAST(cowrie_files_agg.first_seen, EXCLUDED.first_seen),
+    vt_last_fetched = CASE WHEN EXCLUDED.vt_last_fetched IS NOT NULL
+        AND (cowrie_files_agg.vt_last_fetched IS NULL OR EXCLUDED.vt_last_fetched > cowrie_files_agg.vt_last_fetched)
+      THEN EXCLUDED.vt_last_fetched ELSE cowrie_files_agg.vt_last_fetched END,
+    vt_found = CASE WHEN EXCLUDED.vt_last_fetched IS NOT NULL
+        AND (cowrie_files_agg.vt_last_fetched IS NULL OR EXCLUDED.vt_last_fetched > cowrie_files_agg.vt_last_fetched)
+      THEN EXCLUDED.vt_found ELSE cowrie_files_agg.vt_found END,
+    vt_malicious = CASE WHEN EXCLUDED.vt_last_fetched IS NOT NULL
+        AND (cowrie_files_agg.vt_last_fetched IS NULL OR EXCLUDED.vt_last_fetched > cowrie_files_agg.vt_last_fetched)
+      THEN EXCLUDED.vt_malicious ELSE cowrie_files_agg.vt_malicious END,
+    vt_suspicious = CASE WHEN EXCLUDED.vt_last_fetched IS NOT NULL
+        AND (cowrie_files_agg.vt_last_fetched IS NULL OR EXCLUDED.vt_last_fetched > cowrie_files_agg.vt_last_fetched)
+      THEN EXCLUDED.vt_suspicious ELSE cowrie_files_agg.vt_suspicious END,
+    vt_harmless = CASE WHEN EXCLUDED.vt_last_fetched IS NOT NULL
+        AND (cowrie_files_agg.vt_last_fetched IS NULL OR EXCLUDED.vt_last_fetched > cowrie_files_agg.vt_last_fetched)
+      THEN EXCLUDED.vt_harmless ELSE cowrie_files_agg.vt_harmless END,
+    vt_undetected = CASE WHEN EXCLUDED.vt_last_fetched IS NOT NULL
+        AND (cowrie_files_agg.vt_last_fetched IS NULL OR EXCLUDED.vt_last_fetched > cowrie_files_agg.vt_last_fetched)
+      THEN EXCLUDED.vt_undetected ELSE cowrie_files_agg.vt_undetected END,
+    vt_timeout = CASE WHEN EXCLUDED.vt_last_fetched IS NOT NULL
+        AND (cowrie_files_agg.vt_last_fetched IS NULL OR EXCLUDED.vt_last_fetched > cowrie_files_agg.vt_last_fetched)
+      THEN EXCLUDED.vt_timeout ELSE cowrie_files_agg.vt_timeout END,
+    vt_reputation = CASE WHEN EXCLUDED.vt_last_fetched IS NOT NULL
+        AND (cowrie_files_agg.vt_last_fetched IS NULL OR EXCLUDED.vt_last_fetched > cowrie_files_agg.vt_last_fetched)
+      THEN EXCLUDED.vt_reputation ELSE cowrie_files_agg.vt_reputation END,
+    vt_type = CASE WHEN EXCLUDED.vt_last_fetched IS NOT NULL
+        AND (cowrie_files_agg.vt_last_fetched IS NULL OR EXCLUDED.vt_last_fetched > cowrie_files_agg.vt_last_fetched)
+      THEN EXCLUDED.vt_type ELSE cowrie_files_agg.vt_type END,
+    vt_magic = CASE WHEN EXCLUDED.vt_last_fetched IS NOT NULL
+        AND (cowrie_files_agg.vt_last_fetched IS NULL OR EXCLUDED.vt_last_fetched > cowrie_files_agg.vt_last_fetched)
+      THEN EXCLUDED.vt_magic ELSE cowrie_files_agg.vt_magic END,
+    vt_first_submission_date = CASE WHEN EXCLUDED.vt_last_fetched IS NOT NULL
+        AND (cowrie_files_agg.vt_last_fetched IS NULL OR EXCLUDED.vt_last_fetched > cowrie_files_agg.vt_last_fetched)
+      THEN EXCLUDED.vt_first_submission_date ELSE cowrie_files_agg.vt_first_submission_date END,
+    vt_last_analysis_date = CASE WHEN EXCLUDED.vt_last_fetched IS NOT NULL
+        AND (cowrie_files_agg.vt_last_fetched IS NULL OR EXCLUDED.vt_last_fetched > cowrie_files_agg.vt_last_fetched)
+      THEN EXCLUDED.vt_last_analysis_date ELSE cowrie_files_agg.vt_last_analysis_date END,
+    vt_tags = CASE WHEN EXCLUDED.vt_last_fetched IS NOT NULL
+        AND (cowrie_files_agg.vt_last_fetched IS NULL OR EXCLUDED.vt_last_fetched > cowrie_files_agg.vt_last_fetched)
+      THEN EXCLUDED.vt_tags ELSE cowrie_files_agg.vt_tags END;
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.sync_cowrie_files_agg() OWNER TO cowrie_user;
+
+--
+-- Name: cowrie_files trg_sync_cowrie_files_agg; Type: TRIGGER; Schema: public; Owner: cowrie_user
+--
+
+CREATE TRIGGER trg_sync_cowrie_files_agg AFTER INSERT OR UPDATE ON public.cowrie_files FOR EACH ROW EXECUTE FUNCTION public.sync_cowrie_files_agg();
 
 
 --
