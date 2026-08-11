@@ -1,6 +1,5 @@
 name: Deploy
 
-# Push to main -> deploy backend on the VPS runner, then the forwarder to the Pi.
 on:
   push:
     branches: [main]
@@ -14,12 +13,11 @@ jobs:
   deploy:
     runs-on: [self-hosted, linux]
     env:
-      # Pi's reachable address. Dynamic DSL today — swap for a stable DNS name
-      # (dynamic DNS) when you set that up; this is the only line to change.
       PI_HOST: REDACTED
       PI_PORT: "22222"
       PI_USER: admin
       REPO_DIR: /home/admin/hunajapannu
+      WEB_ROOT: /var/www/hunajapannu.fi/html
 
     steps:
       - name: Checkout
@@ -32,7 +30,7 @@ jobs:
           git fetch --all
           git reset --hard origin/main
           cd backend
-          npm ci                      # clean, lockfile-exact install
+          npm ci
           cd ..
           echo "Applying migrations"
           shopt -s nullglob
@@ -46,7 +44,7 @@ jobs:
                 || echo "  (skipped/failed: $f — review if unexpected)"
             done
           fi
-          pm2 restart cowrie-api      # no --update-env: keep the ecosystem env/secrets
+          pm2 restart cowrie-api
 
       - name: Backend health check
         run: |
@@ -58,6 +56,14 @@ jobs:
             echo "  waiting for backend... ($i)"; sleep 2
           done
           echo "  backend did not become healthy"; exit 1
+
+      - name: Deploy frontend
+        working-directory: ${{ env.REPO_DIR }}/frontend
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run build
+          sudo rsync -a --delete dist/ "${WEB_ROOT}/"
 
       - name: Deploy forwarder to Pi
         run: |
