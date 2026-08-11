@@ -4,9 +4,8 @@ name: Deploy
 on:
   push:
     branches: [main]
-  workflow_dispatch:   # allows a manual "Run workflow" button
+  workflow_dispatch:
 
-# One deploy at a time; a newer push cancels an in-flight one.
 concurrency:
   group: deploy-production
   cancel-in-progress: false
@@ -15,8 +14,8 @@ jobs:
   deploy:
     runs-on: [self-hosted, linux]
     env:
-      # The Pi's reachable address. Dynamic DSL today — swap for a stable
-      # DNS name (dynamic DNS) here when you set that up.
+      # Pi's reachable address. Dynamic DSL today — swap for a stable DNS name
+      # (dynamic DNS) when you set that up; this is the only line to change.
       PI_HOST: REDACTED
       PI_PORT: "22222"
       PI_USER: admin
@@ -26,7 +25,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ---- Backend (runs locally on the VPS runner) ----
       - name: Deploy backend
         working-directory: ${{ env.REPO_DIR }}
         run: |
@@ -34,30 +32,40 @@ jobs:
           git fetch --all
           git reset --hard origin/main
           cd backend
-          npm install --omit=dev
+          npm ci                      # clean, lockfile-exact install
           cd ..
           echo "Applying migrations"
-          for f in db/migrations/*.sql; do
-            echo "  - $f"
-            sudo -u postgres psql -d cowrie_db -v ON_ERROR_STOP=1 -f "$f" \
-              || echo "  (skipped/failed: $f — review if unexpected)"
-          done
-          pm2 restart cowrie-api --update-env
+          shopt -s nullglob
+          migs=(db/migrations/*.sql)
+          if [ ${#migs[@]} -eq 0 ]; then
+            echo "  (no migration files found)"
+          else
+            for f in "${migs[@]}"; do
+              echo "  - $f"
+              sudo -u postgres psql -d cowrie_db -v ON_ERROR_STOP=1 -f "$f" \
+                || echo "  (skipped/failed: $f — review if unexpected)"
+            done
+          fi
+          pm2 restart cowrie-api      # no --update-env: keep the ecosystem env/secrets
 
       - name: Backend health check
         run: |
           set -euo pipefail
-          sleep 3
-          curl -fsS http://localhost:3001/health
+          for i in $(seq 1 10); do
+            if curl -fsS http://localhost:3001/health; then
+              echo "  backend healthy"; exit 0
+            fi
+            echo "  waiting for backend... ($i)"; sleep 2
+          done
+          echo "  backend did not become healthy"; exit 1
 
-      # ---- Forwarder (pushed to the Pi over SSH) ----
       - name: Deploy forwarder to Pi
         run: |
           set -euo pipefail
           ssh -p "$PI_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
             "$PI_USER@$PI_HOST" '
               set -euo pipefail
-              cd ~/hunajapannu || { echo "repo not cloned on Pi"; exit 1; }
+              cd ~/hunajapannu || { echo "repo not cloned on Pi at ~/hunajapannu"; exit 1; }
               git fetch --all && git reset --hard origin/main
               sudo install -m 0755 forwarder/forwarder.py /opt/cowrie-forwarder/forwarder.py
               sudo install -m 0644 forwarder/cowrie-forwarder.service /etc/systemd/system/cowrie-forwarder.service
