@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="584" height="1040" class="svgbob"><style>.svgbob line, .svgbob path, .svgbob circle, .svgbob rect, .svgbob polygon {
+    stroke: #34d399;
+    stroke-width: 2;
+    stroke-opacity: 1;
+    fill-opacity: 1;
+    stroke-linecap: round;
+    stroke-linejoin: miter;
+}
+.svgbob text {
+    white-space: pre;
+    fill: #a7f3d0;
+    font-family: Iosevka Fixed, monospace;
+    font-size: 14px;
+}
+.svgbob rect.backdrop {
+    stroke: none;
+    fill: transparent;
+}
+.svgbob .broken {
+    stroke-dasharray: 8;
+}
+.svgbob .filled {
+    fill: #34d399;
+}
+.svgbob .bg_filled {
+    fill: transparent;
+    stroke-width: 1;
+}
+.svgbob .nofill {
+    fill: transparent;
+}
+.svgbob .end_marked_arrow {
+    marker-end: url(#arrow);
+}
+.svgbob .start_marked_arrow {
+    marker-start: url(#arrow);
+}
+.svgbob .end_marked_diamond {
+    marker-end: url(#diamond);
+}
+.svgbob .start_marked_diamond {
+    marker-start: url(#diamond);
+}
+.svgbob .end_marked_circle {
+    marker-end: url(#circle);
+}
+.svgbob .start_marked_circle {
+    marker-start: url(#circle);
+}
+.svgbob .end_marked_open_circle {
+    marker-end: url(#open_circle);
+}
+.svgbob .start_marked_open_circle {
+    marker-start: url(#open_circle);
+}
+.svgbob .end_marked_big_open_circle {
+    marker-end: url(#big_open_circle);
+}
+.svgbob .start_marked_big_open_circle {
+    marker-start: url(#big_open_circle);
+}<!--separator--></style><defs><marker id="arrow" viewBox="-2 -2 8 8" refX="4" refY="2" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><polygon points="0,0 0,4 4,2 0,0"></polygon></marker><marker id="diamond" viewBox="-2 -2 8 8" refX="4" refY="2" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><polygon points="0,2 2,0 4,2 2,4 0,2"></polygon></marker><marker id="circle" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><circle cx="4" cy="4" r="2" class="filled"></circle></marker><marker id="open_circle" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><circle cx="4" cy="4" r="2" class="bg_filled"></circle></marker><marker id="big_open_circle" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><circle cx="4" cy="4" r="3" class="bg_filled"></circle></marker></defs><rect class="backdrop" x="0" y="0" width="584" height="1040"></rect><rect x="4" y="72" width="568" height="32" class="solid nofill" rx="0"></rect><text x="234" y="92" >INTERNET</text><rect x="4" y="552" width="568" height="32" class="solid nofill" rx="0"></rect><text x="234" y="572" >INTERNET</text><rect x="284" y="984" width="208" height="32" class="solid nofill" rx="0"></rect><text x="314" y="1004" >PostgreSQL</text><text x="402" y="1004" >database</text><text x="130" y="12" >[</text><text x="146" y="12" >ATTACKER</text><line x1="204" y1="16" x2="204" y2="32" class="solid"></line><text x="218" y="12" >SSH</text><text x="250" y="12" >FLOW</text><text x="290" y="12" >]</text><text x="146" y="44" >TCP</text><text x="178" y="44" >22</text><path d="M 224,32 A 16,16 0,0,0 224,48" class="nofill"></path><text x="234" y="44" >SSH</text><path d="M 264,32 A 16,16 0,0,1 264,48" class="nofill"></path><line x1="204" y1="48" x2="204" y2="64" class="solid"></line><line x1="204" y1="112" x2="204" y2="132" class="solid"></line><polygon points="200,132 208,132 204,144" class="filled"></polygon><text x="154" y="172" >Home</text><text x="194" y="172" >Router</text><line x1="256" y1="160" x2="248" y2="176" class="solid"></line><text x="266" y="172" >NAT</text><line x1="152" y1="184" x2="160" y2="184" class="solid"></line><text x="170" y="188" >Forwards</text><text x="170" y="204" >WAN:22</text><polygon points="216,244 224,244 220,256" class="filled"></polygon><text x="162" y="284" >Raspberry</text><text x="242" y="284" >Pi</text><text x="162" y="300" >Cowrie</text><text x="218" y="300" >SSH</text><text x="162" y="316" >Honeypot</text><line x1="152" y1="328" x2="160" y2="328" class="solid"></line><text x="170" y="332" >Listens</text><text x="234" y="332" >22</text><line x1="152" y1="344" x2="160" y2="344" class="solid"></line><text x="170" y="348" >cowrieLog.json</text><polygon points="216,436 224,436 220,448" class="filled"></polygon><text x="234" y="412" >Local</text><text x="282" y="412" >data</text><text x="322" y="412" >shipper</text><path d="M 240,416 A 16,16 0,0,0 240,432" class="nofill"></path><text x="250" y="428" >systemd</text><path d="M 312,416 A 16,16 0,0,1 312,432" class="nofill"></path><text x="162" y="476" >HTTPS</text><text x="162" y="492" >+</text><text x="178" y="492" >API</text><text x="210" y="476" >POST</text><text x="210" y="492" >key</text><path d="M 256,464 A 16,16 0,0,0 256,480" class="nofill"></path><text x="266" y="476" >443</text><path d="M 296,464 A 16,16 0,0,1 296,480" class="nofill"></path><line x1="220" y1="512" x2="220" y2="532" class="solid"></line><polygon points="216,532 224,532 220,544" class="filled"></polygon><line x1="220" y1="592" x2="220" y2="612" class="solid"></line><polygon points="216,612 224,612 220,624" class="filled"></polygon><text x="154" y="652" >Cloudflare</text><text x="242" y="652" >DNS</text><line x1="144" y1="664" x2="152" y2="664" class="solid"></line><text x="162" y="668" >www.hunajapannu.fi</text><polygon points="232,708 240,708 236,720" class="filled"></polygon><text x="234" y="748" >VPS</text><text x="154" y="764" >Linux,</text><text x="210" y="764" >Nginx,</text><text x="266" y="764" >Node,</text><text x="314" y="764" >DB</text><text x="66" y="860" >Reverse</text><text x="130" y="860" >Proxy</text><text x="66" y="876" >Nginx</text><line x1="64" y1="888" x2="72" y2="888" class="solid"></line><text x="82" y="892" >Listens</text><text x="146" y="892" >on</text><text x="170" y="892" >443</text><text x="234" y="892" >HTTP</text><line x1="64" y1="904" x2="72" y2="904" class="solid"></line><text x="82" y="908" >Serves</text><text x="138" y="908" >React</text><text x="186" y="908" >UI</text><polygon points="264,900 272,904 264,908" class="filled"></polygon><text x="82" y="924" >static</text><text x="138" y="924" >files</text><text x="234" y="924" >HTTP</text><polygon points="232,932 224,936 232,940" class="filled"></polygon><line x1="232" y1="936" x2="280" y2="936" class="solid"></line><text x="386" y="956" >SQL</text><path d="M 424,944 A 16,16 0,0,0 424,960" class="nofill"></path><text x="434" y="956" >local</text><path d="M 480,944 A 16,16 0,0,1 480,960" class="nofill"></path><polygon points="360,964 368,964 364,976" class="filled"></polygon><text x="330" y="876" >Backend</text><text x="394" y="876" >API</text><text x="330" y="892" >Public</text><text x="394" y="892" >API</text><line x1="336" y1="904" x2="344" y2="904" class="solid"></line><text x="354" y="908" >Node.js</text><g><line x1="140" y1="152" x2="300" y2="152" class="solid"></line><line x1="140" y1="152" x2="140" y2="216" class="solid"></line><line x1="300" y1="152" x2="300" y2="216" class="solid"></line><line x1="140" y1="216" x2="300" y2="216" class="solid"></line><line x1="220" y1="216" x2="220" y2="244" class="solid"></line></g><g><text x="226" y="204">→</text><text x="242" y="204">Pi:22</text></g><g><line x1="140" y1="264" x2="300" y2="264" class="solid"></line><line x1="140" y1="264" x2="140" y2="376" class="solid"></line><line x1="300" y1="264" x2="300" y2="376" class="solid"></line><line x1="140" y1="376" x2="300" y2="376" class="solid"></line><line x1="220" y1="376" x2="220" y2="436" class="solid"></line></g><g><line x1="132" y1="632" x2="380" y2="632" class="solid"></line><line x1="132" y1="632" x2="132" y2="680" class="solid"></line><line x1="380" y1="632" x2="380" y2="680" class="solid"></line><line x1="132" y1="680" x2="380" y2="680" class="solid"></line><line x1="236" y1="680" x2="236" y2="708" class="solid"></line></g><g><line x1="132" y1="728" x2="364" y2="728" class="solid"></line><line x1="132" y1="728" x2="132" y2="776" class="solid"></line><line x1="364" y1="728" x2="364" y2="776" class="solid"></line><line x1="132" y1="776" x2="364" y2="776" class="solid"></line><line x1="236" y1="776" x2="236" y2="808" class="solid"></line><line x1="132" y1="808" x2="364" y2="808" class="solid"></line><line x1="132" y1="808" x2="132" y2="832" class="solid"></line><line x1="364" y1="808" x2="364" y2="832" class="solid"></line></g><g><line x1="52" y1="840" x2="212" y2="840" class="solid"></line><line x1="52" y1="840" x2="52" y2="936" class="solid"></line><line x1="212" y1="840" x2="212" y2="936" class="solid"></line><line x1="212" y1="904" x2="264" y2="904" class="solid"></line><line x1="52" y1="936" x2="212" y2="936" class="solid"></line></g><g><line x1="284" y1="840" x2="476" y2="840" class="solid"></line><line x1="284" y1="840" x2="284" y2="936" class="solid"></line><line x1="476" y1="840" x2="476" y2="936" class="solid"></line><line x1="284" y1="936" x2="476" y2="936" class="solid"></line><line x1="364" y1="936" x2="364" y2="964" class="solid"></line></g></svg>

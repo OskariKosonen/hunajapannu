@@ -1,0 +1,22 @@
+# dependencies / builds
+node_modules/
+venv/
+dist/
+build/
+__pycache__/
+*.pyc
+
+# secrets — NEVER commit
+*.env
+.env
+ecosystem.config.js
+*.bak-*
+*.broken-*
+
+# collected honeypot data — not code
+creds.csv
+*.csv
+state.json*
+
+# logs
+*.log
