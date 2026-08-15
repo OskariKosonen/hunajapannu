@@ -66,7 +66,11 @@ def post_batch(url, key, rows):
                 sys.stderr.write(f"POST {url} -> {resp.status}\n")
         except urllib.error.HTTPError as e:
             sys.stderr.write(f"POST {url} -> {e.code}: {e.read()[:200]!r}\n")
-            if 400 <= e.code < 500 and e.code != 429:  # permanent rejection, not backpressure
+            # Park only payload-level rejections, which retrying can never fix.
+            # 401/403 (token rotated or misconfigured), 408 and 429 stay in the
+            # retry loop — those are operator-fixable, and silently discarding
+            # honeypot data over a typo'd token would be worse than stalling.
+            if e.code in (400, 413, 422):
                 dead_letter(key, rows, e.code); return
         except urllib.error.URLError as e:
             sys.stderr.write(f"POST {url} failed: {e}\n")

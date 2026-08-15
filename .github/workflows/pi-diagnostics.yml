@@ -1,0 +1,72 @@
+name: Pi diagnostics
+
+# Read-only look at the Pi from the self-hosted runner (the only host allowed
+# through the Pi's firewall on the admin SSH port). Manual dispatch only —
+# nothing here restarts, installs or writes anything.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: [self-hosted, linux]
+    env:
+      PI_HOST: ${{ vars.PI_HOST || 'REDACTED' }}
+      PI_PORT: "22222"
+      PI_USER: admin
+
+    steps:
+      - name: Inspect Pi
+        run: |
+          set -euo pipefail
+          ssh -p "$PI_PORT" -o BatchMode=yes -o ConnectTimeout=10 \
+            -o StrictHostKeyChecking=accept-new "$PI_USER@$PI_HOST" '
+              set -uo pipefail
+
+              echo "=================== uptime / boot ==================="
+              uptime
+              echo "last boot: $(who -b 2>/dev/null || true)"
+
+              echo "=================== services ==================="
+              for svc in cowrie cowrie-forwarder; do
+                printf "%-20s %s\n" "$svc" "$(systemctl is-active $svc 2>&1 || true)"
+              done
+              echo
+              systemctl status cowrie --no-pager -n 15 2>&1 | sed "s/^/  /" || true
+              echo
+              systemctl status cowrie-forwarder --no-pager -n 15 2>&1 | sed "s/^/  /" || true
+
+              echo "=================== forwarder journal (last 40) ==================="
+              # stderr only carries POST status lines, never the bearer token.
+              sudo journalctl -u cowrie-forwarder -n 40 --no-pager 2>&1 | sed "s/^/  /" || true
+
+              echo "=================== cowrie log ==================="
+              LOG=/home/cowrie/var/log/cowrie/cowrie.json
+              if [ -f "$LOG" ]; then
+                stat -c "  path=%n size=%s mtime=%y inode=%i" "$LOG"
+                echo "  --- last line ---"
+                sudo tail -n 1 "$LOG" 2>/dev/null | cut -c1-300 | sed "s/^/  /" || echo "  (unreadable)"
+              else
+                echo "  MISSING: $LOG"
+              fi
+              echo "  --- log dir ---"
+              sudo ls -la "$(dirname "$LOG")" 2>&1 | head -20 | sed "s/^/  /" || true
+
+              echo "=================== forwarder state ==================="
+              sudo cat /var/lib/cowrie-forwarder/state.json 2>&1 | sed "s/^/  /" || echo "  (no state file)"
+              echo
+              DL=/var/lib/cowrie-forwarder/deadletter.jsonl
+              if [ -f "$DL" ]; then
+                echo "  dead-letter: $(sudo wc -l < "$DL") batches parked"
+                sudo tail -n 3 "$DL" | cut -c1-300 | sed "s/^/  /" || true
+              else
+                echo "  dead-letter: none (file absent)"
+              fi
+
+              echo "=================== connectivity to API ==================="
+              curl -s -o /dev/null -w "  GET /health -> %{http_code} in %{time_total}s\n" \
+                --max-time 20 https://hunajapannu.fi/api/public/cowrie/creds/unique-count || true
+
+              echo "=================== disk ==================="
+              df -h / /home 2>&1 | sed "s/^/  /" || true
+            '
