@@ -13,7 +13,9 @@ jobs:
   deploy:
     runs-on: [self-hosted, linux]
     env:
-      PI_HOST: REDACTED
+      # The Pi sits on a dynamic residential IP; keep it in a repo variable so
+      # an address change is a settings update, not a commit.
+      PI_HOST: ${{ vars.PI_HOST || 'REDACTED' }}
       PI_PORT: "22222"
       PI_USER: admin
       REPO_DIR: /home/admin/hunajapannu
@@ -21,7 +23,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Deploy backend
         working-directory: ${{ env.REPO_DIR }}
@@ -49,13 +51,20 @@ jobs:
       - name: Backend health check
         run: |
           set -euo pipefail
-          for i in $(seq 1 10); do
+          # The app loads two MaxMind databases before it starts listening,
+          # and on a loaded box that has taken well over the old 25s window —
+          # a deploy failed on 2026-08-11 with the backend coming up ~70s
+          # after pm2 reported "online". Allow ~2 minutes.
+          for i in $(seq 1 60); do
             if curl -fsS http://localhost:3001/health; then
               echo "  backend healthy"; exit 0
             fi
             echo "  waiting for backend... ($i)"; sleep 2
           done
-          echo "  backend did not become healthy"; exit 1
+          echo "  backend did not become healthy; dumping pm2 state and logs:"
+          pm2 describe cowrie-api || true
+          pm2 logs cowrie-api --nostream --lines 100 || true
+          exit 1
 
       - name: Deploy frontend
         working-directory: ${{ env.REPO_DIR }}/frontend
@@ -68,6 +77,14 @@ jobs:
       - name: Deploy forwarder to Pi
         run: |
           set -euo pipefail
+          # The Pi is on a residential connection and can be offline or on a
+          # new IP; that must not block backend/frontend deploys. Skip with a
+          # visible warning instead of failing the whole run.
+          if ! ssh -p "$PI_PORT" -o BatchMode=yes -o ConnectTimeout=10 \
+               -o StrictHostKeyChecking=accept-new "$PI_USER@$PI_HOST" true 2>/dev/null; then
+            echo "::warning::Pi at $PI_HOST:$PI_PORT is unreachable; skipped forwarder deploy. Update the PI_HOST repo variable if its address changed, then re-run."
+            exit 0
+          fi
           ssh -p "$PI_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
             "$PI_USER@$PI_HOST" '
               set -euo pipefail

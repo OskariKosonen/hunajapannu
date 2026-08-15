@@ -145,7 +145,9 @@ CREATE TABLE public.cowrie_unique_creds (
     username text NOT NULL,
     password text NOT NULL,
     first_seen timestamp with time zone NOT NULL,
-    last_seen timestamp with time zone NOT NULL
+    last_seen timestamp with time zone NOT NULL,
+    total_events bigint,
+    unique_ips bigint
 );
 
 
@@ -306,7 +308,7 @@ BEGIN
     vt_first_submission_date, vt_last_analysis_date, vt_tags
   )
   VALUES (
-    NEW.sha256, NEW.size_bytes, NEW.mtime,
+    NEW.sha256, NEW.size_bytes, COALESCE(NEW.mtime, NEW."timestamp"),
     NEW.vt_last_fetched, NEW.vt_found, NEW.vt_malicious, NEW.vt_suspicious, NEW.vt_harmless,
     NEW.vt_undetected, NEW.vt_timeout, NEW.vt_reputation, NEW.vt_type, NEW.vt_magic,
     NEW.vt_first_submission_date, NEW.vt_last_analysis_date, NEW.vt_tags
@@ -400,6 +402,182 @@ ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENC
 --
 
 ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO cowrie_user;
+
+
+--
+-- Name: cowrie_asn_agg; Type: TABLE; Schema: public; Owner: postgres
+--
+-- Trigger-maintained leaderboard aggregates (see
+-- db/migrations/006_add_leaderboard_aggs.sql). The *_ips companion tables
+-- exist so unique_ips can be bumped only on first sight of a (key, src_ip)
+-- pair; without them COUNT(DISTINCT) would need a full scan of cowrie_events.
+--
+
+CREATE TABLE public.cowrie_asn_agg (
+    asn integer NOT NULL,
+    org text,
+    total bigint DEFAULT 0 NOT NULL,
+    unique_ips bigint DEFAULT 0 NOT NULL
+);
+
+
+ALTER TABLE public.cowrie_asn_agg OWNER TO postgres;
+
+--
+-- Name: cowrie_asn_ips; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.cowrie_asn_ips (
+    asn integer NOT NULL,
+    src_ip inet NOT NULL
+);
+
+
+ALTER TABLE public.cowrie_asn_ips OWNER TO postgres;
+
+--
+-- Name: cowrie_country_agg; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.cowrie_country_agg (
+    country_iso text NOT NULL,
+    total bigint DEFAULT 0 NOT NULL,
+    unique_ips bigint DEFAULT 0 NOT NULL
+);
+
+
+ALTER TABLE public.cowrie_country_agg OWNER TO postgres;
+
+--
+-- Name: cowrie_country_ips; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.cowrie_country_ips (
+    country_iso text NOT NULL,
+    src_ip inet NOT NULL
+);
+
+
+ALTER TABLE public.cowrie_country_ips OWNER TO postgres;
+
+--
+-- Name: cowrie_cred_ips; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.cowrie_cred_ips (
+    username text NOT NULL,
+    password text NOT NULL,
+    src_ip inet NOT NULL
+);
+
+
+ALTER TABLE public.cowrie_cred_ips OWNER TO postgres;
+
+--
+-- Name: cowrie_asn_agg cowrie_asn_agg_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.cowrie_asn_agg
+    ADD CONSTRAINT cowrie_asn_agg_pkey PRIMARY KEY (asn);
+
+
+--
+-- Name: cowrie_asn_ips cowrie_asn_ips_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.cowrie_asn_ips
+    ADD CONSTRAINT cowrie_asn_ips_pkey PRIMARY KEY (asn, src_ip);
+
+
+--
+-- Name: cowrie_country_agg cowrie_country_agg_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.cowrie_country_agg
+    ADD CONSTRAINT cowrie_country_agg_pkey PRIMARY KEY (country_iso);
+
+
+--
+-- Name: cowrie_country_ips cowrie_country_ips_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.cowrie_country_ips
+    ADD CONSTRAINT cowrie_country_ips_pkey PRIMARY KEY (country_iso, src_ip);
+
+
+--
+-- Name: cowrie_cred_ips cowrie_cred_ips_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.cowrie_cred_ips
+    ADD CONSTRAINT cowrie_cred_ips_pkey PRIMARY KEY (username, password, src_ip);
+
+
+--
+-- Name: sync_cowrie_event_aggs(); Type: FUNCTION; Schema: public; Owner: postgres
+--
+
+CREATE FUNCTION public.sync_cowrie_event_aggs() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  new_ip boolean;
+BEGIN
+  IF NEW.asn IS NOT NULL THEN
+    INSERT INTO cowrie_asn_ips (asn, src_ip)
+    VALUES (NEW.asn, NEW.src_ip)
+    ON CONFLICT DO NOTHING;
+    new_ip := FOUND;
+
+    INSERT INTO cowrie_asn_agg (asn, org, total, unique_ips)
+    VALUES (NEW.asn, NEW.org, 1, CASE WHEN new_ip THEN 1 ELSE 0 END)
+    ON CONFLICT (asn) DO UPDATE SET
+      total      = cowrie_asn_agg.total + 1,
+      unique_ips = cowrie_asn_agg.unique_ips + EXCLUDED.unique_ips,
+      org        = COALESCE(cowrie_asn_agg.org, EXCLUDED.org);
+  END IF;
+
+  IF NEW.country_iso IS NOT NULL AND NEW.country_iso <> '' THEN
+    INSERT INTO cowrie_country_ips (country_iso, src_ip)
+    VALUES (NEW.country_iso, NEW.src_ip)
+    ON CONFLICT DO NOTHING;
+    new_ip := FOUND;
+
+    INSERT INTO cowrie_country_agg (country_iso, total, unique_ips)
+    VALUES (NEW.country_iso, 1, CASE WHEN new_ip THEN 1 ELSE 0 END)
+    ON CONFLICT (country_iso) DO UPDATE SET
+      total      = cowrie_country_agg.total + 1,
+      unique_ips = cowrie_country_agg.unique_ips + EXCLUDED.unique_ips;
+  END IF;
+
+  IF NEW.username IS NOT NULL AND NEW.username <> ''
+     AND NEW.password IS NOT NULL AND NEW.password <> '' THEN
+    INSERT INTO cowrie_cred_ips (username, password, src_ip)
+    VALUES (NEW.username, NEW.password, NEW.src_ip)
+    ON CONFLICT DO NOTHING;
+    new_ip := FOUND;
+
+    INSERT INTO cowrie_unique_creds (username, password, first_seen, last_seen, total_events, unique_ips)
+    VALUES (NEW.username, NEW.password, NEW."timestamp", NEW."timestamp", 1, CASE WHEN new_ip THEN 1 ELSE 0 END)
+    ON CONFLICT (username, password) DO UPDATE SET
+      first_seen   = LEAST(cowrie_unique_creds.first_seen, EXCLUDED.first_seen),
+      last_seen    = GREATEST(cowrie_unique_creds.last_seen, EXCLUDED.last_seen),
+      total_events = COALESCE(cowrie_unique_creds.total_events, 0) + 1,
+      unique_ips   = COALESCE(cowrie_unique_creds.unique_ips, 0) + EXCLUDED.unique_ips;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.sync_cowrie_event_aggs() OWNER TO postgres;
+
+--
+-- Name: cowrie_events trg_sync_cowrie_event_aggs; Type: TRIGGER; Schema: public; Owner: postgres
+--
+
+CREATE TRIGGER trg_sync_cowrie_event_aggs AFTER INSERT ON public.cowrie_events FOR EACH ROW EXECUTE FUNCTION public.sync_cowrie_event_aggs();
 
 
 --

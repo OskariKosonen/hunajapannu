@@ -86,6 +86,10 @@ const pool = new Pool({
   max: 20,                     // Maximum pool size
   idleTimeoutMillis: 30000,    // Close idle clients after 30s
   connectionTimeoutMillis: 5000,
+  // A runaway query must not hold a pool connection for a minute while every
+  // other request starves waiting for a client (observed in production: two
+  // slow leaderboard queries 504'd and took the whole API down with them).
+  statement_timeout: 15000,
 });
 
 // A dropped idle client would otherwise crash the process; log and move on.
@@ -145,56 +149,55 @@ async function getSummaryStats() {
     return summaryCache.data;
   }
 
-  const client = await pool.connect();
-  try {
-    const twentyFourHoursAgo = new Date(now - 24 * 60 * 60 * 1000);
+  const twentyFourHoursAgo = new Date(now - 24 * 60 * 60 * 1000);
 
-    const [eventsAgg, filesAgg, commandsAgg, credsAgg, ipStatsAgg] = await Promise.all([
-      client.query(
-        `SELECT SUM(events_per_hour.events) AS total, MAX(events_per_hour.hour) AS peak_hour, MAX(events_per_hour.events) AS peak_events
-         FROM (
-           SELECT date_trunc('hour', timestamp) AS hour, COUNT(*) AS events
-           FROM cowrie_events
-           WHERE timestamp >= $1
-           GROUP BY hour
-         ) events_per_hour`,
-        [twentyFourHoursAgo]
-      ),
-      client.query('SELECT COUNT(DISTINCT sha256) AS malware_samples FROM cowrie_files'),
-      client.query('SELECT COUNT(*) AS unique_commands FROM cowrie_unique_commands'),
-      client.query(
-        'SELECT COUNT(*) AS unique_creds FROM cowrie_unique_creds'
-      ),
-      client.query(
-        `SELECT COUNT(*) AS total_events, COUNT(DISTINCT src_ip) AS unique_ips
+  // pool.query (not a single checked-out client) so the five queries actually
+  // run in parallel — node-postgres serializes queries issued on one client.
+  const [eventsAgg, filesAgg, commandsAgg, credsAgg, ipStatsAgg] = await Promise.all([
+    pool.query(
+      `SELECT SUM(events_per_hour.events) AS total, MAX(events_per_hour.hour) AS peak_hour, MAX(events_per_hour.events) AS peak_events
+       FROM (
+         SELECT date_trunc('hour', timestamp) AS hour, COUNT(*) AS events
          FROM cowrie_events
-         WHERE timestamp >= $1`,
-        [twentyFourHoursAgo]
-      ),
-    ]);
+         WHERE timestamp >= $1
+         GROUP BY hour
+       ) events_per_hour`,
+      [twentyFourHoursAgo]
+    ),
+    // cowrie_files_agg is one row per sha256, so a plain COUNT(*) replaces
+    // the COUNT(DISTINCT sha256) scan over every download ever recorded.
+    pool.query('SELECT COUNT(*) AS malware_samples FROM cowrie_files_agg'),
+    pool.query('SELECT COUNT(*) AS unique_commands FROM cowrie_unique_commands'),
+    pool.query(
+      'SELECT COUNT(*) AS unique_creds FROM cowrie_unique_creds'
+    ),
+    pool.query(
+      `SELECT COUNT(*) AS total_events, COUNT(DISTINCT src_ip) AS unique_ips
+       FROM cowrie_events
+       WHERE timestamp >= $1`,
+      [twentyFourHoursAgo]
+    ),
+  ]);
 
-    const totalTrendEvents = Number(eventsAgg.rows[0]?.total || 0);
-    const peakEvents = Number(eventsAgg.rows[0]?.peak_events || 0);
-    const peakHour = eventsAgg.rows[0]?.peak_hour;
-    const summary = {
-      attacks24h: totalTrendEvents,
-      peakEvents,
-      peakHour,
-      malwareSamples: Number(filesAgg.rows[0]?.malware_samples || 0),
-      uniqueCommands: Number(commandsAgg.rows[0]?.unique_commands || 0),
-      uniqueCredCount: Number(credsAgg.rows[0]?.unique_creds || 0),
-      uniqueIpPercent:
-        Number(ipStatsAgg.rows[0]?.total_events || 0) > 0
-          ? (Number(ipStatsAgg.rows[0].unique_ips || 0) / Number(ipStatsAgg.rows[0].total_events)) * 100
-          : 0,
-    };
+  const totalTrendEvents = Number(eventsAgg.rows[0]?.total || 0);
+  const peakEvents = Number(eventsAgg.rows[0]?.peak_events || 0);
+  const peakHour = eventsAgg.rows[0]?.peak_hour;
+  const summary = {
+    attacks24h: totalTrendEvents,
+    peakEvents,
+    peakHour,
+    malwareSamples: Number(filesAgg.rows[0]?.malware_samples || 0),
+    uniqueCommands: Number(commandsAgg.rows[0]?.unique_commands || 0),
+    uniqueCredCount: Number(credsAgg.rows[0]?.unique_creds || 0),
+    uniqueIpPercent:
+      Number(ipStatsAgg.rows[0]?.total_events || 0) > 0
+        ? (Number(ipStatsAgg.rows[0].unique_ips || 0) / Number(ipStatsAgg.rows[0].total_events)) * 100
+        : 0,
+  };
 
-    summaryCache.data = summary;
-    summaryCache.expiresAt = now + SUMMARY_CACHE_TTL_MS;
-    return summary;
-  } finally {
-    client.release();
-  }
+  summaryCache.data = summary;
+  summaryCache.expiresAt = now + SUMMARY_CACHE_TTL_MS;
+  return summary;
 }
 
 /**
@@ -751,19 +754,19 @@ app.get('/api/public/cowrie/creds', async (req, res) => {
   }
 
   try {
+    // cowrie_unique_creds carries trigger-maintained counters (see
+    // db/migrations/006_add_leaderboard_aggs.sql), so this is a small-table
+    // sort instead of a GROUP BY over every event ever recorded.
     const { rows } = await pool.query(
       `SELECT
          username,
          password,
-         COUNT(*) AS total,
-         COUNT(DISTINCT src_ip) AS unique_ips
-       FROM cowrie_events
-       WHERE username IS NOT NULL
-         AND username <> ''
-         AND password IS NOT NULL
-         AND password <> ''
-       GROUP BY username, password
-       ORDER BY total DESC
+         first_seen,
+         last_seen,
+         COALESCE(total_events, 0) AS total,
+         COALESCE(unique_ips, 0) AS unique_ips
+       FROM cowrie_unique_creds
+       ORDER BY COALESCE(total_events, 0) DESC
        LIMIT $1`,
       [limit]
     );
@@ -864,7 +867,7 @@ app.get('/api/public/cowrie/files', async (req, res) => {
          vt_last_analysis_date,
          vt_tags
        FROM cowrie_files_agg
-       ORDER BY first_seen DESC
+       ORDER BY first_seen DESC NULLS LAST
        LIMIT $1`,
       [limit]
     );
@@ -912,15 +915,16 @@ app.get('/api/public/cowrie/top-asn', async (req, res) => {
   }
 
   try {
+    // cowrie_asn_agg is a trigger-maintained aggregate (see
+    // db/migrations/006_add_leaderboard_aggs.sql); the previous GROUP BY over
+    // all of cowrie_events took 60s+ and starved the connection pool.
     const { rows } = await pool.query(
       `SELECT
          asn,
          org,
-         COUNT(*) AS total,
-         COUNT(DISTINCT src_ip) AS unique_ips
-       FROM cowrie_events
-       WHERE asn IS NOT NULL
-       GROUP BY asn, org
+         total,
+         unique_ips
+       FROM cowrie_asn_agg
        ORDER BY total DESC
        LIMIT $1`,
       [limit]
@@ -968,15 +972,15 @@ app.get('/api/public/cowrie/top-countries', async (req, res) => {
   }
 
   try {
+    // cowrie_country_agg is a trigger-maintained aggregate (see
+    // db/migrations/006_add_leaderboard_aggs.sql); the previous GROUP BY over
+    // all of cowrie_events took 60s+ and starved the connection pool.
     const { rows } = await pool.query(
       `SELECT
          country_iso,
-         COUNT(*) AS total,
-         COUNT(DISTINCT src_ip) AS unique_ips
-       FROM cowrie_events
-       WHERE country_iso IS NOT NULL
-         AND country_iso <> ''
-       GROUP BY country_iso
+         total,
+         unique_ips
+       FROM cowrie_country_agg
        ORDER BY total DESC
        LIMIT $1`,
       [limit]

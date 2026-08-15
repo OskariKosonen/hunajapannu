@@ -42,6 +42,18 @@ def map_event(ev):
                         "full_path": ev.get("destfile") or ev.get("outfile") or ev.get("filename")}
     return None, None
 
+def dead_letter(key, rows, code):
+    """Park a batch the backend permanently rejects (4xx) instead of retrying it
+    forever — one poison batch must not stall the whole pipeline. Parked rows
+    live next to the state file for manual replay."""
+    path = os.path.join(os.path.dirname(STATE_PATH), "deadletter.jsonl")
+    try:
+        with open(path, "a") as f:
+            f.write(json.dumps({"ts": time.time(), "status": code, "key": key, "rows": rows}) + "\n")
+        sys.stderr.write(f"parked {len(rows)} {key} rows in {path} (HTTP {code})\n")
+    except OSError as e:
+        sys.stderr.write(f"failed to dead-letter {len(rows)} {key} rows: {e}\n")
+
 def post_batch(url, key, rows):
     if not rows: return
     data = json.dumps({key: rows}).encode(); backoff = 1
@@ -54,6 +66,8 @@ def post_batch(url, key, rows):
                 sys.stderr.write(f"POST {url} -> {resp.status}\n")
         except urllib.error.HTTPError as e:
             sys.stderr.write(f"POST {url} -> {e.code}: {e.read()[:200]!r}\n")
+            if 400 <= e.code < 500 and e.code != 429:  # permanent rejection, not backpressure
+                dead_letter(key, rows, e.code); return
         except urllib.error.URLError as e:
             sys.stderr.write(f"POST {url} failed: {e}\n")
         time.sleep(backoff); backoff = min(backoff * 2, 60)
