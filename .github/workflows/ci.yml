@@ -1,0 +1,131 @@
+name: CI
+
+# Runs before Deploy can touch the Pi. Until now a push to main went straight
+# to production with no check at all — and since the deploy rsyncs the build
+# output with --delete, a frontend that fails to build would wipe the live
+# site rather than leave the previous version in place.
+
+on:
+  # No push trigger: Deploy calls this via workflow_call on pushes to main, so
+  # a push trigger here would run the whole thing twice.
+  pull_request:
+  workflow_call:
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - name: Syntax check
+        run: node --check index.js
+      - name: Boot against a real database
+        # Catches what a syntax check cannot: a query referencing a column that
+        # does not exist, a migration that fails to apply, a route that throws
+        # on its first call.
+        env:
+          PGHOST: localhost
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGDATABASE: cowrie_db
+          INGEST_API_KEY: ci-test-key
+          PORT: "3999"
+        run: |
+          set -euo pipefail
+          export PGPASSWORD
+
+          echo "--- applying schema and migrations ---"
+          # schema.sql is a pg_dump: it assigns ownership and grants to
+          # cowrie_user, and \restrict guards depend on the psql version.
+          psql -h localhost -U postgres -d cowrie_db -q \
+            -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='cowrie_user') THEN CREATE ROLE cowrie_user LOGIN PASSWORD 'ci'; END IF; END \$\$;"
+          grep -v '^\\restrict\|^\\unrestrict' ../db/schema.sql > /tmp/schema.sql
+          psql -h localhost -U postgres -d cowrie_db -v ON_ERROR_STOP=1 -q -f /tmp/schema.sql
+          for f in ../db/migrations/*.sql; do
+            echo "  $f"
+            psql -h localhost -U postgres -d cowrie_db -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+
+          echo "--- starting API ---"
+          node index.js & pid=$!
+          for i in $(seq 1 30); do
+            curl -fsS "http://localhost:3999/health" >/dev/null 2>&1 && break
+            sleep 1
+          done
+
+          echo "--- smoke-testing every public endpoint ---"
+          fail=0
+          for path in \
+            "health" \
+            "api/health" \
+            "api/public/cowrie/summary" \
+            "api/public/cowrie/latest?limit=1" \
+            "api/public/cowrie/events-per-hour?hours=24" \
+            "api/public/cowrie/commands?limit=5&search=wget" \
+            "api/public/cowrie/creds?limit=5&search=root" \
+            "api/public/cowrie/creds/unique-count" \
+            "api/public/cowrie/files?limit=5&search=elf" \
+            "api/public/cowrie/top-asn?limit=5" \
+            "api/public/cowrie/top-countries?limit=5" \
+            "api/public/cowrie/ip-stats" \
+            "api/public/cowrie/mitre" \
+            "api/public/cowrie/sessions?limit=5" ; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:3999/$path")
+            if [ "$code" = "200" ]; then
+              printf '  ok   %s\n' "$path"
+            else
+              printf '  FAIL %s -> %s\n' "$path" "$code"; fail=1
+            fi
+          done
+
+          # A missing session must 404, not 500.
+          code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:3999/api/public/cowrie/sessions/does-not-exist")
+          [ "$code" = "404" ] && printf '  ok   sessions/:id 404s when absent\n' \
+                              || { printf '  FAIL sessions/:id -> %s\n' "$code"; fail=1; }
+
+          # Ingest must reject an unauthenticated write.
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+                 -d '{"events":[]}' "http://localhost:3999/api/cowrie/events")
+          [ "$code" = "401" ] && printf '  ok   ingest rejects missing token\n' \
+                              || { printf '  FAIL ingest auth -> %s\n' "$code"; fail=1; }
+
+          kill $pid 2>/dev/null || true
+          exit $fail
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cowrie_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432

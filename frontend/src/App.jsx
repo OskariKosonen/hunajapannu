@@ -62,8 +62,14 @@ const CONFIG = {
     VERTICAL_MIDPOINT: 18,
   },
   
-  // Default timezone
+  // Every timestamp is rendered in the viewer's own timezone; this is only
+  // the fallback for when the browser will not report one.
   DEFAULT_TIMEZONE: "Europe/Helsinki",
+
+  // One locale for every time rendering. en-GB gives 24-hour, colon-separated
+  // times; mixing it with fi-FI previously meant the events table showed
+  // "22:21:57" while the chart axis showed "22.21" on the same screen.
+  TIME_LOCALE: "en-GB",
 };
 
 // Technique badge colours, keyed by ATT&CK id. The matching patterns and the
@@ -112,6 +118,23 @@ const getLocalTimeZone = () => {
   if (typeof Intl === "undefined") return "";
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  } catch {
+    return "";
+  }
+};
+
+/**
+ * Short offset label for the zone in use ("UTC+3"), so the dashboard can say
+ * which clock its timestamps are on. Attack times are only useful if you know
+ * what to correlate them against.
+ */
+const getTimeZoneLabel = (timeZone) => {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      timeZoneName: "shortOffset",
+    }).formatToParts(new Date());
+    return parts.find((p) => p.type === "timeZoneName")?.value || "";
   } catch {
     return "";
   }
@@ -210,7 +233,13 @@ function App() {
     );
   }, []);
 
-  const localTimeZone = getLocalTimeZone();
+  // Resolved once, not on every render: resolvedOptions() is not free, and
+  // this feeds the dependency array of both time formatters.
+  const localTimeZone = useMemo(
+    () => getLocalTimeZone() || CONFIG.DEFAULT_TIMEZONE,
+    []
+  );
+  const timeZoneLabel = useMemo(() => getTimeZoneLabel(localTimeZone), [localTimeZone]);
 
   // EFFECTS
   // Track scroll position for visual progress indicator
@@ -528,8 +557,8 @@ function App() {
     const d = new Date(ts);
     if (Number.isNaN(d.getTime())) return ts;
 
-    return d.toLocaleString("en-GB", {
-      timeZone: localTimeZone || CONFIG.DEFAULT_TIMEZONE,
+    return d.toLocaleString(CONFIG.TIME_LOCALE, {
+      timeZone: localTimeZone,
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -537,6 +566,20 @@ function App() {
       minute: "2-digit",
       second: "2-digit",
       hour12: false,
+    });
+  }, [localTimeZone]);
+
+  // Date without the time, for columns that only need the day. Formatted
+  // directly rather than string-splitting a full timestamp on its comma.
+  const formatDate = useCallback((ts) => {
+    if (!ts) return "—";
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return ts;
+    return d.toLocaleDateString(CONFIG.TIME_LOCALE, {
+      timeZone: localTimeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
     });
   }, [localTimeZone]);
 
@@ -572,8 +615,8 @@ function App() {
     if (!iso) return "";
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "";
-    return d.toLocaleTimeString("fi-FI", {
-      timeZone: localTimeZone || CONFIG.DEFAULT_TIMEZONE,
+    return d.toLocaleTimeString(CONFIG.TIME_LOCALE, {
+      timeZone: localTimeZone,
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
@@ -728,7 +771,7 @@ function App() {
       />
 
       <div className="w-full px-5 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5 sm:space-y-6 sm:max-w-7xl xl:max-w-screen-2xl 2xl:max-w-[1760px] sm:mx-auto flex-1">
-        <DashboardHeader />
+        <DashboardHeader timeZone={localTimeZone} timeZoneLabel={timeZoneLabel} />
        <ProjectSummary
          summaryStats={summaryStats}
          attacksTrendDown={attacksTrendDown}
@@ -814,6 +857,7 @@ function App() {
               pageSize={CONFIG.PAGE_SIZE.FILES}
               formatBytes={formatBytes}
               formatTimestamp={formatTimestamp}
+              formatDate={formatDate}
               isMobile={isMobile}
             />
 

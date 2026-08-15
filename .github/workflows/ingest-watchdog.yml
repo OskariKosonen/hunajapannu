@@ -1,0 +1,133 @@
+name: Ingest watchdog
+
+# On 2026-08-11 ingestion stopped and nothing noticed for four days: both Pi
+# services reported active, the deploy was green, the API answered every
+# request, and the dashboard loaded. The only symptom was data that was not
+# arriving. This job watches for exactly that.
+#
+# It runs on GitHub's hosted runners on purpose — the self-hosted runner lives
+# on the same Pi as the backend, so it cannot report that the Pi is down.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+# Never queue these up behind each other.
+concurrency:
+  group: ingest-watchdog
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe ingest freshness
+        id: probe
+        run: |
+          set -uo pipefail
+
+          body=$(curl -fsS --max-time 30 https://hunajapannu.fi/api/health) || {
+            echo "status=unreachable" >> "$GITHUB_OUTPUT"
+            echo "detail=The API did not respond to /api/health." >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          echo "$body"
+
+          # Not `.ingestStale // true` — jq's // treats false as empty, so a
+          # healthy `false` would fall through to the default and alert on
+          # every run. Explicitly distinguish false from missing.
+          stale=$(printf '%s' "$body" | jq -r 'if .ingestStale == false then "false" else "true" end')
+          age=$(printf '%s' "$body" | jq -r '.lastEventAgeSeconds // "unknown"')
+          last=$(printf '%s' "$body" | jq -r '.lastEventAt // "never"')
+          db=$(printf '%s' "$body" | jq -r '.db // "unknown"')
+
+          if [ "$db" != "connected" ]; then
+            echo "status=db" >> "$GITHUB_OUTPUT"
+            echo "detail=The API is up but reports the database as '$db'." >> "$GITHUB_OUTPUT"
+          elif [ "$stale" = "true" ]; then
+            mins=$([ "$age" = "unknown" ] && echo unknown || echo $((age / 60)))
+            echo "status=stale" >> "$GITHUB_OUTPUT"
+            echo "detail=No events ingested for ${mins} minutes (last event: ${last})." >> "$GITHUB_OUTPUT"
+          else
+            echo "status=ok" >> "$GITHUB_OUTPUT"
+            echo "detail=Last event ${age}s ago." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Report
+        if: steps.probe.outputs.status == 'ok'
+        run: echo "✅ ${{ steps.probe.outputs.detail }}"
+
+      # One open issue at a time: re-runs every 30 minutes must not create a
+      # new issue each time, and recovery should close it on its own.
+      - name: Open or update alert issue
+        if: steps.probe.outputs.status != 'ok'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const status = '${{ steps.probe.outputs.status }}';
+            const detail = `${{ toJSON(steps.probe.outputs.detail) }}`;
+            const title = '🚨 Honeypot ingestion has stopped';
+
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'ingest-watchdog',
+            });
+
+            const body = [
+              `**Problem:** ${detail}`,
+              '',
+              `Detected at ${new Date().toISOString()} (check: \`${status}\`).`,
+              '',
+              'Where to look, in the order that usually pays off:',
+              '1. `Pi diagnostics` workflow — service states, forwarder journal, dead-letter file',
+              '2. The forwarder journal for `403 error code: 1010` (Cloudflare blocking the uploads)',
+              '3. `/api/health` for whether the database itself is reachable',
+              '',
+              '_Raised automatically by `.github/workflows/ingest-watchdog.yml`. It closes itself once events flow again._',
+            ].join('\n');
+
+            if (open.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: open[0].number,
+                body: `Still failing: ${detail}`,
+              });
+              core.setFailed(`${detail} (see #${open[0].number})`);
+              return;
+            }
+
+            const { data: issue } = await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title, body, labels: ['ingest-watchdog'],
+            });
+            core.setFailed(`${detail} (opened #${issue.number})`);
+
+      - name: Close alert issue on recovery
+        if: steps.probe.outputs.status == 'ok'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'ingest-watchdog',
+            });
+            for (const issue of open) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `Recovered — ${{ toJSON(steps.probe.outputs.detail) }}`,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issue.number, state: 'closed',
+              });
+            }

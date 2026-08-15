@@ -10,7 +10,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Lint, build and a real boot-against-Postgres smoke test, on hosted
+  # runners, before anything touches the Pi.
+  ci:
+    uses: ./.github/workflows/ci.yml
+
   deploy:
+    needs: ci
     runs-on: [self-hosted, linux]
     env:
       # The Pi sits on a dynamic residential IP; keep it in a repo variable so

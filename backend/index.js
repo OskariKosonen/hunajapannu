@@ -42,6 +42,11 @@ const CACHE_CONFIG = {
   TTL_MS: 1000 * 60 * 60 * 6,
 };
 
+// How quiet ingestion has to go before /health calls itself degraded. The
+// honeypot sees a few hundred events an hour, so half an hour of complete
+// silence means something is broken, not that attackers took a break.
+const INGEST_STALE_AFTER_SECONDS = Number(process.env.INGEST_STALE_AFTER_SECONDS || 1800);
+
 const SUMMARY_CACHE_TTL_MS = 60 * 1000; // 1 minute
 const LEADERBOARD_CACHE_TTL_MS = 60 * 1000; // 1 minute for top-N slices
 
@@ -633,13 +638,28 @@ app.post('/api/cowrie/events', async (req, res) => {
  *
  * Response: { status: 'ok'|'error', db: 'connected'|'disconnected' }
  */
-app.get('/health', async (req, res) => {
+async function healthCheck(_req, res) {
   try {
-    await pool.query('SELECT 1');
+    // MAX(timestamp) is an index scan on idx_events_timestamp. Reporting
+    // ingest freshness here is the point: on 2026-08-11 the API, the database
+    // and both Pi services all looked healthy for four days while no events
+    // were arriving at all. "Serving requests" is not the same as "working".
+    const { rows } = await pool.query('SELECT MAX(timestamp) AS last_event FROM cowrie_events');
+    const lastEvent = rows[0]?.last_event ? new Date(rows[0].last_event) : null;
+    const ageSeconds = lastEvent ? Math.round((Date.now() - lastEvent.getTime()) / 1000) : null;
+    const ingestStale = ageSeconds == null || ageSeconds > INGEST_STALE_AFTER_SECONDS;
+
+    // Still HTTP 200 when only ingestion is stale: the service itself is
+    // healthy, and failing this would make deploys fail for an unrelated
+    // reason. Alerting keys on the ingestStale flag instead.
     res.json({
-      status: 'ok',
+      status: ingestStale ? 'degraded' : 'ok',
       db: 'connected',
-      timestamp: new Date().toISOString()
+      lastEventAt: lastEvent ? lastEvent.toISOString() : null,
+      lastEventAgeSeconds: ageSeconds,
+      ingestStale,
+      staleAfterSeconds: INGEST_STALE_AFTER_SECONDS,
+      timestamp: new Date().toISOString(),
     });
   } catch (err) {
     console.error('Health check failed:', err);
@@ -649,7 +669,14 @@ app.get('/health', async (req, res) => {
       timestamp: new Date().toISOString()
     });
   }
-});
+}
+
+// /health stays for the deploy's localhost probe; /api/health is the same
+// check reachable from outside, since nginx only proxies /api and served the
+// SPA for everything else — an external monitor pointed at /health was really
+// just checking that a static file existed.
+app.get('/health', healthCheck);
+app.get('/api/health', healthCheck);
 
 // ============================================================================
 // Public Endpoints - Time Series Data
