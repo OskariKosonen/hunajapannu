@@ -76,8 +76,57 @@ jobs:
         with:
           script: |
             const status = '${{ steps.probe.outputs.status }}';
-            const detail = `${{ toJSON(steps.probe.outputs.detail) }}`;
-            const title = '🚨 Honeypot ingestion has stopped';
+            // toJSON already yields a quoted JS string literal — assign it
+            // directly rather than nesting it in a template literal, which
+            // would leave the quotes visible in the issue text.
+            const detail = ${{ toJSON(steps.probe.outputs.detail) }};
+
+            // Title and guidance follow the condition; "ingestion has
+            // stopped" on a clock-skew alert sends you hunting the wrong bug.
+            const CONDITIONS = {
+              stale: {
+                title: '🚨 Honeypot ingestion has stopped',
+                steps: [
+                  'Run the `Pi diagnostics` workflow — service states, forwarder journal, dead-letter file',
+                  'Check the forwarder journal for `403 error code: 1010` (Cloudflare blocking the uploads)',
+                  'Check whether Cowrie itself is still writing to `cowrie.json`',
+                ],
+              },
+              skew: {
+                title: '🚨 Honeypot event timestamps are skewed',
+                steps: [
+                  'Compare `date -u` on the Pi with the `timestamp` field from `/api/health`',
+                  'Cowrie writes its local time labelled `Z`; running it under `TZ=UTC` keeps stored events in real UTC',
+                  'Note that skew hides a stopped feed — future-dated events read as fresh',
+                ],
+              },
+              db: {
+                title: '🚨 Honeypot database unreachable',
+                steps: [
+                  'Check Postgres is running on the Pi and accepting connections',
+                  'Check `pm2 logs cowrie-api` for connection errors',
+                ],
+              },
+              unreachable: {
+                title: '🚨 Honeypot API unreachable',
+                steps: [
+                  'Check the Pi is online and nginx is serving',
+                  'Check `pm2 describe cowrie-api`',
+                ],
+              },
+            };
+            const condition = CONDITIONS[status] || CONDITIONS.stale;
+
+            const body = [
+              `**Problem:** ${detail}`,
+              '',
+              `Detected at ${new Date().toISOString()} (check: \`${status}\`).`,
+              '',
+              'Where to look:',
+              ...condition.steps.map((s, i) => `${i + 1}. ${s}`),
+              '',
+              '_Raised automatically by `.github/workflows/ingest-watchdog.yml`. It closes itself once the check passes._',
+            ].join('\n');
 
             const { data: open } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
@@ -86,32 +135,28 @@ jobs:
               labels: 'ingest-watchdog',
             });
 
-            const body = [
-              `**Problem:** ${detail}`,
-              '',
-              `Detected at ${new Date().toISOString()} (check: \`${status}\`).`,
-              '',
-              'Where to look, in the order that usually pays off:',
-              '1. `Pi diagnostics` workflow — service states, forwarder journal, dead-letter file',
-              '2. The forwarder journal for `403 error code: 1010` (Cloudflare blocking the uploads)',
-              '3. `/api/health` for whether the database itself is reachable',
-              '',
-              '_Raised automatically by `.github/workflows/ingest-watchdog.yml`. It closes itself once events flow again._',
-            ].join('\n');
-
             if (open.length > 0) {
+              const issue = open[0];
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo,
-                issue_number: open[0].number,
+                issue_number: issue.number,
                 body: `Still failing: ${detail}`,
               });
-              core.setFailed(`${detail} (see #${open[0].number})`);
+              // The condition can change while the issue is open (skew that
+              // becomes a stopped feed); keep the title matching reality.
+              if (issue.title !== condition.title) {
+                await github.rest.issues.update({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: issue.number, title: condition.title, body,
+                });
+              }
+              core.setFailed(`${detail} (see #${issue.number})`);
               return;
             }
 
             const { data: issue } = await github.rest.issues.create({
               owner: context.repo.owner, repo: context.repo.repo,
-              title, body, labels: ['ingest-watchdog'],
+              title: condition.title, body, labels: ['ingest-watchdog'],
             });
             core.setFailed(`${detail} (opened #${issue.number})`);
 
@@ -120,6 +165,7 @@ jobs:
         uses: actions/github-script@v8
         with:
           script: |
+            const detail = ${{ toJSON(steps.probe.outputs.detail) }};
             const { data: open } = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -130,7 +176,7 @@ jobs:
               await github.rest.issues.createComment({
                 owner: context.repo.owner, repo: context.repo.repo,
                 issue_number: issue.number,
-                body: `Recovered — ${{ toJSON(steps.probe.outputs.detail) }}`,
+                body: `Recovered — ${detail}`,
               });
               await github.rest.issues.update({
                 owner: context.repo.owner, repo: context.repo.repo,
