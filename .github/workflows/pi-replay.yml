@@ -1,0 +1,41 @@
+name: Pi replay dead-letter
+
+# Pushes batches parked in the Pi's deadletter.jsonl back through the
+# ingestion API. Manual dispatch only — replays are at-least-once and the
+# backend has no content dedupe, so only run this for batches that never
+# got through.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  replay:
+    runs-on: [self-hosted, linux]
+    env:
+      PI_HOST: ${{ vars.PI_HOST || 'REDACTED' }}
+      PI_PORT: "22222"
+      PI_USER: admin
+
+    steps:
+      - name: Replay parked batches
+        run: |
+          set -euo pipefail
+          ssh -p "$PI_PORT" -o BatchMode=yes -o ConnectTimeout=10 \
+            -o StrictHostKeyChecking=accept-new "$PI_USER@$PI_HOST" '
+              set -uo pipefail
+              echo "--- before ---"
+              ls -la --time-style=long-iso /var/lib/cowrie-forwarder/ | sed "s/^/  /"
+
+              # Oneshot unit runs as the forwarder user with the shared
+              # EnvironmentFile; sudo systemctl is the privilege we have.
+              sudo systemctl daemon-reload
+              sudo systemctl start cowrie-forwarder-replay || true
+
+              echo "--- replay output ---"
+              sudo -n journalctl -u cowrie-forwarder-replay -n 60 --no-pager 2>/dev/null \
+                | sed "s/^/  /" \
+                || systemctl status cowrie-forwarder-replay --no-pager -n 60 2>&1 | sed "s/^/  /"
+
+              echo "--- after ---"
+              ls -la --time-style=long-iso /var/lib/cowrie-forwarder/ | sed "s/^/  /"
+            '
