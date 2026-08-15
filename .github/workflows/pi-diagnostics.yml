@@ -36,32 +36,38 @@ jobs:
               echo
               systemctl status cowrie-forwarder --no-pager -n 15 2>&1 | sed "s/^/  /" || true
 
+              # Passwordless sudo is scoped to the deploy commands, so every
+              # privileged read here is best-effort: plain first, then sudo -n
+              # (non-interactive — fails fast instead of hanging on a prompt).
+              try_read() {  # try_read <description> <command...>
+                desc="$1"; shift
+                if "$@" 2>/dev/null; then return 0; fi
+                if sudo -n "$@" 2>/dev/null; then return 0; fi
+                echo "  (cannot read $desc as $(whoami); needs sudo rights)"
+              }
+
               echo "=================== forwarder journal (last 40) ==================="
               # stderr only carries POST status lines, never the bearer token.
-              sudo journalctl -u cowrie-forwarder -n 40 --no-pager 2>&1 | sed "s/^/  /" || true
+              try_read "journal" journalctl -u cowrie-forwarder -n 40 --no-pager | sed "s/^/  /"
 
               echo "=================== cowrie log ==================="
               LOG=/home/cowrie/var/log/cowrie/cowrie.json
-              if [ -f "$LOG" ]; then
-                stat -c "  path=%n size=%s mtime=%y inode=%i" "$LOG"
-                echo "  --- last line ---"
-                sudo tail -n 1 "$LOG" 2>/dev/null | cut -c1-300 | sed "s/^/  /" || echo "  (unreadable)"
-              else
-                echo "  MISSING: $LOG"
-              fi
-              echo "  --- log dir ---"
-              sudo ls -la "$(dirname "$LOG")" 2>&1 | head -20 | sed "s/^/  /" || true
+              try_read "cowrie.json stat" stat -c "  path=%n size=%s mtime=%y inode=%i" "$LOG"
+              echo "  --- last line ---"
+              try_read "cowrie.json" tail -n 1 "$LOG" | cut -c1-300 | sed "s/^/  /"
+              echo "  --- log dir (rotation state) ---"
+              try_read "log dir" ls -la --time-style=long-iso "$(dirname "$LOG")" | head -25 | sed "s/^/  /"
 
               echo "=================== forwarder state ==================="
-              sudo cat /var/lib/cowrie-forwarder/state.json 2>&1 | sed "s/^/  /" || echo "  (no state file)"
+              try_read "state.json" cat /var/lib/cowrie-forwarder/state.json | sed "s/^/  /"
               echo
-              DL=/var/lib/cowrie-forwarder/deadletter.jsonl
-              if [ -f "$DL" ]; then
-                echo "  dead-letter: $(sudo wc -l < "$DL") batches parked"
-                sudo tail -n 3 "$DL" | cut -c1-300 | sed "s/^/  /" || true
-              else
-                echo "  dead-letter: none (file absent)"
-              fi
+              echo "  --- state dir ---"
+              try_read "state dir" ls -la --time-style=long-iso /var/lib/cowrie-forwarder/ | sed "s/^/  /"
+              echo "  --- dead-letter (tail) ---"
+              try_read "deadletter" tail -n 3 /var/lib/cowrie-forwarder/deadletter.jsonl | cut -c1-300 | sed "s/^/  /"
+
+              echo "=================== forwarder env (keys only, no values) ==================="
+              try_read "env file" sudo -n grep -o "^[A-Z_]*=" /etc/cowrie-forwarder.env | sed "s/^/  /"
 
               echo "=================== connectivity to API ==================="
               curl -s -o /dev/null -w "  GET /health -> %{http_code} in %{time_total}s\n" \
