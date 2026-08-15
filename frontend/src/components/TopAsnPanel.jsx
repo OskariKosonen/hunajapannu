@@ -1,7 +1,18 @@
+import { memo } from "react";
 import LoadingSkeleton from "./common/LoadingSkeleton";
 import ScrollShadow from "./common/ScrollShadow";
+import SearchBox from "./common/SearchBox";
 
-const TopAsnPanel = ({ topAsn, asnError, asnLoading }) => (
+const TopAsnPanel = ({
+  topAsn,
+  asnError,
+  asnLoading,
+  asnTotal,
+  search,
+  onSearch,
+  pageSize,
+  isMobile,
+}) => (
   <section className="relative overflow-hidden border border-emerald-700/50 rounded-xl bg-slate-950/70 shadow-[0_10px_35px_rgba(0,0,0,0.45)] backdrop-blur-sm min-w-[320px] sm:min-w-0">
     <div className="flex items-center justify-between px-4 py-2.5 bg-slate-950/70 border-b border-emerald-800/60">
       <span className="text-[0.68rem] uppercase tracking-[0.18em] px-2 py-1 rounded-full border border-emerald-600/60 text-emerald-200 bg-emerald-500/5">
@@ -16,13 +27,27 @@ const TopAsnPanel = ({ topAsn, asnError, asnLoading }) => (
         </div>
       )}
 
+      <div className="mb-3">
+        <SearchBox
+          value={search}
+          onChange={onSearch}
+          placeholder="Search network or AS number…"
+          resultLabel={asnTotal ? `${asnTotal} networks` : null}
+        />
+      </div>
+
       {asnLoading && topAsn.length === 0 ? (
         <div className="text-[0.68rem] text-emerald-500">
           <LoadingSkeleton />
         </div>
-      ) : topAsn.length > 0 ? (
-        <>
-          <ScrollShadow className="hidden sm:block max-h-[16.5rem] overflow-y-auto border border-emerald-800/70 rounded-lg">
+      ) : topAsn.length === 0 ? (
+        !asnError && (
+          <div className="text-[0.6rem] text-emerald-500">
+            {search ? "No networks match that search." : "No ASN data yet."}
+          </div>
+        )
+      ) : !isMobile ? (
+        <ScrollShadow className="max-h-[16.5rem] overflow-y-auto border border-emerald-800/70 rounded-lg">
             <table className="w-full text-[0.68rem] sm:text-[0.72rem]">
               <thead className="bg-slate-950 sticky top-0 z-10 border-b border-emerald-800/70">
                 <tr>
@@ -55,9 +80,9 @@ const TopAsnPanel = ({ topAsn, asnError, asnLoading }) => (
                 ))}
               </tbody>
             </table>
-          </ScrollShadow>
-
-          <div className="sm:hidden grid grid-cols-1 gap-2.5">
+        </ScrollShadow>
+      ) : (
+          <div className="grid grid-cols-1 gap-2.5">
             {topAsn.map((row, idx) => (
               <div
                 key={`${row.asn}-${idx}`}
@@ -80,14 +105,16 @@ const TopAsnPanel = ({ topAsn, asnError, asnLoading }) => (
               </div>
             ))}
           </div>
-        </>
-      ) : (
-        !asnError && <div className="text-[0.6rem] text-emerald-500">No ASN data yet.</div>
       )}
 
-      <p className="text-[0.68rem] text-emerald-400 mt-2">/api/public/cowrie/top-asn</p>
+      <p className="text-[0.68rem] text-emerald-400 mt-2">
+        /api/public/cowrie/top-asn
+        {asnTotal > topAsn.length && (
+          <span className="text-emerald-600"> · showing top {Math.min(pageSize, topAsn.length)} of {asnTotal}</span>
+        )}
+      </p>
     </div>
   </section>
 );
 
-export default TopAsnPanel;
+export default memo(TopAsnPanel);

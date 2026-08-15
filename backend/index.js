@@ -10,13 +10,19 @@ const rateLimit = require('express-rate-limit');
 
 const LIMITS = {
   MAX_COMMANDS: 3000,
-  DEFAULT_COMMANDS: 50,
+  DEFAULT_COMMANDS: 100,
+  // Upper bound on the in-memory tagged command snapshot. One row per unique
+  // command string, ~3.7k after nine months, so this is generous headroom.
+  MAX_COMMANDS_SNAPSHOT: 20000,
   MAX_CREDS: 1000,
-  DEFAULT_CREDS: 50,
+  DEFAULT_CREDS: 100,
   MAX_FILES: 1000,
-  DEFAULT_FILES: 50,
+  DEFAULT_FILES: 100,
   MAX_ASN: 1000,
-  DEFAULT_ASN: 20,
+  DEFAULT_ASN: 50,
+  MAX_SESSIONS: 200,
+  DEFAULT_SESSIONS: 50,
+  MAX_SESSION_EVENTS: 500,
   MAX_COUNTRIES: 1000,
   DEFAULT_COUNTRIES: 20,
   MAX_HOURS_LOOKBACK: 168,  // 7 days
@@ -134,6 +140,57 @@ const summaryCache = {
   expiresAt: 0,
 };
 
+// ============================================================================
+// MITRE ATT&CK Command Tagging
+// ============================================================================
+
+/**
+ * Signatures matched against captured commands. These used to live in the
+ * frontend, which meant shipping all 3000+ commands to the browser just to
+ * tag and count them. Tagging here lets the API filter by technique and
+ * return only the page being displayed. Display metadata (colours) stays in
+ * the frontend, keyed by id.
+ */
+const MITRE_SIGNATURES = [
+  { id: 'T1490', name: 'Impact (T1490)', description: 'Destructive cleanup',
+    patterns: [/rm\s+-rf/i, /chattr\s+-i/i, /dd\s+if=/i] },
+  { id: 'T1105', name: 'Ingress Tool Transfer (T1105)', description: 'wget/curl/scp drops',
+    patterns: [/wget/i, /curl/i, /tftp/i, /ftp\s/i, /scp/i] },
+  { id: 'T1021', name: 'Remote Services (T1021)', description: 'Pivot via SSH/Telnet',
+    patterns: [/ssh\s/i, /telnet/i, /dropbear/i] },
+  { id: 'T1098', name: 'Account Manipulation (T1098)', description: 'SSH key + password tampering',
+    patterns: [/authorized_keys/i, /chattr/i, /lockr/i, /chpasswd/i, /mkdir\s+-p\s+~\/\.ssh/i] },
+  { id: 'T1059', name: 'Cmd/Scripting (T1059)', description: 'Shells & interpreters',
+    patterns: [/bash/i, /\bsh\b/i, /python/i, /perl/i, /busybox/i] },
+  { id: 'T1562', name: 'Defense Evasion (T1562)', description: 'Cleanup + disabling protections',
+    patterns: [/rm\s+-rf/i, /pkill/i, /echo\s+>\s+\/etc\/hosts\.deny/i, /clean\.sh/i] },
+  { id: 'T1595', name: 'Reconnaissance (T1595)', description: 'Scanning & discovery',
+    patterns: [/nmap/i, /masscan/i, /whois/i, /dig\s/i, /nslookup/i, /curl\s+http:\/\/\d+/i] },
+  { id: 'T1082', name: 'System Info Discovery (T1082)', description: 'uname/lscpu/proc snooping',
+    patterns: [/uname/i, /lscpu/i, /cat\s+\/proc\/cpuinfo/i, /cat\s+\/proc\/uptime/i,
+               /df\s+-h/i, /free\s+-m/i, /nproc/i, /which\s+ls/i, /ps\s/i] },
+];
+
+const MITRE_IDS = new Set(MITRE_SIGNATURES.map((s) => s.id));
+
+/**
+ * Command strings are stable and few (one row per unique command), so the
+ * regex result for a given string never changes — cache it rather than
+ * re-running 40 patterns on every request.
+ */
+const mitreTagCache = new LRUCache({ max: 20000 });
+
+function tagCommand(command) {
+  if (!command) return [];
+  const cached = mitreTagCache.get(command);
+  if (cached) return cached;
+  const tags = MITRE_SIGNATURES
+    .filter((sig) => sig.patterns.some((p) => p.test(command)))
+    .map((sig) => sig.id);
+  mitreTagCache.set(command, tags);
+  return tags;
+}
+
 const leaderboardCache = new Map();
 
 function getCachedLeaderboard(key) {
@@ -142,6 +199,25 @@ function getCachedLeaderboard(key) {
     return cached.data;
   }
   return null;
+}
+
+/**
+ * Parses the limit/offset/search trio shared by the paginated list endpoints.
+ * Search is used as an ILIKE '%term%' argument, so escape the LIKE
+ * metacharacters — otherwise a '%' typed by a user matches everything.
+ */
+function parseListParams(req, { defaultLimit, maxLimit }) {
+  const rawLimit = parseInt(req.query.limit, 10);
+  const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : defaultLimit, 1), maxLimit);
+
+  const rawOffset = parseInt(req.query.offset, 10);
+  const offset = Math.max(Number.isFinite(rawOffset) ? rawOffset : 0, 0);
+
+  const rawSearch = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+  const search = rawSearch.slice(0, 200);
+  const like = search ? `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
+
+  return { limit, offset, search, like };
 }
 
 function setCachedLeaderboard(key, data) {
@@ -691,34 +767,79 @@ app.get('/api/public/cowrie/latest', async (req, res) => {
  *   last_seen: timestamp
  * }>
  */
-app.get('/api/public/cowrie/commands', async (req, res) => {
-  const limit = Math.min(
-    parseInt(req.query.limit, 10) || LIMITS.DEFAULT_COMMANDS,
-    LIMITS.MAX_COMMANDS
+/**
+ * GET /api/public/cowrie/mitre
+ *
+ * The technique catalogue used to tag commands, so the frontend does not have
+ * to duplicate the pattern list. Patterns themselves stay server-side.
+ */
+app.get('/api/public/cowrie/mitre', (_req, res) => {
+  res.json(MITRE_SIGNATURES.map(({ id, name, description }) => ({ id, name, description })));
+});
+
+/**
+ * One row per unique command (3.7k after nine months), so the whole tagged set
+ * fits comfortably in memory. Caching it here means search, technique filter,
+ * pagination and the global technique counts are all served without a query,
+ * and the browser receives only the page it renders instead of every row.
+ */
+const commandsSnapshot = { rows: null, counts: null, expiresAt: 0 };
+
+async function getCommandsSnapshot() {
+  const now = Date.now();
+  if (commandsSnapshot.rows && commandsSnapshot.expiresAt > now) return commandsSnapshot;
+
+  const { rows } = await pool.query(
+    `SELECT
+       command,
+       first_seen,
+       last_seen,
+       COALESCE(total_events, 0) AS total,
+       COALESCE(unique_ips, 0) AS unique_ips
+     FROM cowrie_unique_commands
+     ORDER BY COALESCE(total_events, 0) DESC
+     LIMIT $1`,
+    [LIMITS.MAX_COMMANDS_SNAPSHOT]
   );
 
-  const cacheKey = `commands:${limit}`;
-  const cached = getCachedLeaderboard(cacheKey);
-  if (cached) {
-    return res.json(cached);
-  }
+  const counts = Object.fromEntries(MITRE_SIGNATURES.map((s) => [s.id, 0]));
+  const tagged = rows.map((row) => {
+    const tags = tagCommand(row.command);
+    for (const t of tags) counts[t] += 1;
+    return { ...row, tags };
+  });
+
+  commandsSnapshot.rows = tagged;
+  commandsSnapshot.counts = counts;
+  commandsSnapshot.expiresAt = now + LEADERBOARD_CACHE_TTL_MS;
+  return commandsSnapshot;
+}
+
+app.get('/api/public/cowrie/commands', async (req, res) => {
+  const { limit, offset, search } = parseListParams(req, {
+    defaultLimit: LIMITS.DEFAULT_COMMANDS,
+    maxLimit: LIMITS.MAX_COMMANDS,
+  });
+  const tag = typeof req.query.tag === 'string' && MITRE_IDS.has(req.query.tag) ? req.query.tag : null;
 
   try {
-    const { rows } = await pool.query(
-      `SELECT
-         command,
-         first_seen,
-         last_seen,
-         COALESCE(total_events, 0) AS total,
-         COALESCE(unique_ips, 0) AS unique_ips
-       FROM cowrie_unique_commands
-       ORDER BY COALESCE(total_events, 0) DESC
-       LIMIT $1`,
-      [limit]
-    );
+    const snapshot = await getCommandsSnapshot();
 
-    setCachedLeaderboard(cacheKey, rows);
-    res.json(rows);
+    let rows = snapshot.rows;
+    if (tag) rows = rows.filter((r) => r.tags.includes(tag));
+    if (search) {
+      const needle = search.toLowerCase();
+      rows = rows.filter((r) => r.command && r.command.toLowerCase().includes(needle));
+    }
+
+    res.json({
+      rows: rows.slice(offset, offset + limit),
+      total: rows.length,
+      // Always the unfiltered totals, so the filter chips keep showing what is
+      // available rather than what is currently selected.
+      counts: snapshot.counts,
+      allTotal: snapshot.rows.length,
+    });
   } catch (err) {
     console.error('Error in /api/public/cowrie/commands:', err);
     res.status(500).json({ error: 'Database query failed' });
@@ -748,12 +869,12 @@ app.get('/api/public/cowrie/commands', async (req, res) => {
  * }>
  */
 app.get('/api/public/cowrie/creds', async (req, res) => {
-  const limit = Math.min(
-    parseInt(req.query.limit, 10) || LIMITS.DEFAULT_CREDS,
-    LIMITS.MAX_CREDS
-  );
+  const { limit, offset, search, like } = parseListParams(req, {
+    defaultLimit: LIMITS.DEFAULT_CREDS,
+    maxLimit: LIMITS.MAX_CREDS,
+  });
 
-  const cacheKey = `creds:${limit}`;
+  const cacheKey = `creds:${limit}:${offset}:${search}`;
   const cached = getCachedLeaderboard(cacheKey);
   if (cached) {
     return res.json(cached);
@@ -762,23 +883,32 @@ app.get('/api/public/cowrie/creds', async (req, res) => {
   try {
     // cowrie_unique_creds carries trigger-maintained counters (see
     // db/migrations/006_add_leaderboard_aggs.sql), so this is a small-table
-    // sort instead of a GROUP BY over every event ever recorded.
-    const { rows } = await pool.query(
-      `SELECT
-         username,
-         password,
-         first_seen,
-         last_seen,
-         COALESCE(total_events, 0) AS total,
-         COALESCE(unique_ips, 0) AS unique_ips
-       FROM cowrie_unique_creds
-       ORDER BY COALESCE(total_events, 0) DESC
-       LIMIT $1`,
-      [limit]
-    );
+    // sort instead of a GROUP BY over every event ever recorded. Substring
+    // search is served by the trigram indexes from migration 007.
+    const where = like ? `WHERE username ILIKE $1 ESCAPE '\\' OR password ILIKE $1 ESCAPE '\\'` : '';
+    const params = like ? [like] : [];
 
-    setCachedLeaderboard(cacheKey, rows);
-    res.json(rows);
+    const [list, count] = await Promise.all([
+      pool.query(
+        `SELECT
+           username,
+           password,
+           first_seen,
+           last_seen,
+           COALESCE(total_events, 0) AS total,
+           COALESCE(unique_ips, 0) AS unique_ips
+         FROM cowrie_unique_creds
+         ${where}
+         ORDER BY COALESCE(total_events, 0) DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      ),
+      pool.query(`SELECT COUNT(*) AS total FROM cowrie_unique_creds ${where}`, params),
+    ]);
+
+    const payload = { rows: list.rows, total: Number(count.rows[0]?.total || 0) };
+    setCachedLeaderboard(cacheKey, payload);
+    res.json(payload);
   } catch (err) {
     console.error('Error in /api/public/cowrie/creds:', err);
     res.status(500).json({ error: 'Database query failed' });
@@ -838,12 +968,12 @@ app.get('/api/public/cowrie/creds/unique-count', async (_req, res) => {
  * }>
  */
 app.get('/api/public/cowrie/files', async (req, res) => {
-  const limit = Math.min(
-    parseInt(req.query.limit, 10) || LIMITS.DEFAULT_FILES,
-    LIMITS.MAX_FILES
-  );
+  const { limit, offset, search, like } = parseListParams(req, {
+    defaultLimit: LIMITS.DEFAULT_FILES,
+    maxLimit: LIMITS.MAX_FILES,
+  });
 
-  const cacheKey = `files:${limit}`;
+  const cacheKey = `files:${limit}:${offset}:${search}`;
   const cached = getCachedLeaderboard(cacheKey);
   if (cached) {
     return res.json(cached);
@@ -853,33 +983,44 @@ app.get('/api/public/cowrie/files', async (req, res) => {
     // cowrie_files_agg is a pre-aggregated, trigger-maintained mirror of
     // cowrie_files (see db/migrations/004_add_cowrie_files_agg.sql), so this
     // is an indexed LIMIT instead of a GROUP BY/DISTINCT ON over every
-    // download ever recorded.
-    const { rows } = await pool.query(
-      `SELECT
-         sha256,
-         size_bytes,
-         first_seen,
-         vt_last_fetched,
-         vt_found,
-         vt_malicious,
-         vt_suspicious,
-         vt_harmless,
-         vt_undetected,
-         vt_timeout,
-         vt_reputation,
-         vt_type,
-         vt_magic,
-         vt_first_submission_date,
-         vt_last_analysis_date,
-         vt_tags
-       FROM cowrie_files_agg
-       ORDER BY first_seen DESC NULLS LAST
-       LIMIT $1`,
-      [limit]
-    );
+    // download ever recorded. Search covers the hash and the VirusTotal file
+    // type/magic, which is what you actually have to hand when hunting.
+    const where = like
+      ? `WHERE sha256 ILIKE $1 ESCAPE '\\' OR vt_type ILIKE $1 ESCAPE '\\' OR vt_magic ILIKE $1 ESCAPE '\\'`
+      : '';
+    const params = like ? [like] : [];
 
-    setCachedLeaderboard(cacheKey, rows);
-    res.json(rows);
+    const [list, count] = await Promise.all([
+      pool.query(
+        `SELECT
+           sha256,
+           size_bytes,
+           first_seen,
+           vt_last_fetched,
+           vt_found,
+           vt_malicious,
+           vt_suspicious,
+           vt_harmless,
+           vt_undetected,
+           vt_timeout,
+           vt_reputation,
+           vt_type,
+           vt_magic,
+           vt_first_submission_date,
+           vt_last_analysis_date,
+           vt_tags
+         FROM cowrie_files_agg
+         ${where}
+         ORDER BY first_seen DESC NULLS LAST
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      ),
+      pool.query(`SELECT COUNT(*) AS total FROM cowrie_files_agg ${where}`, params),
+    ]);
+
+    const payload = { rows: list.rows, total: Number(count.rows[0]?.total || 0) };
+    setCachedLeaderboard(cacheKey, payload);
+    res.json(payload);
   } catch (err) {
     console.error('Error in /api/public/cowrie/files:', err);
     res.status(500).json({ error: 'Database query failed' });
@@ -909,12 +1050,12 @@ app.get('/api/public/cowrie/files', async (req, res) => {
  * }>
  */
 app.get('/api/public/cowrie/top-asn', async (req, res) => {
-  const limit = Math.min(
-    parseInt(req.query.limit, 10) || LIMITS.DEFAULT_ASN,
-    LIMITS.MAX_ASN
-  );
+  const { limit, offset, search, like } = parseListParams(req, {
+    defaultLimit: LIMITS.DEFAULT_ASN,
+    maxLimit: LIMITS.MAX_ASN,
+  });
 
-  const cacheKey = `top-asn:${limit}`;
+  const cacheKey = `top-asn:${limit}:${offset}:${search}`;
   const cached = getCachedLeaderboard(cacheKey);
   if (cached) {
     return res.json(cached);
@@ -924,20 +1065,29 @@ app.get('/api/public/cowrie/top-asn', async (req, res) => {
     // cowrie_asn_agg is a trigger-maintained aggregate (see
     // db/migrations/006_add_leaderboard_aggs.sql); the previous GROUP BY over
     // all of cowrie_events took 60s+ and starved the connection pool.
-    const { rows } = await pool.query(
-      `SELECT
-         asn,
-         org,
-         total,
-         unique_ips
-       FROM cowrie_asn_agg
-       ORDER BY total DESC
-       LIMIT $1`,
-      [limit]
-    );
+    // Search matches the network name or the AS number itself.
+    const where = like ? `WHERE org ILIKE $1 ESCAPE '\\' OR asn::text ILIKE $1 ESCAPE '\\'` : '';
+    const params = like ? [like] : [];
 
-    setCachedLeaderboard(cacheKey, rows);
-    res.json(rows);
+    const [list, count] = await Promise.all([
+      pool.query(
+        `SELECT
+           asn,
+           org,
+           total,
+           unique_ips
+         FROM cowrie_asn_agg
+         ${where}
+         ORDER BY total DESC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      ),
+      pool.query(`SELECT COUNT(*) AS total FROM cowrie_asn_agg ${where}`, params),
+    ]);
+
+    const payload = { rows: list.rows, total: Number(count.rows[0]?.total || 0) };
+    setCachedLeaderboard(cacheKey, payload);
+    res.json(payload);
   } catch (err) {
     console.error('Error in /api/public/cowrie/top-asn:', err);
     res.status(500).json({ error: 'Database query failed' });
@@ -1040,6 +1190,158 @@ app.get('/api/public/cowrie/ip-stats', async (req, res) => {
     res.json([{ percent_unique: percentUnique }]);
   } catch (err) {
     console.error('Error in /api/public/cowrie/ip-stats:', err);
+    res.status(500).json({ error: 'Database query failed' });
+  }
+});
+
+// ============================================================================
+// Public Endpoints - Session Drill-down
+// ============================================================================
+
+/**
+ * GET /api/public/cowrie/sessions
+ *
+ * Recent attacker sessions, one row per session_id, newest first. Every event
+ * already carries a session_id; grouping by it turns the flat event stream
+ * back into individual visits.
+ *
+ * Query parameters:
+ *   - limit:  sessions to return (default: 50, max: 200)
+ *   - offset: pagination offset
+ *   - hours:  lookback window (default: 24, max: 168)
+ *   - search: match on source IP, country or username
+ *
+ * Response: { rows: Array<SessionSummary>, total: number }
+ */
+app.get('/api/public/cowrie/sessions', async (req, res) => {
+  const { limit, offset, search, like } = parseListParams(req, {
+    defaultLimit: LIMITS.DEFAULT_SESSIONS,
+    maxLimit: LIMITS.MAX_SESSIONS,
+  });
+
+  const rawHours = parseInt(req.query.hours, 10);
+  const hours = Math.min(
+    Math.max(Number.isFinite(rawHours) ? rawHours : LIMITS.DEFAULT_HOURS_LOOKBACK, 1),
+    LIMITS.MAX_HOURS_LOOKBACK
+  );
+  const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+  const cacheKey = `sessions:${limit}:${offset}:${hours}:${search}`;
+  const cached = getCachedLeaderboard(cacheKey);
+  if (cached) return res.json(cached);
+
+  try {
+    // Bounded by the timestamp index, so this stays cheap regardless of how
+    // large cowrie_events grows.
+    // host() strips the /32 that inet::text would add, so a search for
+    // "1.2.3.4" matches and the value is displayable as-is.
+    const filter = like
+      ? `AND (host(src_ip) ILIKE $2 ESCAPE '\\' OR country_iso ILIKE $2 ESCAPE '\\' OR username ILIKE $2 ESCAPE '\\')`
+      : '';
+    const params = like ? [since, like] : [since];
+
+    const grouped = `
+      SELECT
+        session_id,
+        MIN(timestamp)                                        AS started_at,
+        MAX(timestamp)                                        AS ended_at,
+        COUNT(*)                                              AS events,
+        host(MIN(src_ip))                                     AS src_ip,
+        MIN(country_iso)                                      AS country_iso,
+        MIN(city)                                             AS city,
+        MIN(asn)                                              AS asn,
+        MIN(org)                                              AS org,
+        COUNT(*) FILTER (WHERE command IS NOT NULL AND command <> '')   AS commands,
+        COUNT(*) FILTER (WHERE username IS NOT NULL AND username <> '') AS logins
+      FROM cowrie_events
+      WHERE timestamp >= $1 AND session_id IS NOT NULL ${filter}
+      GROUP BY session_id`;
+
+    const [list, count] = await Promise.all([
+      pool.query(
+        `${grouped} ORDER BY started_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      ),
+      pool.query(`SELECT COUNT(*) AS total FROM (${grouped}) s`, params),
+    ]);
+
+    const payload = {
+      rows: list.rows.map((r) => ({
+        ...r,
+        events: Number(r.events),
+        commands: Number(r.commands),
+        logins: Number(r.logins),
+        duration_ms: new Date(r.ended_at) - new Date(r.started_at),
+      })),
+      total: Number(count.rows[0]?.total || 0),
+      hours,
+    };
+    setCachedLeaderboard(cacheKey, payload);
+    res.json(payload);
+  } catch (err) {
+    console.error('Error in /api/public/cowrie/sessions:', err);
+    res.status(500).json({ error: 'Database query failed' });
+  }
+});
+
+/**
+ * GET /api/public/cowrie/sessions/:id
+ *
+ * The full ordered timeline for one session: connect, credentials tried,
+ * commands run. Served by idx_cowrie_events_session_id (migration 007).
+ *
+ * Response: { session: {...}, events: Array<Event> }
+ */
+app.get('/api/public/cowrie/sessions/:id', async (req, res) => {
+  const id = typeof req.params.id === 'string' ? req.params.id.slice(0, 64) : '';
+  if (!id) return res.status(400).json({ error: 'Invalid session id' });
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT
+         timestamp,
+         src_ip,
+         dest_port,
+         username,
+         password,
+         command,
+         country_iso,
+         city,
+         asn,
+         org
+       FROM cowrie_events
+       WHERE session_id = $1
+       ORDER BY timestamp ASC
+       LIMIT $2`,
+      [id, LIMITS.MAX_SESSION_EVENTS]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    const first = rows[0];
+    const last = rows[rows.length - 1];
+    res.json({
+      session: {
+        session_id: id,
+        src_ip: first.src_ip,
+        country_iso: first.country_iso,
+        city: first.city,
+        asn: first.asn,
+        org: first.org,
+        started_at: first.timestamp,
+        ended_at: last.timestamp,
+        duration_ms: new Date(last.timestamp) - new Date(first.timestamp),
+        events: rows.length,
+        truncated: rows.length === LIMITS.MAX_SESSION_EVENTS,
+      },
+      // Tag commands the same way the commands panel does, so a session
+      // timeline shows which techniques the attacker actually used.
+      events: rows.map((r) => ({ ...r, tags: r.command ? tagCommand(r.command) : [] })),
+    });
+  } catch (err) {
+    console.error('Error in /api/public/cowrie/sessions/:id:', err);
     res.status(500).json({ error: 'Database query failed' });
   }
 });

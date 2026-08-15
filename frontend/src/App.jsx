@@ -1,14 +1,18 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef, lazy, Suspense } from "react";
 import DashboardHeader from "./components/DashboardHeader";
 import ProjectSummary from "./components/ProjectSummary";
 import EventsPanel from "./components/EventsPanel";
-import TrendPanel from "./components/TrendPanel";
+// Recharts is ~60% of the bundle and only this panel needs it, so it loads
+// on demand instead of blocking first paint.
+const TrendPanel = lazy(() => import("./components/TrendPanel"));
 import TopCredentialsPanel from "./components/TopCredentialsPanel";
 import TopCountriesPanel from "./components/TopCountriesPanel";
 import CommandsPanel from "./components/CommandsPanel";
 import TopMalwarePanel from "./components/TopMalwarePanel";
 import TopAsnPanel from "./components/TopAsnPanel";
 import AsciiTopology from "./components/AsciiTopology";
+import SessionsPanel from "./components/SessionsPanel";
+import SessionDrawer from "./components/SessionDrawer";
 
 // ============================================
 // CONFIGURATION CONSTANTS
@@ -16,24 +20,40 @@ import AsciiTopology from "./components/AsciiTopology";
 const CONFIG = {
   // API refresh intervals (milliseconds)
   REFRESH_INTERVAL: 120000, // 2 minutes
-  
+
   // Events table display limits
   MOBILE_EVENT_LIMIT: 20,
   DESKTOP_EVENT_LIMIT: 58,
   MOBILE_BREAKPOINT: 768, // Tailwind md breakpoint in pixels
-  
+
+  // Wait for typing to settle before hitting the API
+  SEARCH_DEBOUNCE_MS: 300,
+
+  // Page sizes. These used to be limit=3000/1000, which pulled ~894 KB of JSON
+  // on every refresh to render panels that show a scrollable window. Filtering
+  // and paging now happen server-side, so we fetch only what is displayed.
+  PAGE_SIZE: {
+    COMMANDS: 100,
+    CREDS: 100,
+    FILES: 50,
+    ASN: 50,
+    SESSIONS: 40,
+  },
+
   // API endpoint paths
   API_ENDPOINTS: {
     LATEST_EVENTS: "/api/public/cowrie/latest",
-    COMMANDS: "/api/public/cowrie/commands?limit=3000",
-    CREDENTIALS: "/api/public/cowrie/creds?limit=1000",
-    FILES: "/api/public/cowrie/files?limit=1000",
+    COMMANDS: "/api/public/cowrie/commands",
+    CREDENTIALS: "/api/public/cowrie/creds",
+    FILES: "/api/public/cowrie/files",
     TRENDS: "/api/public/cowrie/events-per-hour?hours=24",
-    TOP_ASN: "/api/public/cowrie/top-asn?limit=1000",
+    TOP_ASN: "/api/public/cowrie/top-asn",
     TOP_COUNTRIES: "/api/public/cowrie/top-countries?limit=1000",
     SUMMARY: "/api/public/cowrie/summary",
+    SESSIONS: "/api/public/cowrie/sessions",
+    MITRE: "/api/public/cowrie/mitre",
   },
-  
+
   // Chart dimensions and calculations
   CHART: {
     SVG_VIEWBOX: "0 0 100 40",
@@ -46,80 +66,21 @@ const CONFIG = {
   DEFAULT_TIMEZONE: "Europe/Helsinki",
 };
 
-const MITRE_SIGNATURES = [
-  {
-    id: "T1490",
-    name: "Impact (T1490)",
-    description: "Destructive cleanup",
-    patterns: [/rm\s+-rf/i, /chattr\s+-i/i, /dd\s+if=/i],
-    badgeColor: "border-rose-400/60 text-rose-100 bg-rose-500/10",
-  },
-  {
-    id: "T1105",
-    name: "Ingress Tool Transfer (T1105)",
-    description: "wget/curl/scp drops",
-    patterns: [/wget/i, /curl/i, /tftp/i, /ftp\s/i, /scp/i],
-    badgeColor: "border-amber-400/60 text-amber-100 bg-amber-500/10",
-  },
-  {
-    id: "T1021",
-    name: "Remote Services (T1021)",
-    description: "Pivot via SSH/Telnet",
-    patterns: [/ssh\s/i, /telnet/i, /dropbear/i],
-    badgeColor: "border-purple-400/60 text-purple-100 bg-purple-500/10",
-  },
-  {
-    id: "T1098",
-    name: "Account Manipulation (T1098)",
-    description: "SSH key + password tampering",
-    patterns: [
-      /authorized_keys/i,
-      /chattr/i,
-      /lockr/i,
-      /chpasswd/i,
-      /mkdir\s+-p\s+~\/\.ssh/i,
-    ],
-    badgeColor: "border-orange-400/60 text-orange-100 bg-orange-500/10",
-  },
-  {
-    id: "T1059",
-    name: "Cmd/Scripting (T1059)",
-    description: "Shells & interpreters",
-    patterns: [/bash/i, /\bsh\b/i, /python/i, /perl/i, /busybox/i],
-    badgeColor: "border-cyan-400/60 text-cyan-100 bg-cyan-500/10",
-  },
-  {
-    id: "T1562",
-    name: "Defense Evasion (T1562)",
-    description: "Cleanup + disabling protections",
-    patterns: [/rm\s+-rf/i, /pkill/i, /echo\s+>\s+\/etc\/hosts\.deny/i, /clean\.sh/i],
-    badgeColor: "border-slate-400/60 text-slate-100 bg-slate-500/10",
-  },
-  {
-    id: "T1595",
-    name: "Reconnaissance (T1595)",
-    description: "Scanning & discovery",
-    patterns: [/nmap/i, /masscan/i, /whois/i, /dig\s/i, /nslookup/i, /curl\s+http:\/\/\d+/i],
-    badgeColor: "border-blue-400/60 text-blue-100 bg-blue-500/10",
-  },
-  {
-    id: "T1082",
-    name: "System Info Discovery (T1082)",
-    description: "uname/lscpu/proc snooping",
-    patterns: [
-      /uname/i,
-      /lscpu/i,
-      /cat\s+\/proc\/cpuinfo/i,
-      /cat\s+\/proc\/uptime/i,
-      /df\s+-h/i,
-      /free\s+-m/i,
-      /nproc/i,
-      /which\s+ls/i,
-      /ps\s/i,
-    ],
-    badgeColor: "border-lime-400/60 text-lime-100 bg-lime-500/10",
-  },
-];
+// Technique badge colours, keyed by ATT&CK id. The matching patterns and the
+// names live in the backend (GET /api/public/cowrie/mitre) so commands are
+// tagged once server-side instead of re-running 40 regexes over every row in
+// every browser on every refresh.
+const MITRE_COLORS = {
+  T1490: "border-rose-400/60 text-rose-100 bg-rose-500/10",
+  T1105: "border-amber-400/60 text-amber-100 bg-amber-500/10",
+  T1021: "border-purple-400/60 text-purple-100 bg-purple-500/10",
+  T1098: "border-orange-400/60 text-orange-100 bg-orange-500/10",
+  T1059: "border-cyan-400/60 text-cyan-100 bg-cyan-500/10",
+  T1562: "border-slate-400/60 text-slate-100 bg-slate-500/10",
+  T1595: "border-blue-400/60 text-blue-100 bg-blue-500/10",
+  T1082: "border-lime-400/60 text-lime-100 bg-lime-500/10",
+};
+const MITRE_FALLBACK_COLOR = "border-emerald-400/60 text-emerald-100 bg-emerald-500/10";
 
 
 const BOOT_MESSAGES = [
@@ -132,20 +93,15 @@ const BOOT_MESSAGES = [
   { label: "Pro Tip", detail: "cat /etc/passwd | grep root" },
 ];
 
-const formatRelativeTime = (input) => {
-  if (!input) return "";
-  const ts =
-    typeof input === "number" ? input : new Date(input).getTime();
-  if (!Number.isFinite(ts)) return "";
-  const diffSeconds = Math.max(0, Math.round((Date.now() - ts) / 1000));
-  if (diffSeconds < 60) return `${diffSeconds || 1}s ago`;
-  const diffMinutes = Math.floor(diffSeconds / 60);
-  if (diffMinutes < 60) return `${diffMinutes}m ago`;
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d ago`;
-};
+/** Delays a rapidly-changing value (a search box) so it can drive requests. */
+function useDebounced(value, delay) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
 
 
 /**
@@ -172,6 +128,31 @@ function App() {
   const [topCountries, setTopCountries] = useState([]);
   const [summaryData, setSummaryData] = useState(null);
   const [commandFilter, setCommandFilter] = useState("all");
+
+  // Server-driven metadata and totals
+  const [mitreSignatures, setMitreSignatures] = useState([]);
+  const [commandTagCounts, setCommandTagCounts] = useState({});
+  const [commandsTotal, setCommandsTotal] = useState(0);
+  const [credsTotal, setCredsTotal] = useState(0);
+  const [downloadsTotal, setDownloadsTotal] = useState(0);
+  const [asnTotal, setAsnTotal] = useState(0);
+
+  // Search boxes. Raw value drives the input, the debounced value drives the
+  // request, so typing does not fire one fetch per keystroke.
+  const [commandSearch, setCommandSearch] = useState("");
+  const [credsSearch, setCredsSearch] = useState("");
+  const [downloadsSearch, setDownloadsSearch] = useState("");
+  const [asnSearch, setAsnSearch] = useState("");
+  const [sessionSearch, setSessionSearch] = useState("");
+
+  // Session drill-down
+  const [sessions, setSessions] = useState([]);
+  const [sessionsTotal, setSessionsTotal] = useState(0);
+  const [sessionsError, setSessionsError] = useState("");
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [activeSession, setActiveSession] = useState(null);
+  const [activeSessionLoading, setActiveSessionLoading] = useState(false);
+  const [activeSessionError, setActiveSessionError] = useState("");
   const loadingTip = useMemo(() => {
     if (!BOOT_MESSAGES.length) return null;
     const randomIndex = Math.floor(Math.random() * BOOT_MESSAGES.length);
@@ -206,6 +187,18 @@ function App() {
     [windowWidth]
   );
 
+  // Declared here because the fetch callbacks below close over them.
+  const eventLimit = useMemo(
+    () => (isMobile ? CONFIG.MOBILE_EVENT_LIMIT : CONFIG.DESKTOP_EVENT_LIMIT),
+    [isMobile]
+  );
+
+  const debouncedCommandSearch = useDebounced(commandSearch, CONFIG.SEARCH_DEBOUNCE_MS);
+  const debouncedCredsSearch = useDebounced(credsSearch, CONFIG.SEARCH_DEBOUNCE_MS);
+  const debouncedDownloadsSearch = useDebounced(downloadsSearch, CONFIG.SEARCH_DEBOUNCE_MS);
+  const debouncedAsnSearch = useDebounced(asnSearch, CONFIG.SEARCH_DEBOUNCE_MS);
+  const debouncedSessionSearch = useDebounced(sessionSearch, CONFIG.SEARCH_DEBOUNCE_MS);
+
   const countryFlag = useCallback((country) => {
     if (!country || country.length !== 2) return "🌐";
     const code = country.toUpperCase();
@@ -234,38 +227,6 @@ function App() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Load all data on mount and set up refresh interval
-  useEffect(() => {
-    (async () => {
-      // Kick off secondary panels without blocking initial paint
-      fetchCommands();
-      fetchCreds();
-      fetchDownloads();
-      fetchTrend();
-      fetchTopAsn();
-      fetchTopCountries();
-
-      try {
-        await Promise.all([fetchEvents(), fetchSummary()]);
-      } finally {
-        setLoading(false);
-      }
-    })();
-
-    const interval = setInterval(() => {
-      fetchEvents();
-      fetchSummary();
-      fetchCommands();
-      fetchCreds();
-      fetchDownloads();
-      fetchTrend();
-      fetchTopAsn();
-      fetchTopCountries();
-    }, CONFIG.REFRESH_INTERVAL);
-
-    return () => clearInterval(interval);
-  }, []);
-
   // Maintain window width state for responsive breakpoint checks
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -274,52 +235,291 @@ function App() {
   }, []);
 
   // API FETCH FUNCTIONS
-  // Factory pattern for reusable fetch wrappers with consistent error/loading handling
-  const createFetch = (url, setter, errorSetter, loadingSetter) => async () => {
-    try {
-      if (loadingSetter) loadingSetter(true);
-      errorSetter("");
-      const resolvedUrl = typeof url === "function" ? url() : url;
-      const res = await fetch(resolvedUrl);
-      if (!res.ok) throw new Error(`API error ${res.status}`);
-      const data = await res.json();
-      setter(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error(err);
-      errorSetter(err.message || "Failed to fetch");
-    } finally {
-      if (loadingSetter) loadingSetter(false);
-    }
-  };
+  // Every in-flight request is registered here so a refresh, a new search or
+  // unmount can abort the previous one instead of racing it.
+  const inFlight = useRef(new Map());
 
-  const fetchEvents = createFetch(
-    () => `${CONFIG.API_ENDPOINTS.LATEST_EVENTS}?limit=${eventLimit}`,
-    setEvents,
-    setError
+  const request = useCallback(async (key, url, { onData, onError, onLoading }) => {
+    inFlight.current.get(key)?.abort();
+    const controller = new AbortController();
+    inFlight.current.set(key, controller);
+
+    try {
+      if (onLoading) onLoading(true);
+      if (onError) onError("");
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) throw new Error(`API error ${res.status}`);
+      onData(await res.json());
+    } catch (err) {
+      // An aborted request was replaced on purpose; not a failure to report.
+      if (err.name === "AbortError") return;
+      console.error(err);
+      if (onError) onError(err.message || "Failed to fetch");
+    } finally {
+      if (inFlight.current.get(key) === controller) {
+        inFlight.current.delete(key);
+        if (onLoading) onLoading(false);
+      }
+    }
+  }, []);
+
+  // The list endpoints answer { rows, total, ... }; the simple ones still
+  // answer a bare array.
+  const asRows = (data) => (Array.isArray(data) ? data : data?.rows ?? []);
+  const asTotal = (data) => (Array.isArray(data) ? data.length : Number(data?.total ?? 0));
+
+  const buildUrl = useCallback((base, params) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== "" && v != null && v !== "all") qs.set(k, v);
+    }
+    const q = qs.toString();
+    return q ? `${base}?${q}` : base;
+  }, []);
+
+  const fetchEvents = useCallback(
+    () =>
+      request("events", buildUrl(CONFIG.API_ENDPOINTS.LATEST_EVENTS, { limit: eventLimit }), {
+        onData: (d) => setEvents(asRows(d)),
+        onError: setError,
+      }),
+    [request, buildUrl, eventLimit]
   );
-  const fetchCommands = createFetch(CONFIG.API_ENDPOINTS.COMMANDS, setCommands, setCommandsError, setCommandsLoading);
-  const fetchCreds = createFetch(CONFIG.API_ENDPOINTS.CREDENTIALS, setCreds, setCredsError, setCredsLoading);
-  const fetchDownloads = createFetch(CONFIG.API_ENDPOINTS.FILES, setDownloads, setDownloadsError, setDownloadsLoading);
-  const fetchTrend = createFetch(CONFIG.API_ENDPOINTS.TRENDS, setTrend, setTrendError, setTrendLoading);
-  const fetchTopAsn = createFetch(CONFIG.API_ENDPOINTS.TOP_ASN, setTopAsn, setAsnError, setAsnLoading);
-  const fetchTopCountries = createFetch(CONFIG.API_ENDPOINTS.TOP_COUNTRIES, setTopCountries, setCountriesError, setCountriesLoading);
 
-  const fetchSummary = async () => {
-    try {
-      setSummaryLoading(true);
-      setSummaryError("");
-      const res = await fetch(CONFIG.API_ENDPOINTS.SUMMARY);
-      if (!res.ok) throw new Error(`API error ${res.status}`);
-      const data = await res.json();
-      setSummaryData(data || null);
-    } catch (err) {
-      console.error(err);
-      setSummaryError(err.message || "Failed to fetch summary");
-      setSummaryData(null);
-    } finally {
-      setSummaryLoading(false);
-    }
-  };
+  const fetchCommands = useCallback(
+    () =>
+      request(
+        "commands",
+        buildUrl(CONFIG.API_ENDPOINTS.COMMANDS, {
+          limit: CONFIG.PAGE_SIZE.COMMANDS,
+          search: debouncedCommandSearch,
+          tag: commandFilter,
+        }),
+        {
+          onData: (d) => {
+            setCommands(asRows(d));
+            setCommandsTotal(asTotal(d));
+            if (d?.counts) setCommandTagCounts(d.counts);
+          },
+          onError: setCommandsError,
+          onLoading: setCommandsLoading,
+        }
+      ),
+    [request, buildUrl, debouncedCommandSearch, commandFilter]
+  );
+
+  const fetchCreds = useCallback(
+    () =>
+      request(
+        "creds",
+        buildUrl(CONFIG.API_ENDPOINTS.CREDENTIALS, {
+          limit: CONFIG.PAGE_SIZE.CREDS,
+          search: debouncedCredsSearch,
+        }),
+        {
+          onData: (d) => { setCreds(asRows(d)); setCredsTotal(asTotal(d)); },
+          onError: setCredsError,
+          onLoading: setCredsLoading,
+        }
+      ),
+    [request, buildUrl, debouncedCredsSearch]
+  );
+
+  const fetchDownloads = useCallback(
+    () =>
+      request(
+        "files",
+        buildUrl(CONFIG.API_ENDPOINTS.FILES, {
+          limit: CONFIG.PAGE_SIZE.FILES,
+          search: debouncedDownloadsSearch,
+        }),
+        {
+          onData: (d) => { setDownloads(asRows(d)); setDownloadsTotal(asTotal(d)); },
+          onError: setDownloadsError,
+          onLoading: setDownloadsLoading,
+        }
+      ),
+    [request, buildUrl, debouncedDownloadsSearch]
+  );
+
+  const fetchTopAsn = useCallback(
+    () =>
+      request(
+        "asn",
+        buildUrl(CONFIG.API_ENDPOINTS.TOP_ASN, {
+          limit: CONFIG.PAGE_SIZE.ASN,
+          search: debouncedAsnSearch,
+        }),
+        {
+          onData: (d) => { setTopAsn(asRows(d)); setAsnTotal(asTotal(d)); },
+          onError: setAsnError,
+          onLoading: setAsnLoading,
+        }
+      ),
+    [request, buildUrl, debouncedAsnSearch]
+  );
+
+  const fetchSessions = useCallback(
+    () =>
+      request(
+        "sessions",
+        buildUrl(CONFIG.API_ENDPOINTS.SESSIONS, {
+          limit: CONFIG.PAGE_SIZE.SESSIONS,
+          search: debouncedSessionSearch,
+        }),
+        {
+          onData: (d) => { setSessions(asRows(d)); setSessionsTotal(asTotal(d)); },
+          onError: setSessionsError,
+          onLoading: setSessionsLoading,
+        }
+      ),
+    [request, buildUrl, debouncedSessionSearch]
+  );
+
+  const fetchTrend = useCallback(
+    () =>
+      request("trend", CONFIG.API_ENDPOINTS.TRENDS, {
+        onData: (d) => setTrend(asRows(d)),
+        onError: setTrendError,
+        onLoading: setTrendLoading,
+      }),
+    [request]
+  );
+
+  const fetchTopCountries = useCallback(
+    () =>
+      request("countries", CONFIG.API_ENDPOINTS.TOP_COUNTRIES, {
+        onData: (d) => setTopCountries(asRows(d)),
+        onError: setCountriesError,
+        onLoading: setCountriesLoading,
+      }),
+    [request]
+  );
+
+  const fetchSummary = useCallback(
+    () =>
+      request("summary", CONFIG.API_ENDPOINTS.SUMMARY, {
+        onData: (d) => setSummaryData(d || null),
+        onError: (msg) => { setSummaryError(msg); if (msg) setSummaryData(null); },
+        onLoading: setSummaryLoading,
+      }),
+    [request]
+  );
+
+  // Open one session's full timeline.
+  const openSession = useCallback(
+    (sessionId) => {
+      if (!sessionId) return;
+      setActiveSession({ session: { session_id: sessionId }, events: [] });
+      request("session-detail", `${CONFIG.API_ENDPOINTS.SESSIONS}/${encodeURIComponent(sessionId)}`, {
+        onData: (d) => setActiveSession(d),
+        onError: setActiveSessionError,
+        onLoading: setActiveSessionLoading,
+      });
+    },
+    [request]
+  );
+
+  const closeSession = useCallback(() => {
+    inFlight.current.get("session-detail")?.abort();
+    setActiveSession(null);
+    setActiveSessionError("");
+  }, []);
+
+  // EFFECTS - data loading
+  // The technique catalogue is static; fetch it once.
+  useEffect(() => {
+    request("mitre", CONFIG.API_ENDPOINTS.MITRE, {
+      onData: (d) => setMitreSignatures(Array.isArray(d) ? d : []),
+      onError: () => {},
+    });
+  }, [request]);
+
+  // Initial load. Secondary panels start immediately but do not gate paint.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      fetchCommands();
+      fetchCreds();
+      fetchDownloads();
+      fetchTrend();
+      fetchTopAsn();
+      fetchTopCountries();
+      fetchSessions();
+      try {
+        await Promise.all([fetchEvents(), fetchSummary()]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // Runs once; the search-driven effects below handle subsequent refetches.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Refetch the search-driven panels whenever their query changes. Each of
+  // these aborts its own previous request, so fast typing cannot leave a stale
+  // response to land last.
+  useEffect(() => { fetchCommands(); }, [debouncedCommandSearch, commandFilter, fetchCommands]);
+  useEffect(() => { fetchCreds(); }, [debouncedCredsSearch, fetchCreds]);
+  useEffect(() => { fetchDownloads(); }, [debouncedDownloadsSearch, fetchDownloads]);
+  useEffect(() => { fetchTopAsn(); }, [debouncedAsnSearch, fetchTopAsn]);
+  useEffect(() => { fetchSessions(); }, [debouncedSessionSearch, fetchSessions]);
+
+  // Periodic refresh, paused while the tab is hidden. Previously this polled
+  // all eight endpoints every two minutes forever, including in background
+  // tabs nobody was looking at.
+  useEffect(() => {
+    const refreshAll = () => {
+      if (document.hidden) return;
+      fetchEvents();
+      fetchSummary();
+      fetchCommands();
+      fetchCreds();
+      fetchDownloads();
+      fetchTrend();
+      fetchTopAsn();
+      fetchTopCountries();
+      fetchSessions();
+    };
+
+    let interval = setInterval(refreshAll, CONFIG.REFRESH_INTERVAL);
+
+    // Coming back to a hidden tab, refresh once immediately and restart the
+    // timer so the next tick is a full interval away.
+    const onVisibility = () => {
+      if (document.hidden) {
+        clearInterval(interval);
+      } else {
+        refreshAll();
+        clearInterval(interval);
+        interval = setInterval(refreshAll, CONFIG.REFRESH_INTERVAL);
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [
+    fetchEvents, fetchSummary, fetchCommands, fetchCreds, fetchDownloads,
+    fetchTrend, fetchTopAsn, fetchTopCountries, fetchSessions,
+  ]);
+
+  // Abort anything still in flight on unmount.
+  useEffect(() => {
+    const pending = inFlight.current;
+    return () => { for (const c of pending.values()) c.abort(); };
+  }, []);
+
+  // Close the session drawer on Escape.
+  useEffect(() => {
+    if (!activeSession) return;
+    const onKey = (e) => { if (e.key === "Escape") closeSession(); };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [activeSession, closeSession]);
 
   // FORMATTING UTILITIES
   // Convert ISO timestamp to localized datetime string, respecting user timezone
@@ -353,6 +553,19 @@ function App() {
     const gb = mb / 1024;
     return `${gb.toFixed(1)} GB`;
   };
+
+  // Session length, in the largest unit that still reads naturally
+  const formatDuration = useCallback((ms) => {
+    const n = Number(ms);
+    if (!Number.isFinite(n) || n < 0) return "—";
+    if (n < 1000) return "<1s";
+    const secs = Math.round(n / 1000);
+    if (secs < 60) return `${secs}s`;
+    const mins = Math.floor(secs / 60);
+    if (mins < 60) return `${mins}m ${secs % 60}s`;
+    const hrs = Math.floor(mins / 60);
+    return `${hrs}h ${mins % 60}m`;
+  }, []);
 
   // Format hour label for trend chart axis in local time
   const formatHourLabel = useCallback((iso) => {
@@ -388,63 +601,38 @@ function App() {
 
   const peakHourLabel = useMemo(
     () => (peak ? formatHourLabel(peak.hour) : ""),
-    [peak]
-  );
-
-  const eventLimit = useMemo(
-    () => (isMobile ? CONFIG.MOBILE_EVENT_LIMIT : CONFIG.DESKTOP_EVENT_LIMIT),
-    [isMobile]
+    [peak, formatHourLabel]
   );
 
   const summaryStats = useMemo(
     () => ({
       attacks24h: summaryData?.attacks24h ?? totalTrendEvents,
-      malwareSamples: summaryData?.malwareSamples ?? downloads.length,
-      uniqueCommands: summaryData?.uniqueCommands ?? commands.length,
+      malwareSamples: summaryData?.malwareSamples ?? downloadsTotal,
+      uniqueCommands: summaryData?.uniqueCommands ?? commandsTotal,
       topCredential: creds[0]
         ? `${creds[0].username} / ${creds[0].password}`
         : "N/A",
       uniqueIpPercent: summaryData?.uniqueIpPercent ?? null,
       uniqueCredCount: summaryData?.uniqueCredCount ?? null,
     }),
-    [summaryData, totalTrendEvents, downloads, commands, creds]
+    [summaryData, totalTrendEvents, downloadsTotal, commandsTotal, creds]
   );
 
-  const enrichedCommands = useMemo(
+  // Technique catalogue from the API, with local badge colours attached.
+  const mitreCatalogue = useMemo(
     () =>
-      commands.map((row) => ({
-        ...row,
-        tags: MITRE_SIGNATURES.filter((sig) =>
-          sig.patterns.some((pattern) => pattern.test(row.command || ""))
-        ),
+      mitreSignatures.map((sig) => ({
+        ...sig,
+        badgeColor: MITRE_COLORS[sig.id] || MITRE_FALLBACK_COLOR,
       })),
-    [commands]
+    [mitreSignatures]
   );
 
-  const mitreTaggedCommandCount = useMemo(
-    () => enrichedCommands.filter((row) => row.tags.length > 0).length,
-    [enrichedCommands]
+  // id -> technique, for turning the tag ids on each row into badges.
+  const mitreById = useMemo(
+    () => Object.fromEntries(mitreCatalogue.map((sig) => [sig.id, sig])),
+    [mitreCatalogue]
   );
-
-  const commandTagCounts = useMemo(() => {
-    const counts = {};
-    MITRE_SIGNATURES.forEach((sig) => {
-      counts[sig.id] = 0;
-    });
-    enrichedCommands.forEach((row) => {
-      row.tags.forEach((tag) => {
-        counts[tag.id] = (counts[tag.id] || 0) + 1;
-      });
-    });
-    return counts;
-  }, [enrichedCommands]);
-
-  const filteredCommands = useMemo(() => {
-    if (commandFilter === "all") return enrichedCommands;
-    return enrichedCommands.filter((row) =>
-      row.tags.some((tag) => tag.id === commandFilter)
-    );
-  }, [enrichedCommands, commandFilter]);
 
   const attacksTrendDown = useMemo(() => {
     if (!trend || trend.length < 2) return false;
@@ -453,20 +641,6 @@ function App() {
     return last < prev;
   }, [trend]);
 
-  const lastEventTimestamp = useMemo(() => {
-    if (!events || events.length === 0) return null;
-    return events.reduce((latest, ev) => {
-      const ts = new Date(ev.timestamp).getTime();
-      if (!Number.isFinite(ts)) return latest;
-      if (latest == null || ts > latest) return ts;
-      return latest;
-    }, null);
-  }, [events]);
-
-  const lastEventAgo = lastEventTimestamp ? formatRelativeTime(lastEventTimestamp) : "";
-  const attackActive =
-    lastEventTimestamp != null &&
-    Date.now() - lastEventTimestamp < 5 * 60 * 1000;
   const isCommandFilterActive = commandFilter !== "all";
 
   const renderGeoPill = useCallback((ev) => {
@@ -574,14 +748,36 @@ function App() {
           />
 
           <div className="space-y-3.5 sm:space-y-4 min-w-[320px] sm:min-w-0">
-            <TrendPanel
-              trend={trend}
-              maxTrendEvents={maxTrendEvents}
-              formatHourLabel={formatHourLabel}
-              trendError={trendError}
-              trendLoading={trendLoading}
-              totalTrendEvents={totalTrendEvents}
-              peakHourLabel={peakHourLabel}
+            <Suspense
+              fallback={
+                <div className="border border-emerald-700/50 rounded-xl bg-slate-950/70 p-4 text-[0.68rem] text-emerald-500">
+                  Loading chart…
+                </div>
+              }
+            >
+              <TrendPanel
+                trend={trend}
+                maxTrendEvents={maxTrendEvents}
+                formatHourLabel={formatHourLabel}
+                trendError={trendError}
+                trendLoading={trendLoading}
+                totalTrendEvents={totalTrendEvents}
+                peakHourLabel={peakHourLabel}
+              />
+            </Suspense>
+
+            <SessionsPanel
+              sessions={sessions}
+              sessionsTotal={sessionsTotal}
+              sessionsError={sessionsError}
+              sessionsLoading={sessionsLoading}
+              search={sessionSearch}
+              onSearch={setSessionSearch}
+              onOpen={openSession}
+              formatTimestamp={formatTimestamp}
+              formatDuration={formatDuration}
+              countryFlag={countryFlag}
+              isMobile={isMobile}
             />
 
             <TopCountriesPanel
@@ -595,38 +791,74 @@ function App() {
               commands={commands}
               commandsError={commandsError}
               commandsLoading={commandsLoading}
-              filteredCommands={filteredCommands}
+              commandsTotal={commandsTotal}
               commandFilter={commandFilter}
               setCommandFilter={setCommandFilter}
               isCommandFilterActive={isCommandFilterActive}
               commandTagCounts={commandTagCounts}
-              mitreSignatures={MITRE_SIGNATURES}
+              mitreSignatures={mitreCatalogue}
+              mitreById={mitreById}
+              search={commandSearch}
+              onSearch={setCommandSearch}
+              pageSize={CONFIG.PAGE_SIZE.COMMANDS}
+              isMobile={isMobile}
             />
 
             <TopMalwarePanel
               downloads={downloads}
               downloadsError={downloadsError}
               downloadsLoading={downloadsLoading}
+              downloadsTotal={downloadsTotal}
+              search={downloadsSearch}
+              onSearch={setDownloadsSearch}
+              pageSize={CONFIG.PAGE_SIZE.FILES}
               formatBytes={formatBytes}
               formatTimestamp={formatTimestamp}
+              isMobile={isMobile}
             />
 
             <TopCredentialsPanel
               creds={creds}
               credsError={credsError}
               credsLoading={credsLoading}
+              credsTotal={credsTotal}
+              search={credsSearch}
+              onSearch={setCredsSearch}
+              pageSize={CONFIG.PAGE_SIZE.CREDS}
             />
 
-            <TopAsnPanel topAsn={topAsn} asnError={asnError} asnLoading={asnLoading} />
+            <TopAsnPanel
+              topAsn={topAsn}
+              asnError={asnError}
+              asnLoading={asnLoading}
+              asnTotal={asnTotal}
+              search={asnSearch}
+              onSearch={setAsnSearch}
+              pageSize={CONFIG.PAGE_SIZE.ASN}
+              isMobile={isMobile}
+            />
           </div>
         </div>
 
         <AsciiTopology />
 
         <footer className="mt-4 pt-3 border-t border-emerald-900/60 text-center text-[0.65rem] text-green-600">
-          hunajapannu.fi 
+          hunajapannu.fi
         </footer>
       </div>
+
+      {activeSession && (
+        <SessionDrawer
+          data={activeSession}
+          loading={activeSessionLoading}
+          error={activeSessionError}
+          onClose={closeSession}
+          formatTimestamp={formatTimestamp}
+          formatDuration={formatDuration}
+          countryFlag={countryFlag}
+          mitreById={mitreById}
+        />
+      )}
     </div>
   );
 }

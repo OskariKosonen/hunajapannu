@@ -1,3 +1,4 @@
+import { memo } from "react";
 import ScrollShadow from "./common/ScrollShadow";
 
 const EventsPanel = ({ events, eventLimit, formatTimestamp, renderGeoPill }) => (
@@ -72,4 +73,4 @@ const EventsPanel = ({ events, eventLimit, formatTimestamp, renderGeoPill }) => 
   </div>
 );
 
-export default EventsPanel;
+export default memo(EventsPanel);

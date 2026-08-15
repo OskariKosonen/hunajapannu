@@ -1,3 +1,4 @@
+import { memo } from "react";
 import LoadingSkeleton from "./common/LoadingSkeleton";
 import ScrollShadow from "./common/ScrollShadow";
 
@@ -62,4 +63,4 @@ const TopCountriesPanel = ({ topCountries, countriesError, countriesLoading, cou
   </section>
 );
 
-export default TopCountriesPanel;
+export default memo(TopCountriesPanel);

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, memo } from "react";
 import {
   Area,
   AreaChart,
@@ -8,6 +8,25 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+
+const tooltipStyles = {
+  backgroundColor: "rgba(0,0,0,0.85)",
+  border: "1px solid rgba(16,185,129,0.4)",
+  borderRadius: "0.375rem",
+  padding: "0.5rem 0.75rem",
+};
+
+// Declared at module scope: defining it inside the component created a new
+// component type on every render, which remounts the tooltip each time.
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div style={tooltipStyles} className="text-emerald-100 text-[0.65rem]">
+      <div className="font-semibold">{label}</div>
+      <div>{payload[0].value} events</div>
+    </div>
+  );
+};
 
 const TrendPanel = ({
   trend,
@@ -28,23 +47,6 @@ const TrendPanel = ({
   );
 
   const hasData = chartData.length > 0;
-
-  const tooltipStyles = {
-    backgroundColor: "rgba(0,0,0,0.85)",
-    border: "1px solid rgba(16,185,129,0.4)",
-    borderRadius: "0.375rem",
-    padding: "0.5rem 0.75rem",
-  };
-
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (!active || !payload || !payload.length) return null;
-    return (
-      <div style={tooltipStyles} className="text-emerald-100 text-[0.65rem]">
-        <div className="font-semibold">{label}</div>
-        <div>{payload[0].value} events</div>
-      </div>
-    );
-  };
 
   return (
     <section className="relative overflow-hidden border border-emerald-700/50 rounded-xl bg-slate-950/70 shadow-[0_10px_35px_rgba(0,0,0,0.45)] backdrop-blur-sm min-w-[320px] sm:min-w-0">
@@ -124,4 +126,4 @@ const TrendPanel = ({
   );
 };
 
-export default TrendPanel;
+export default memo(TrendPanel);

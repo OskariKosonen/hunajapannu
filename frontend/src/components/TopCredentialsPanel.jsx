@@ -1,7 +1,17 @@
+import { memo } from "react";
 import LoadingSkeleton from "./common/LoadingSkeleton";
 import ScrollShadow from "./common/ScrollShadow";
+import SearchBox from "./common/SearchBox";
 
-const TopCredentialsPanel = ({ creds, credsError, credsLoading }) => (
+const TopCredentialsPanel = ({
+  creds,
+  credsError,
+  credsLoading,
+  credsTotal,
+  search,
+  onSearch,
+  pageSize,
+}) => (
   <section className="relative overflow-hidden border border-emerald-700/50 rounded-xl bg-slate-950/70 shadow-[0_10px_35px_rgba(0,0,0,0.45)] backdrop-blur-sm min-w-[320px] sm:min-w-0">
     <div className="flex items-center justify-between px-4 py-2.5 bg-slate-950/70 border-b border-emerald-800/60">
       <span className="text-[0.68rem] uppercase tracking-[0.18em] px-2 py-1 rounded-full border border-emerald-600/60 text-emerald-200 bg-emerald-500/5">
@@ -15,6 +25,15 @@ const TopCredentialsPanel = ({ creds, credsError, credsLoading }) => (
           Failed to load credentials: {credsError}
         </div>
       )}
+
+      <div className="mb-3">
+        <SearchBox
+          value={search}
+          onChange={onSearch}
+          placeholder="Search username or password…"
+          resultLabel={credsTotal ? `${credsTotal} combos` : null}
+        />
+      </div>
 
       {credsLoading && creds.length === 0 ? (
         <div className="text-[0.68rem] text-emerald-500">
@@ -53,14 +72,21 @@ const TopCredentialsPanel = ({ creds, credsError, credsLoading }) => (
           </table>
         </ScrollShadow>
       ) : (
-        !credsError && <div className="text-[0.6rem] text-emerald-500">No credentials data yet.</div>
+        !credsError && (
+          <div className="text-[0.6rem] text-emerald-500">
+            {search ? "No credentials match that search." : "No credentials data yet."}
+          </div>
+        )
       )}
 
       <p className="text-[0.68rem] text-emerald-400 mt-2">
         Aggregated from <span className="text-emerald-200">/api/public/cowrie/creds</span>
+        {credsTotal > creds.length && (
+          <span className="text-emerald-600"> · showing top {Math.min(pageSize, creds.length)} of {credsTotal}</span>
+        )}
       </p>
     </div>
   </section>
 );
 
-export default TopCredentialsPanel;
+export default memo(TopCredentialsPanel);

@@ -1,3 +1,4 @@
+import { memo } from "react";
 const ProjectSummary = ({
   summaryStats,
   attacksTrendDown,
@@ -107,4 +108,4 @@ const ProjectSummary = ({
   </section>
 );
 
-export default ProjectSummary;
+export default memo(ProjectSummary);

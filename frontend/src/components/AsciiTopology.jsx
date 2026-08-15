@@ -1,3 +1,4 @@
+import { memo } from "react";
 import ScrollShadow from "./common/ScrollShadow";
 import topologySvg from "../assets/topology3.svg";
 
@@ -24,4 +25,4 @@ const AsciiTopology = () => (
   </section>
 );
 
-export default AsciiTopology;
+export default memo(AsciiTopology);

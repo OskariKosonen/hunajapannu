@@ -1,3 +1,4 @@
+import { memo } from "react";
 const DashboardHeader = () => (
   <header className="flex flex-col items-start sm:flex-row sm:items-center sm:justify-between gap-4 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 p-4 sm:p-5 rounded-xl shadow-lg border border-emerald-500/80 ring-1 ring-emerald-500/20">
     <div className="space-y-1 w-full">
@@ -26,4 +27,4 @@ const DashboardHeader = () => (
   </header>
 );
 
-export default DashboardHeader;
+export default memo(DashboardHeader);

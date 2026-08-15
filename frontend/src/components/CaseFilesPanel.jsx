@@ -1,3 +1,4 @@
+import { memo } from "react";
 const CaseFilesPanel = ({ caseFiles }) => (
   <section className="border border-emerald-500/70 rounded-lg bg-slate-950/80 shadow-lg overflow-hidden min-w-[320px] sm:min-w-0 sm:overflow-visible overflow-x-auto custom-scrollbar">
     <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-emerald-500/70">
@@ -40,4 +41,4 @@ const CaseFilesPanel = ({ caseFiles }) => (
   </section>
 );
 
-export default CaseFilesPanel;
+export default memo(CaseFilesPanel);
