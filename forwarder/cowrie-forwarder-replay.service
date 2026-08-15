@@ -1,0 +1,20 @@
+[Unit]
+Description=Replay parked cowrie-forwarder batches into the ingestion API
+After=network-online.target
+Wants=network-online.target
+
+# Oneshot, started on demand:  sudo systemctl start cowrie-forwarder-replay
+# Runs as the forwarder user so it can rewrite deadletter.jsonl, and reuses
+# the same EnvironmentFile for FWD_BASE_URL / FWD_TOKEN.
+
+[Service]
+Type=oneshot
+User=forwarder
+Group=forwarder
+EnvironmentFile=/etc/cowrie-forwarder.env
+ExecStart=/usr/bin/python3 /opt/cowrie-forwarder/replay_deadletter.py
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cowrie-forwarder
+PrivateTmp=true

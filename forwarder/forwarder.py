@@ -15,6 +15,10 @@ FLUSH_SECS = float(os.environ.get("FWD_FLUSH_SECS", "5"))
 DECOY_PORT = int(os.environ.get("FWD_DECOY_PORT", "22"))
 EVENTS_URL = f"{BASE_URL}/api/cowrie/events"
 FILES_URL  = f"{BASE_URL}/api/cowrie/files"
+# Cloudflare's Browser Integrity Check 403s the default "Python-urllib/x.y"
+# signature with error 1010 — that silently cut ingestion off on 2026-08-11.
+# Any other UA passes; identify ourselves honestly.
+USER_AGENT = "cowrie-forwarder/1.0"
 
 def load_state():
     try:
@@ -60,6 +64,7 @@ def post_batch(url, key, rows):
     while True:
         req = urllib.request.Request(url, data=data, method="POST")
         req.add_header("Authorization", f"Bearer {TOKEN}"); req.add_header("Content-Type", "application/json")
+        req.add_header("User-Agent", USER_AGENT)
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 if resp.status == 200: return

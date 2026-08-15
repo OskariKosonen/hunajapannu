@@ -91,7 +91,9 @@ jobs:
               cd ~/hunajapannu || { echo "repo not cloned on Pi at ~/hunajapannu"; exit 1; }
               git fetch --all && git reset --hard origin/main
               sudo install -m 0755 forwarder/forwarder.py /opt/cowrie-forwarder/forwarder.py
+              sudo install -m 0755 forwarder/replay_deadletter.py /opt/cowrie-forwarder/replay_deadletter.py
               sudo install -m 0644 forwarder/cowrie-forwarder.service /etc/systemd/system/cowrie-forwarder.service
+              sudo install -m 0644 forwarder/cowrie-forwarder-replay.service /etc/systemd/system/cowrie-forwarder-replay.service
               sudo systemctl daemon-reload
               sudo systemctl restart cowrie-forwarder
               systemctl is-active cowrie-forwarder
