@@ -96,6 +96,44 @@ def drain_deadletter():
     except Exception as e:
         sys.stderr.write(f"dead-letter drain failed, continuing: {e}\n")
 
+def find_rotated(inode):
+    """Locate the rotated file that used to be LOG_PATH, by inode. Cowrie
+    rotates cowrie.json -> cowrie.json.YYYY-MM-DD, keeping the same inode."""
+    d = os.path.dirname(LOG_PATH) or "."; base = os.path.basename(LOG_PATH)
+    try: names = os.listdir(d)
+    except OSError: return None
+    for n in sorted(names):
+        if n == base or not n.startswith(base + "."): continue
+        p = os.path.join(d, n)
+        try:
+            if os.stat(p).st_ino == inode: return p
+        except OSError: continue
+    return None
+
+def drain_rotated(path, offset):
+    """Forward whatever is left in a file that has since been rotated away.
+    Without this the unread tail is lost at every rotation — that is how
+    2026-08-12..14 went missing while the forwarder sat blocked on a POST."""
+    events, files = [], []
+    try:
+        with open(path, "r") as f:
+            f.seek(offset)
+            for line in f:
+                if not line.endswith("\n"): break
+                s = line.strip()
+                if not s: continue
+                try: ev = json.loads(s)
+                except ValueError: continue
+                kind, row = map_event(ev)
+                if kind == "event": events.append(row)
+                elif kind == "file": files.append(row)
+                if len(events) + len(files) >= BATCH_MAX:
+                    flush(events, files); events, files = [], []
+    except OSError as e:
+        sys.stderr.write(f"could not drain rotated {path}: {e}\n"); return
+    flush(events, files)
+    sys.stderr.write(f"drained rotated log {path} from offset {offset}\n")
+
 def run():
     drain_deadletter()
     state = load_state(); events, files = [], []; last_flush = time.time()
@@ -103,7 +141,12 @@ def run():
         try: st = os.stat(LOG_PATH)
         except FileNotFoundError: time.sleep(1); continue
         if state["inode"] != st.st_ino or st.st_size < state["offset"]:
+            # Finish the rotated-away file before following the new one.
+            if state["inode"] is not None and state["inode"] != st.st_ino:
+                old = find_rotated(state["inode"])
+                if old: drain_rotated(old, state["offset"])
             state = {"inode": st.st_ino, "offset": 0}
+            save_state(state)
         with open(LOG_PATH, "r") as f:
             f.seek(state["offset"])
             while True:
