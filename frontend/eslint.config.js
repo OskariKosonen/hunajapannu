@@ -26,4 +26,12 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+  {
+    // Build/tooling config runs in Node, not the browser, so it needs the
+    // Node globals (vite.config.js reads process.env for the dev API proxy).
+    files: ['*.config.{js,cjs}'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
 ])
