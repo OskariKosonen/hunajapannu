@@ -23,6 +23,11 @@ const LIMITS = {
   DEFAULT_HOURS_LOOKBACK: 24,
   MAX_LATEST_EVENTS: 200,
   DEFAULT_LATEST_EVENTS: 50,
+  // Attackers throw multi-kilobyte junk at the auth prompt (a 56KB "password"
+  // exists in cowrie_events); a btree index row caps out at 8191 bytes, so
+  // oversized combos can't be stored in cowrie_unique_creds/cowrie_cred_ips.
+  // Same cap as the sync_cowrie_event_aggs trigger (migration 006).
+  MAX_CRED_BYTES: 1000,
 };
 
 const CACHE_CONFIG = {
@@ -440,7 +445,8 @@ app.post('/api/cowrie/events', async (req, res) => {
         commandRows.push({ command: ev.command, timestamp: eventTimestamp });
       }
 
-      if (ev.username && ev.username !== '' && ev.password && ev.password !== '') {
+      if (ev.username && ev.username !== '' && ev.password && ev.password !== ''
+          && Buffer.byteLength(ev.username) + Buffer.byteLength(ev.password) <= LIMITS.MAX_CRED_BYTES) {
         credsRows.push({
           username: ev.username,
           password: ev.password,

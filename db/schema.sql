@@ -551,7 +551,8 @@ BEGIN
   END IF;
 
   IF NEW.username IS NOT NULL AND NEW.username <> ''
-     AND NEW.password IS NOT NULL AND NEW.password <> '' THEN
+     AND NEW.password IS NOT NULL AND NEW.password <> ''
+     AND octet_length(NEW.username) + octet_length(NEW.password) <= 1000 THEN
     INSERT INTO cowrie_cred_ips (username, password, src_ip)
     VALUES (NEW.username, NEW.password, NEW.src_ip)
     ON CONFLICT DO NOTHING;

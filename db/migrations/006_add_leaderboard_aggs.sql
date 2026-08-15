@@ -49,7 +49,10 @@ CREATE TABLE IF NOT EXISTS cowrie_cred_ips (
 
 -- One-time backfill, mirroring the GROUP BY logic the API queries used to run
 -- on every request. Guarded so re-runs (the deploy workflow applies every
--- migration on every deploy) skip the full-table scans.
+-- migration on every deploy) skip the full-table scans. Three separate DO
+-- blocks (= three transactions) so one failing backfill cannot roll back the
+-- others — the first deploy of this migration lost 36 minutes of ASN/country
+-- backfill when the creds branch hit an unindexable row.
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM cowrie_asn_agg) THEN
@@ -69,7 +72,10 @@ BEGIN
     GROUP BY asn
     ON CONFLICT (asn) DO NOTHING;
   END IF;
+END $$;
 
+DO $$
+BEGIN
   IF NOT EXISTS (SELECT 1 FROM cowrie_country_agg) THEN
     INSERT INTO cowrie_country_ips (country_iso, src_ip)
     SELECT DISTINCT country_iso, src_ip
@@ -86,13 +92,23 @@ BEGIN
     GROUP BY country_iso
     ON CONFLICT (country_iso) DO NOTHING;
   END IF;
+END $$;
 
+-- Attackers throw multi-kilobyte junk at the auth prompt (a 56KB "password"
+-- exists in cowrie_events) and a btree index row caps out at 8191 bytes, so
+-- oversized combos can be neither indexed here nor stored in
+-- cowrie_unique_creds. Cap what the leaderboard tracks; anything over the cap
+-- is one-off noise that would never chart in a top-N anyway. The same cap is
+-- enforced at ingest in backend/index.js (LIMITS.MAX_CRED_BYTES).
+DO $$
+BEGIN
   IF NOT EXISTS (SELECT 1 FROM cowrie_cred_ips) THEN
     INSERT INTO cowrie_cred_ips (username, password, src_ip)
     SELECT DISTINCT username, password, src_ip
     FROM cowrie_events
     WHERE username IS NOT NULL AND username <> ''
       AND password IS NOT NULL AND password <> ''
+      AND octet_length(username) + octet_length(password) <= 1000
     ON CONFLICT DO NOTHING;
 
     INSERT INTO cowrie_unique_creds (username, password, first_seen, last_seen, total_events, unique_ips)
@@ -102,6 +118,7 @@ BEGIN
     FROM cowrie_events
     WHERE username IS NOT NULL AND username <> ''
       AND password IS NOT NULL AND password <> ''
+      AND octet_length(username) + octet_length(password) <= 1000
     GROUP BY username, password
     ON CONFLICT (username, password) DO UPDATE SET
       first_seen   = LEAST(cowrie_unique_creds.first_seen, EXCLUDED.first_seen),
@@ -147,7 +164,8 @@ BEGIN
   END IF;
 
   IF NEW.username IS NOT NULL AND NEW.username <> ''
-     AND NEW.password IS NOT NULL AND NEW.password <> '' THEN
+     AND NEW.password IS NOT NULL AND NEW.password <> ''
+     AND octet_length(NEW.username) + octet_length(NEW.password) <= 1000 THEN
     INSERT INTO cowrie_cred_ips (username, password, src_ip)
     VALUES (NEW.username, NEW.password, NEW.src_ip)
     ON CONFLICT DO NOTHING;
