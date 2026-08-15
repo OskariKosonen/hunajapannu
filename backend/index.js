@@ -47,6 +47,11 @@ const CACHE_CONFIG = {
 // silence means something is broken, not that attackers took a break.
 const INGEST_STALE_AFTER_SECONDS = Number(process.env.INGEST_STALE_AFTER_SECONDS || 1800);
 
+// Events timestamped ahead of our own clock by more than this mean the
+// sensor's clock or timezone is wrong. Cowrie on the Pi currently writes
+// local (BST) times labelled 'Z', which puts every event an hour ahead.
+const CLOCK_SKEW_TOLERANCE_SECONDS = Number(process.env.CLOCK_SKEW_TOLERANCE_SECONDS || 120);
+
 const SUMMARY_CACHE_TTL_MS = 60 * 1000; // 1 minute
 const LEADERBOARD_CACHE_TTL_MS = 60 * 1000; // 1 minute for top-N slices
 
@@ -647,17 +652,27 @@ async function healthCheck(_req, res) {
     const { rows } = await pool.query('SELECT MAX(timestamp) AS last_event FROM cowrie_events');
     const lastEvent = rows[0]?.last_event ? new Date(rows[0].last_event) : null;
     const ageSeconds = lastEvent ? Math.round((Date.now() - lastEvent.getTime()) / 1000) : null;
+
+    // A negative age means events are timestamped in the future, i.e. the
+    // sensor's clock or timezone disagrees with ours. Surface it rather than
+    // reading it as "very fresh" — future timestamps would otherwise mask a
+    // stopped feed for as long as the skew lasts.
+    const clockSkewSeconds = ageSeconds != null && ageSeconds < 0 ? -ageSeconds : 0;
+    const clockSkewed = clockSkewSeconds > CLOCK_SKEW_TOLERANCE_SECONDS;
+
     const ingestStale = ageSeconds == null || ageSeconds > INGEST_STALE_AFTER_SECONDS;
 
     // Still HTTP 200 when only ingestion is stale: the service itself is
     // healthy, and failing this would make deploys fail for an unrelated
     // reason. Alerting keys on the ingestStale flag instead.
     res.json({
-      status: ingestStale ? 'degraded' : 'ok',
+      status: ingestStale || clockSkewed ? 'degraded' : 'ok',
       db: 'connected',
       lastEventAt: lastEvent ? lastEvent.toISOString() : null,
       lastEventAgeSeconds: ageSeconds,
       ingestStale,
+      clockSkewed,
+      clockSkewSeconds,
       staleAfterSeconds: INGEST_STALE_AFTER_SECONDS,
       timestamp: new Date().toISOString(),
     });
