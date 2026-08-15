@@ -26,15 +26,15 @@ jobs:
               echo "--- before ---"
               ls -la --time-style=long-iso /var/lib/cowrie-forwarder/ | sed "s/^/  /"
 
-              # Oneshot unit runs as the forwarder user with the shared
-              # EnvironmentFile; sudo systemctl is the privilege we have.
-              sudo systemctl daemon-reload
-              sudo systemctl start cowrie-forwarder-replay || true
+              # The forwarder drains deadletter.jsonl on startup, and
+              # "systemctl restart cowrie-forwarder" is a privilege the runner
+              # already has (unlike "start" of the standalone oneshot unit).
+              sudo systemctl restart cowrie-forwarder
+              echo "waiting for drain..."
+              sleep 45
 
               echo "--- replay output ---"
-              sudo -n journalctl -u cowrie-forwarder-replay -n 60 --no-pager 2>/dev/null \
-                | sed "s/^/  /" \
-                || systemctl status cowrie-forwarder-replay --no-pager -n 60 2>&1 | sed "s/^/  /"
+              journalctl -u cowrie-forwarder -n 60 --no-pager 2>&1 | sed "s/^/  /"
 
               echo "--- after ---"
               ls -la --time-style=long-iso /var/lib/cowrie-forwarder/ | sed "s/^/  /"

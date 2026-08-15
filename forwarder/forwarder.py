@@ -84,7 +84,20 @@ def post_batch(url, key, rows):
 def flush(events, files):
     post_batch(EVENTS_URL, "events", events); post_batch(FILES_URL, "files", files)
 
+def drain_deadletter():
+    """Push any parked batches before tailing. Bounded (replay_deadletter caps
+    attempts per batch and re-parks what still fails) and never fatal — a
+    backlog must not stop us collecting new events."""
+    path = os.path.join(os.path.dirname(STATE_PATH), "deadletter.jsonl")
+    if not os.path.exists(path): return
+    try:
+        import replay_deadletter
+        replay_deadletter.main()
+    except Exception as e:
+        sys.stderr.write(f"dead-letter drain failed, continuing: {e}\n")
+
 def run():
+    drain_deadletter()
     state = load_state(); events, files = [], []; last_flush = time.time()
     while True:
         try: st = os.stat(LOG_PATH)
