@@ -1,0 +1,55 @@
+name: VPS diagnostics
+
+# Read-only look at the VPS itself (the box this runner lives on). Manual
+# dispatch only — nothing here restarts, installs or writes anything.
+# Written to locate the old VirusTotal enrichment script, which stopped
+# updating cowrie_files on 2026-07-25.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: [self-hosted, linux]
+    steps:
+      - name: Find the VT enrichment script and how it was scheduled
+        run: |
+          set -uo pipefail
+
+          echo "=================== cron ==================="
+          crontab -l 2>/dev/null || echo "(no user crontab)"
+          sudo ls -la /etc/cron.d/ 2>/dev/null || true
+          sudo grep -ril "virustotal\|vt" /etc/cron.d/ 2>/dev/null || true
+
+          echo "=================== systemd timers ==================="
+          systemctl list-timers --all --no-pager 2>/dev/null | head -25
+          systemctl list-units --no-pager 2>/dev/null | grep -i "vt\|virus" || echo "(no vt units)"
+
+          echo "=================== scripts on disk ==================="
+          for d in /home/admin /opt /usr/local/bin /root; do
+            sudo find "$d" -maxdepth 3 \( -name "*vt*" -o -name "*virus*" \) \
+              -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null
+          done
+
+          echo "=================== grep for the API host ==================="
+          sudo grep -rl "virustotal" /home/admin /opt /usr/local/bin \
+            --include="*.py" --include="*.js" --include="*.sh" \
+            --exclude-dir=node_modules --exclude-dir=.git 2>/dev/null || echo "(none)"
+
+          echo "=================== pm2 ==================="
+          pm2 ls 2>/dev/null || true
+
+      - name: Show the script itself (redacting anything that looks like a key)
+        run: |
+          set -uo pipefail
+          hits=$(sudo grep -rl "virustotal" /home/admin /opt /usr/local/bin \
+            --include="*.py" --include="*.js" --include="*.sh" \
+            --exclude-dir=node_modules --exclude-dir=.git 2>/dev/null || true)
+          for f in $hits; do
+            echo "=================== $f ==================="
+            sudo stat -c 'modified: %y  size: %s' "$f"
+            # Redact likely API keys (VT keys are 64 hex chars).
+            sudo sed -E 's/[0-9a-f]{64}/<REDACTED-64HEX>/g; s/(api[_-]?key[^=:]*[=:]).*/\1 <REDACTED>/Ig' "$f" | head -120
+          done
+          echo "=================== recent logs mentioning VT ==================="
+          sudo journalctl --since "30 days ago" --no-pager 2>/dev/null | grep -i "virustotal\|vt-enrich\|vt_enrich" | tail -20 || echo "(nothing in journal)"
