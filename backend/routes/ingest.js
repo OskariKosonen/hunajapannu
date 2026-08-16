@@ -121,6 +121,16 @@ module.exports = function registerIngestRoutes(app) {
       return res.json({ status: 'ok', inserted: 0 });
     }
 
+    // Client fingerprints and tunnel requests ride the same endpoint, tagged
+    // with `kind`, rather than getting routes of their own. A new route would
+    // 404 for any forwarder that reached it before the backend was updated,
+    // and post_batch only parks 400/413/422 — a 404 retries forever, which
+    // would stall the forwarder's single loop and stop ingestion entirely.
+    // An unknown field, by contrast, is simply ignored by an older backend.
+    const clientRows = events.filter((ev) => ev.kind === 'client');
+    const tunnelRows = events.filter((ev) => ev.kind === 'tunnel');
+    const plainEvents = events.filter((ev) => !ev.kind);
+
     // Use a transaction to ensure atomicity
     const client = await pool.connect();
     try {
@@ -132,7 +142,7 @@ module.exports = function registerIngestRoutes(app) {
       const commandRows = [];
       const credsRows = [];
 
-      events.forEach((ev, idx) => {
+      plainEvents.forEach((ev, idx) => {
         const geo = lookupGeo(ev.src_ip) || {};
         const offset = idx * 11;
         const eventTimestamp = ev.timestamp || new Date().toISOString();
@@ -246,6 +256,99 @@ module.exports = function registerIngestRoutes(app) {
                last_seen = GREATEST(cowrie_unique_creds.last_seen, EXCLUDED.last_seen)`,
           credsValues
         );
+      }
+
+      if (clientRows.length > 0) {
+        // cowrie.client.version and cowrie.client.kex are two log lines for one
+        // session and arrive in either order, so upsert and COALESCE: whichever
+        // lands second must not null out what the first recorded. EXCLUDED
+        // first, so a genuine later correction still wins over a stale value.
+        const bySession = new Map();
+        for (const ev of clientRows) {
+          if (!ev.session_id) continue;
+          const prev = bySession.get(ev.session_id) || {
+            session_id: ev.session_id,
+            first_seen: ev.timestamp,
+            src_ip: ev.src_ip,
+            client_version: null,
+            hassh: null,
+          };
+          if (ev.client_version) prev.client_version = ev.client_version;
+          if (ev.hassh) prev.hassh = ev.hassh;
+          if (ev.timestamp && ev.timestamp < prev.first_seen) prev.first_seen = ev.timestamp;
+          if (!prev.src_ip && ev.src_ip) prev.src_ip = ev.src_ip;
+          bySession.set(ev.session_id, prev);
+        }
+
+        const fpValues = [];
+        const fpPlaceholders = [];
+        let fIdx = 0;
+        for (const [, c] of bySession) {
+          const geo = lookupGeo(c.src_ip) || {};
+          const offset = fIdx * 8;
+          fpPlaceholders.push(
+            `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`
+          );
+          fpValues.push(
+            c.session_id,
+            c.first_seen || new Date().toISOString(),
+            c.src_ip || null,
+            c.client_version,
+            c.hassh,
+            geo.country_iso || null,
+            geo.asn || null,
+            geo.org || null
+          );
+          fIdx++;
+        }
+
+        if (fpPlaceholders.length > 0) {
+          await client.query(
+            `INSERT INTO cowrie_client_fingerprints
+               (session_id, first_seen, src_ip, client_version, hassh, country_iso, asn, org)
+             VALUES ${fpPlaceholders.join(', ')}
+             ON CONFLICT (session_id) DO UPDATE
+             SET client_version = COALESCE(EXCLUDED.client_version, cowrie_client_fingerprints.client_version),
+                 hassh          = COALESCE(EXCLUDED.hassh, cowrie_client_fingerprints.hassh),
+                 src_ip         = COALESCE(cowrie_client_fingerprints.src_ip, EXCLUDED.src_ip),
+                 first_seen     = LEAST(cowrie_client_fingerprints.first_seen, EXCLUDED.first_seen)`,
+            fpValues
+          );
+        }
+      }
+
+      if (tunnelRows.length > 0) {
+        const tValues = [];
+        const tPlaceholders = [];
+        let tIdx = 0;
+        for (const ev of tunnelRows) {
+          if (!ev.dst_host) continue;   // the destination is the whole point
+          const geo = lookupGeo(ev.src_ip) || {};
+          const offset = tIdx * 8;
+          tPlaceholders.push(
+            `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8})`
+          );
+          tValues.push(
+            ev.timestamp || new Date().toISOString(),
+            ev.session_id || null,
+            ev.src_ip || null,
+            String(ev.dst_host).slice(0, 255),
+            Number.isFinite(Number(ev.dst_port)) ? Number(ev.dst_port) : null,
+            geo.country_iso || null,
+            geo.asn || null,
+            geo.org || null
+          );
+          tIdx++;
+        }
+
+        if (tPlaceholders.length > 0) {
+          await client.query(
+            `INSERT INTO cowrie_tunnel_requests
+               (timestamp, session_id, src_ip, dst_host, dst_port, country_iso, asn, org)
+             VALUES ${tPlaceholders.join(', ')}`,
+            tValues
+          );
+        }
       }
 
       await client.query('COMMIT');

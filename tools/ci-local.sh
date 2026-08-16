@@ -35,12 +35,31 @@ docker run -d --name "$CONTAINER" \
   -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=cowrie_db \
   -p "$PGPORT_HOST:5432" postgres:16 >/dev/null
 
+# Probe with a real query over TCP against the real database, not pg_isready.
+# The postgres image's entrypoint starts a temporary server on the unix socket
+# to run initdb, and pg_isready reports that one as ready — before cowrie_db is
+# created and before the TCP listener exists. Breaking on it means the next
+# command hits the temporary server as it shuts down to restart for real.
+ready() {
+  docker exec -e PGPASSWORD=postgres "$CONTAINER" \
+    psql -h 127.0.0.1 -U postgres -d cowrie_db -qtA -c 'SELECT 1' >/dev/null 2>&1
+}
 for _ in $(seq 1 60); do
-  docker exec "$CONTAINER" pg_isready -U postgres -d cowrie_db >/dev/null 2>&1 && break
+  ready && break
   sleep 1
 done
-docker exec "$CONTAINER" pg_isready -U postgres -d cowrie_db >/dev/null 2>&1 || {
-  echo "postgres did not come up"; exit 1; }
+# Say why. "did not come up" on its own sends you guessing at the container
+# when the usual cause is the published port already being held by something
+# else, which shows up plainly in the logs and in the container state.
+ready || {
+  echo "postgres did not come up. container state:"
+  docker ps -a --filter "name=$CONTAINER" --format '  {{.Names}} {{.Status}} {{.Ports}}'
+  echo "  --- last 20 log lines ---"
+  docker logs "$CONTAINER" 2>&1 | tail -20 | sed 's/^/  /'
+  echo "  --- listeners on $PGPORT_HOST ---"
+  ss -ltnp 2>/dev/null | grep ":$PGPORT_HOST" | sed 's/^/  /' || echo "  (none)"
+  exit 1
+}
 
 # psql shim. Arguments pass through untouched except -f, whose file is read
 # here and fed over stdin — apply-migrations.sh already uses `-f -` for the

@@ -62,7 +62,11 @@ def normalize_ts(s):
     return naive.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 def map_event(ev):
-    eid = ev.get("eventid"); ts, ip, sess = normalize_ts(ev.get("timestamp")), ev.get("src_ip"), ev.get("session")
+    # "" rather than None: a log line without an eventid must not turn a
+    # string comparison into an AttributeError. map_event is called from the
+    # tail loop without a try, so one malformed line would kill ingestion.
+    eid = ev.get("eventid") or ""
+    ts, ip, sess = normalize_ts(ev.get("timestamp")), ev.get("src_ip"), ev.get("session")
     if eid in ("cowrie.login.success", "cowrie.login.failed"):
         return "event", {"timestamp": ts, "src_ip": ip, "session_id": sess, "dest_port": DECOY_PORT,
                          "username": ev.get("username"), "password": ev.get("password")}
@@ -74,6 +78,32 @@ def map_event(ev):
     if eid in ("cowrie.session.file_download", "cowrie.session.file_upload"):
         return "file", {"timestamp": ts, "sha256": ev.get("shasum"), "size_bytes": ev.get("size"),
                         "full_path": ev.get("destfile") or ev.get("outfile") or ev.get("filename")}
+    # Client identity. Cowrie already computes both of these and we were
+    # throwing them away here, which cost us the only campaign-linkage signal
+    # SSH offers: HASSH fingerprints the client *software*, so two addresses in
+    # two countries sharing one HASSH are one tool. Source IPs rotate freely;
+    # the algorithms a client offers do not.
+    #
+    # The two arrive as separate log lines for the same session, in either
+    # order, so both are sent as kind="client" and the backend COALESCEs them
+    # onto one row keyed by session.
+    if eid == "cowrie.client.version":
+        return "event", {"kind": "client", "timestamp": ts, "src_ip": ip, "session_id": sess,
+                         "client_version": ev.get("version")}
+    if eid == "cowrie.client.kex":
+        return "event", {"kind": "client", "timestamp": ts, "src_ip": ip, "session_id": sess,
+                         "hassh": ev.get("hassh")}
+    # The attacker using the honeypot as a TCP relay to reach somebody else —
+    # a different abuse class from dropping a payload, and invisible to command
+    # analysis because no command is ever typed. The destination is the finding.
+    # Only .request, never .direct-tcpip.data: Cowrie emits one data event per
+    # relayed chunk, which would flood the batcher with no analytic value.
+    if eid == "cowrie.direct-tcpip.request":
+        dst = ev.get("dst_ip")
+        if not dst:
+            return None, None
+        return "event", {"kind": "tunnel", "timestamp": ts, "src_ip": ip, "session_id": sess,
+                         "dst_host": dst, "dst_port": ev.get("dst_port")}
     return None, None
 
 def dead_letter(key, rows, code):

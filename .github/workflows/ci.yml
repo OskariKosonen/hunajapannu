@@ -29,6 +29,25 @@ jobs:
       - run: npm test
       - run: npm run build
 
+  forwarder:
+    # The sensor is the one component whose bugs lose data permanently: Cowrie's
+    # log rotates away and there is no second copy. It had no tests at all until
+    # three event types turned out to have been discarded since the project
+    # started. Stdlib only, so there is nothing to install.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: forwarder
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Syntax check
+        run: python3 -m py_compile forwarder.py replay_deadletter.py
+      - name: Unit tests
+        run: python3 -m unittest discover -p 'test_*.py' -v
+
   backend:
     runs-on: ubuntu-latest
     defaults:
@@ -348,6 +367,55 @@ jobs:
             "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_unique_commands WHERE command = 'curl http://ci/probe'")"
           assert "ingested credential stored" "1" \
             "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_unique_creds WHERE username = 'ci'")"
+
+          echo "--- client fingerprints and tunnel requests ---"
+          # cowrie.client.version and cowrie.client.kex are two log lines for
+          # one session, arriving in either order. Post them kex-first so the
+          # COALESCE upsert is exercised in the awkward direction.
+          curl -fsS -X POST -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $INGEST_API_KEY" \
+            -d '{"events":[
+                  {"kind":"client","src_ip":"203.0.113.7","session_id":"ci-fp","hassh":"06046964c022c6407d15a27b12a6a4fb","timestamp":"2026-08-16T10:00:01.000Z"},
+                  {"kind":"client","src_ip":"203.0.113.7","session_id":"ci-fp","client_version":"SSH-2.0-libssh2_1.9.0","timestamp":"2026-08-16T10:00:00.000Z"},
+                  {"kind":"tunnel","src_ip":"203.0.113.7","session_id":"ci-fp","dst_host":"smtp.example.com","dst_port":25,"timestamp":"2026-08-16T10:00:02.000Z"}
+                ]}' "$API/api/cowrie/events" > /dev/null
+
+          assert "one fingerprint row per session, not per log line" "1" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_client_fingerprints WHERE session_id = 'ci-fp'")"
+          # Whichever line lands second must not null out what the first wrote.
+          assert "kex and version merge onto one row" "SSH-2.0-libssh2_1.9.0|06046964c022c6407d15a27b12a6a4fb" \
+            "$("${PSQL[@]}" -qtA -c "SELECT client_version || '|' || hassh FROM cowrie_client_fingerprints WHERE session_id = 'ci-fp'")"
+          assert "first_seen keeps the earlier of the two" "2026-08-16 10:00:00+00" \
+            "$("${PSQL[@]}" -qtA -c "SELECT first_seen AT TIME ZONE 'UTC' || '+00' FROM cowrie_client_fingerprints WHERE session_id = 'ci-fp'")"
+          assert "tunnel request stored with its destination" "smtp.example.com|25" \
+            "$("${PSQL[@]}" -qtA -c "SELECT dst_host || '|' || dst_port FROM cowrie_tunnel_requests WHERE session_id = 'ci-fp'")"
+          # The whole point of separate tables: these must not inflate the
+          # event count the dashboard reports as its headline number.
+          assert "tagged rows never reach cowrie_events" "0" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_events WHERE session_id = 'ci-fp'")"
+          # The check above merged both lines inside one POST, which the
+          # in-memory batch merge handles. Across two POSTs it is the SQL
+          # ON CONFLICT ... COALESCE that has to hold the earlier value, and
+          # that path is the one that runs whenever a session's two client
+          # lines straddle a flush.
+          curl -fsS -X POST -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $INGEST_API_KEY" \
+            -d '{"events":[{"kind":"client","src_ip":"203.0.113.9","session_id":"ci-split","client_version":"SSH-2.0-Go","timestamp":"2026-08-16T11:00:00.000Z"}]}' \
+            "$API/api/cowrie/events" > /dev/null
+          curl -fsS -X POST -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $INGEST_API_KEY" \
+            -d '{"events":[{"kind":"client","src_ip":"203.0.113.9","session_id":"ci-split","hassh":"ffff1111","timestamp":"2026-08-16T11:00:01.000Z"}]}' \
+            "$API/api/cowrie/events" > /dev/null
+          assert "a second batch does not null out the first" "SSH-2.0-Go|ffff1111" \
+            "$("${PSQL[@]}" -qtA -c "SELECT client_version || '|' || hassh FROM cowrie_client_fingerprints WHERE session_id = 'ci-split'")"
+          assert "and still keeps the earlier first_seen" "2026-08-16 11:00:00+00" \
+            "$("${PSQL[@]}" -qtA -c "SELECT first_seen AT TIME ZONE 'UTC' || '+00' FROM cowrie_client_fingerprints WHERE session_id = 'ci-split'")"
+
+          # A batch of only tagged rows must not fail on an empty INSERT.
+          assert "a batch with no plain events still succeeds" "200" \
+            "$(status -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $INGEST_API_KEY" \
+               -d '{"events":[{"kind":"client","src_ip":"203.0.113.8","session_id":"ci-fp2","hassh":"abc"}]}' \
+               "$API/api/cowrie/events")"
 
           exit $fail
 
