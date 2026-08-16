@@ -18,8 +18,11 @@ const { LRUCache } = require('lru-cache');
 const MITRE_SIGNATURES = [
   { id: 'T1490', name: 'Impact (T1490)', description: 'Destructive cleanup',
     patterns: [/rm\s+-rf/i, /chattr\s+-i/i, /dd\s+if=/i] },
+  // \bscp\b, not /scp/: bare "scp" matches the middle of "lscpu", so every
+  // attacker running `lscpu | grep Model` to size up the box was being
+  // reported as transferring tools onto it.
   { id: 'T1105', name: 'Ingress Tool Transfer (T1105)', description: 'wget/curl/scp drops',
-    patterns: [/wget/i, /curl/i, /tftp/i, /ftp\s/i, /scp/i] },
+    patterns: [/wget/i, /curl/i, /tftp/i, /\bftp\s/i, /\bscp\b/i] },
   { id: 'T1021', name: 'Remote Services (T1021)', description: 'Pivot via SSH/Telnet',
     patterns: [/ssh\s/i, /telnet/i, /dropbear/i] },
   { id: 'T1098', name: 'Account Manipulation (T1098)', description: 'SSH key + password tampering',
@@ -29,10 +32,10 @@ const MITRE_SIGNATURES = [
   { id: 'T1562', name: 'Defense Evasion (T1562)', description: 'Cleanup + disabling protections',
     patterns: [/rm\s+-rf/i, /pkill/i, /echo\s+>\s+\/etc\/hosts\.deny/i, /clean\.sh/i] },
   { id: 'T1595', name: 'Reconnaissance (T1595)', description: 'Scanning & discovery',
-    patterns: [/nmap/i, /masscan/i, /whois/i, /dig\s/i, /nslookup/i, /curl\s+http:\/\/\d+/i] },
+    patterns: [/nmap/i, /masscan/i, /whois/i, /\bdig\s/i, /nslookup/i, /curl\s+http:\/\/\d+/i] },
   { id: 'T1082', name: 'System Info Discovery (T1082)', description: 'uname/lscpu/proc snooping',
     patterns: [/uname/i, /lscpu/i, /cat\s+\/proc\/cpuinfo/i, /cat\s+\/proc\/uptime/i,
-               /df\s+-h/i, /free\s+-m/i, /nproc/i, /which\s+ls/i, /ps\s/i] },
+               /df\s+-h/i, /free\s+-m/i, /nproc/i, /which\s+ls/i, /\bps\s/i] },
 ];
 
 const MITRE_IDS = new Set(MITRE_SIGNATURES.map((s) => s.id));

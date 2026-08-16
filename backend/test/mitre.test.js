@@ -49,6 +49,26 @@ describe('tagCommand', () => {
     assert.deepEqual(tagCommand('ls /usr/share'), [], 'share must not read as a shell');
   });
 
+  test('does not read "scp" out of the middle of another word', () => {
+    // Found in production: `lscpu | grep Model` was tagged T1105 (Ingress
+    // Tool Transfer) because /scp/ matches l-scp-u. Hardware profiling is
+    // discovery, not a file transfer, and every bot fingerprinting the box
+    // was being mislabelled.
+    assert.deepEqual(tagCommand('lscpu | grep Model'), ['T1082']);
+    assert.ok(!tagCommand('lscpu').includes('T1105'));
+    // The real thing still tags.
+    assert.ok(tagCommand('scp /tmp/x user@host:/tmp').includes('T1105'));
+    assert.ok(tagCommand('cat f | scp /dev/stdin host:/x').includes('T1105'));
+  });
+
+  test('other short patterns are anchored to word boundaries too', () => {
+    // Same structural weakness as scp: short tokens that appear inside
+    // ordinary words.
+    assert.ok(tagCommand('ps aux').includes('T1082'), 'ps must still tag');
+    assert.ok(tagCommand('dig example.com').includes('T1595'), 'dig must still tag');
+    assert.ok(tagCommand('ftp 10.0.0.1').includes('T1105'), 'ftp must still tag');
+  });
+
   test('returns a stable result for the same command (cache correctness)', () => {
     const first = tagCommand('busybox wget http://x/y');
     const second = tagCommand('busybox wget http://x/y');
