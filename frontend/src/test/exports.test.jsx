@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import IocExport from "../components/IocExport";
-import EngineeringNotes from "../components/EngineeringNotes";
 import OriginsPanel from "../components/OriginsPanel";
 
 describe("IocExport", () => {
@@ -64,31 +63,6 @@ describe("IocExport", () => {
     render(<IocExport endpoint={endpoint} />);
     fireEvent.click(screen.getByRole("button", { name: /copy list/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/download links still work/i);
-  });
-});
-
-describe("EngineeringNotes", () => {
-  it("shows the one-line pipeline without being expanded", () => {
-    render(<EngineeringNotes />);
-    expect(screen.getByText(/Raspberry Pi sensor/)).toBeInTheDocument();
-    // Detail is hidden until asked for, so it never competes with live data.
-    expect(screen.queryByText(/Trigger-maintained aggregates/)).toBeNull();
-  });
-
-  it("expands on click and reports it to assistive tech", () => {
-    render(<EngineeringNotes />);
-    const toggle = screen.getByRole("button");
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText(/Trigger-maintained aggregates/)).toBeInTheDocument();
-    expect(screen.getByText(/k-anonymous password lookup/)).toBeInTheDocument();
-  });
-
-  it("does not link anywhere, since the repo is private", () => {
-    const { container } = render(<EngineeringNotes />);
-    fireEvent.click(screen.getByRole("button"));
-    expect(container.querySelectorAll("a").length).toBe(0);
   });
 });
 

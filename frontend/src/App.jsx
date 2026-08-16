@@ -7,7 +7,6 @@ import TrendPanel from "./components/TrendPanel";
 import TopCredentialsPanel from "./components/TopCredentialsPanel";
 import PasswordCheck from "./components/PasswordCheck";
 import IocExport from "./components/IocExport";
-import EngineeringNotes from "./components/EngineeringNotes";
 import CommandsPanel from "./components/CommandsPanel";
 import TopMalwarePanel from "./components/TopMalwarePanel";
 import OriginsPanel from "./components/OriginsPanel";
@@ -660,9 +659,6 @@ function App() {
 
         <ErrorBoundary name="Topology">
           <AsciiTopology />
-        </ErrorBoundary>
-        <ErrorBoundary name="Engineering notes">
-          <EngineeringNotes />
         </ErrorBoundary>
         <footer className="mt-4 pt-3 border-t border-emerald-900/60 text-center text-[0.65rem] text-green-600">
           hunajapannu.fi
