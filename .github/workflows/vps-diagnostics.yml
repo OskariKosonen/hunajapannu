@@ -46,17 +46,37 @@ jobs:
               print(f\"  {a.get('name')}  status={e.get('status')}  restarts={e.get('restart_time')}  script={e.get('pm_exec_path')}\")" || true
           exit 0
 
-      - name: Show what was found (keys redacted)
+      - name: Inspect the old app dir and how VT was run
         run: |
           set -uo pipefail
-          hits=$(grep -rl -i "virustotal" /home/admin \
-            --include="*.py" --include="*.js" --include="*.sh" \
-            --exclude-dir=node_modules --exclude-dir=.git 2>/dev/null || true)
+          echo "=================== /home/admin/apps ==================="
+          find /home/admin/apps -maxdepth 3 -type f 2>/dev/null | head -40
+          echo "=================== cowrie-api dir ==================="
+          ls -la /home/admin/apps/cowrie-api/ 2>/dev/null || true
+          ls -la /home/admin/apps/cowrie-api/vt_backfill_frontend_min 2>/dev/null || true
+
+          echo "=================== any file mentioning virustotal (no extension filter) ==================="
+          grep -rl -i "virustotal" /home/admin/apps 2>/dev/null | head -10
+
+          echo "=================== VT commands from shell history (redacted) ==================="
+          grep -i "vt\|virustotal" /home/admin/.bash_history 2>/dev/null \
+            | sed -E 's/[0-9a-f]{64}/<REDACTED-64HEX>/g' | tail -25 || echo "(none)"
+
+          echo "=================== is a VT key present in any env file? (presence only) ==================="
+          for f in /home/admin/.env /home/admin/hunajapannu/.env /home/admin/hunajapannu/backend/.env \
+                   /home/admin/apps/cowrie-api/.env /home/admin/ecosystem.config.js; do
+            [ -f "$f" ] && echo "  $f: $(grep -c -i 'vt\|virustotal' "$f" 2>/dev/null) vt-ish lines"
+          done
+          exit 0
+
+      - name: Print the VT script, keys redacted
+        run: |
+          set -uo pipefail
+          hits=$(grep -rl -i "virustotal" /home/admin/apps 2>/dev/null | head -3)
           for f in $hits; do
             echo "=================== $f ==================="
             stat -c 'modified: %y  size: %s' "$f"
-            # VT API keys are 64 hex chars; redact those and any key-looking assignment.
-            sed -E 's/[0-9a-f]{64}/<REDACTED-64HEX>/g; s/(api[_-]?key[^=:]*[=:]).*/\1 <REDACTED>/Ig' "$f" | head -150
+            sed -E 's/[0-9a-f]{64}/<REDACTED-64HEX>/g; s/(api[_-]?key[^=:]*[=:]).*/\1 <REDACTED>/Ig' "$f" | head -160
           done
-          [ -n "$hits" ] || echo "(no script found under /home/admin)"
+          [ -n "$hits" ] || echo "(nothing under /home/admin/apps mentions virustotal)"
           exit 0
