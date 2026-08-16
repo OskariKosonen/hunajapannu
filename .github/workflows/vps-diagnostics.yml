@@ -47,36 +47,48 @@ jobs:
           exit 0
 
       - name: Inspect the old app dir and how VT was run
+        # No pipefail here: `find | head` closes the pipe and the SIGPIPE
+        # status killed an earlier run of this step before it printed anything.
         run: |
-          set -uo pipefail
-          echo "=================== /home/admin/apps ==================="
-          find /home/admin/apps -maxdepth 3 -type f 2>/dev/null | head -40
+          set -u
           echo "=================== cowrie-api dir ==================="
-          ls -la /home/admin/apps/cowrie-api/ 2>/dev/null || true
-          ls -la /home/admin/apps/cowrie-api/vt_backfill_frontend_min 2>/dev/null || true
+          ls -la /home/admin/apps/cowrie-api/ 2>/dev/null
+          echo "=================== the vt_backfill entry ==================="
+          ls -la /home/admin/apps/cowrie-api/vt_backfill_frontend_min 2>/dev/null
+          file /home/admin/apps/cowrie-api/vt_backfill_frontend_min 2>/dev/null
 
-          echo "=================== any file mentioning virustotal (no extension filter) ==================="
-          grep -rl -i "virustotal" /home/admin/apps 2>/dev/null | head -10
+          echo "=================== app files (node_modules excluded) ==================="
+          find /home/admin/apps -maxdepth 3 -type f -not -path "*/node_modules/*" 2>/dev/null
 
-          echo "=================== VT commands from shell history (redacted) ==================="
-          grep -i "vt\|virustotal" /home/admin/.bash_history 2>/dev/null \
-            | sed -E 's/[0-9a-f]{64}/<REDACTED-64HEX>/g' | tail -25 || echo "(none)"
+          echo "=================== VT lines in shell history (redacted) ==================="
+          grep -i "virustotal\|vt_" /home/admin/.bash_history 2>/dev/null \
+            | sed -E "s/[0-9a-f]{64}/<REDACTED-64HEX>/g" | tail -30
 
-          echo "=================== is a VT key present in any env file? (presence only) ==================="
+          echo "=================== VT key present anywhere? (presence only, never the value) ==================="
           for f in /home/admin/.env /home/admin/hunajapannu/.env /home/admin/hunajapannu/backend/.env \
-                   /home/admin/apps/cowrie-api/.env /home/admin/ecosystem.config.js; do
-            [ -f "$f" ] && echo "  $f: $(grep -c -i 'vt\|virustotal' "$f" 2>/dev/null) vt-ish lines"
+                   /home/admin/apps/cowrie-api/.env /home/admin/ecosystem.config.js \
+                   /home/admin/.pm2/dump.pm2; do
+            if [ -f "$f" ]; then
+              n=$(grep -c -iE "vt_api|virustotal|VT_KEY" "$f" 2>/dev/null)
+              echo "  $f -> $n matching lines"
+            fi
           done
           exit 0
 
-      - name: Print the VT script, keys redacted
+      - name: Print anything VT-shaped, keys redacted
         run: |
-          set -uo pipefail
-          hits=$(grep -rl -i "virustotal" /home/admin/apps 2>/dev/null | head -3)
-          for f in $hits; do
+          set -u
+          for f in $(grep -rl -i "virustotal" /home/admin/apps --exclude-dir=node_modules 2>/dev/null); do
+            case "$f" in */dist/*) continue;; esac
             echo "=================== $f ==================="
-            stat -c 'modified: %y  size: %s' "$f"
-            sed -E 's/[0-9a-f]{64}/<REDACTED-64HEX>/g; s/(api[_-]?key[^=:]*[=:]).*/\1 <REDACTED>/Ig' "$f" | head -160
+            stat -c "modified: %y  size: %s" "$f" 2>/dev/null
+            sed -E "s/[0-9a-f]{64}/<REDACTED-64HEX>/g; s/(api[_-]?key[^=:]*[=:]).*/\1 <REDACTED>/Ig" "$f" | head -200
           done
-          [ -n "$hits" ] || echo "(nothing under /home/admin/apps mentions virustotal)"
+          echo "=================== vt_backfill_frontend_min contents ==================="
+          F=/home/admin/apps/cowrie-api/vt_backfill_frontend_min
+          if [ -d "$F" ]; then
+            find "$F" -type f 2>/dev/null
+          elif [ -f "$F" ]; then
+            sed -E "s/[0-9a-f]{64}/<REDACTED-64HEX>/g" "$F" | head -200
+          fi
           exit 0
