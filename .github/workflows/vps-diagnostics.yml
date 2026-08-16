@@ -4,6 +4,10 @@ name: VPS diagnostics
 # dispatch only — nothing here restarts, installs or writes anything.
 # Written to locate the old VirusTotal enrichment script, which stopped
 # updating cowrie_files on 2026-07-25.
+#
+# No sudo: the runner's sudoers entry is an allowlist and find/grep are not
+# on it. Everything below runs as the runner user, which is also the user
+# any old cron-driven script would have run as.
 
 on:
   workflow_dispatch:
@@ -12,44 +16,47 @@ jobs:
   diagnose:
     runs-on: [self-hosted, linux]
     steps:
-      - name: Find the VT enrichment script and how it was scheduled
+      - name: Locate the VT enrichment script
         run: |
           set -uo pipefail
 
-          echo "=================== cron ==================="
-          crontab -l 2>/dev/null || echo "(no user crontab)"
-          sudo ls -la /etc/cron.d/ 2>/dev/null || true
-          sudo grep -ril "virustotal\|vt" /etc/cron.d/ 2>/dev/null || true
+          echo "=================== home dir ==================="
+          ls -la /home/admin/ | head -40
 
-          echo "=================== systemd timers ==================="
-          systemctl list-timers --all --no-pager 2>/dev/null | head -25
-          systemctl list-units --no-pager 2>/dev/null | grep -i "vt\|virus" || echo "(no vt units)"
+          echo "=================== warm-cache.sh (the only cron entry) ==================="
+          cat /home/admin/warm-cache.sh 2>/dev/null | head -40 || echo "(unreadable)"
 
-          echo "=================== scripts on disk ==================="
-          for d in /home/admin /opt /usr/local/bin /root; do
-            sudo find "$d" -maxdepth 3 \( -name "*vt*" -o -name "*virus*" \) \
-              -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null
-          done
-
-          echo "=================== grep for the API host ==================="
-          sudo grep -rl "virustotal" /home/admin /opt /usr/local/bin \
+          echo "=================== scripts mentioning virustotal (as runner user) ==================="
+          grep -rl -i "virustotal" /home/admin \
             --include="*.py" --include="*.js" --include="*.sh" \
-            --exclude-dir=node_modules --exclude-dir=.git 2>/dev/null || echo "(none)"
+            --exclude-dir=node_modules --exclude-dir=.git 2>/dev/null || echo "(none readable)"
 
-          echo "=================== pm2 ==================="
-          pm2 ls 2>/dev/null || true
+          echo "=================== any vt-named files ==================="
+          find /home/admin -maxdepth 3 \( -iname "*vt*" -o -iname "*virus*" -o -iname "*enrich*" \) \
+            -not -path "*/node_modules/*" -not -path "*/.git/*" 2>/dev/null || true
 
-      - name: Show the script itself (redacting anything that looks like a key)
+          echo "=================== pm2 (a dead pm2 app would explain the stop) ==================="
+          pm2 ls || true
+          pm2 jlist 2>/dev/null | python3 -c "
+          import sys,json
+          try: apps=json.load(sys.stdin)
+          except Exception: sys.exit(0)
+          for a in apps:
+              e=a.get('pm2_env',{})
+              print(f\"  {a.get('name')}  status={e.get('status')}  restarts={e.get('restart_time')}  script={e.get('pm_exec_path')}\")" || true
+          exit 0
+
+      - name: Show what was found (keys redacted)
         run: |
           set -uo pipefail
-          hits=$(sudo grep -rl "virustotal" /home/admin /opt /usr/local/bin \
+          hits=$(grep -rl -i "virustotal" /home/admin \
             --include="*.py" --include="*.js" --include="*.sh" \
             --exclude-dir=node_modules --exclude-dir=.git 2>/dev/null || true)
           for f in $hits; do
             echo "=================== $f ==================="
-            sudo stat -c 'modified: %y  size: %s' "$f"
-            # Redact likely API keys (VT keys are 64 hex chars).
-            sudo sed -E 's/[0-9a-f]{64}/<REDACTED-64HEX>/g; s/(api[_-]?key[^=:]*[=:]).*/\1 <REDACTED>/Ig' "$f" | head -120
+            stat -c 'modified: %y  size: %s' "$f"
+            # VT API keys are 64 hex chars; redact those and any key-looking assignment.
+            sed -E 's/[0-9a-f]{64}/<REDACTED-64HEX>/g; s/(api[_-]?key[^=:]*[=:]).*/\1 <REDACTED>/Ig' "$f" | head -150
           done
-          echo "=================== recent logs mentioning VT ==================="
-          sudo journalctl --since "30 days ago" --no-pager 2>/dev/null | grep -i "virustotal\|vt-enrich\|vt_enrich" | tail -20 || echo "(nothing in journal)"
+          [ -n "$hits" ] || echo "(no script found under /home/admin)"
+          exit 0
