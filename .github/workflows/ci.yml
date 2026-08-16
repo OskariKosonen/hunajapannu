@@ -212,6 +212,36 @@ jobs:
           assert "its timeline has events" "true" "$(jq_get "$PUB/sessions/s001" '.events | length > 0')"
           assert "missing session 404s" "404" "$(status "$PUB/sessions/does-not-exist")"
 
+          echo "--- IOC export ---"
+          assert "200 iocs (json)" "200" "$(status "$PUB/iocs?hours=24")"
+          assert "200 iocs (txt)"  "200" "$(status "$PUB/iocs?hours=24&format=txt")"
+          assert "200 iocs (csv)"  "200" "$(status "$PUB/iocs?hours=24&format=csv")"
+          assert "lists the seeded attacker IPs" "5" "$(jq_get "$PUB/iocs?hours=24" '.total')"
+          # Ordered by event count: s004's IP has 7 rows (1 login + 6 commands),
+          # 1.2.3.4 has 5. Busiest first, not most recent.
+          assert "busiest IP first" "203.0.113.9" "$(jq_get "$PUB/iocs?hours=24" '.rows[0].ip')"
+          assert "counts its events" "7" "$(jq_get "$PUB/iocs?hours=24" '.rows[0].events')"
+          assert "counts its commands separately" "6" "$(jq_get "$PUB/iocs?hours=24" '.rows[0].commands')"
+          # host() not inet::text, or every indicator carries a /32 nobody wants.
+          assert "no CIDR suffix on indicators" "0" \
+            "$(jq_get "$PUB/iocs?hours=24" '[.rows[].ip | select(test("/"))] | length')"
+          # Defanging is the point of the feature for anyone pasting into a ticket.
+          assert "defang rewrites the last dot" "203.0.113[.]9" \
+            "$(jq_get "$PUB/iocs?hours=24&defang=1" '.rows[0].ip')"
+          assert "defang is off by default" "203.0.113.9" "$(jq_get "$PUB/iocs?hours=24" '.rows[0].ip')"
+          # Text output must be pasteable as-is: comments, then bare indicators.
+          txt=$(curl -fsS "$PUB/iocs?hours=24&format=txt")
+          assert "txt carries provenance" "true" \
+            "$(echo "$txt" | grep -q '^# hunajapannu.fi' && echo true || echo false)"
+          assert "txt body is bare indicators" "true" \
+            "$(echo "$txt" | grep -v '^#' | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' && echo true || echo false)"
+          assert "csv has a header row" "true" \
+            "$(curl -fsS "$PUB/iocs?hours=24&format=csv" | grep -q '^ip,events,commands' && echo true || echo false)"
+          assert "hashes export returns the seeded samples" "2" \
+            "$(jq_get "$PUB/iocs?hours=24&type=hashes" '.total')"
+          # An unknown format must not become an unfiltered dump.
+          assert "unknown format falls back to json" "200" "$(status "$PUB/iocs?format=xml")"
+
           echo "--- k-anonymous password lookup ---"
           # sha256("123456") = 8d969eef6eca...  The seed uses it under two
           # usernames, so a real prefix must return a real hash.

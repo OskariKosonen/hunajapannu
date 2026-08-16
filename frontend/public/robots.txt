@@ -1,0 +1,7 @@
+# The dashboard is public and indexable. The API is not interesting to crawl:
+# it is JSON, it changes every two minutes, and it is rate limited.
+User-agent: *
+Allow: /
+Disallow: /api/
+
+Sitemap: https://hunajapannu.fi/sitemap.xml

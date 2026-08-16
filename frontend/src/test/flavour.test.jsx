@@ -48,7 +48,10 @@ describe("flavour", () => {
     const [format, ...styles] = log.mock.calls[0];
     // Every %c must have a matching style argument or the output is garbled.
     expect((format.match(/%c/g) || []).length).toBe(styles.length);
-    expect(format).toContain("github.com/OskariKosonen/hunajapannu");
+    // Points at the public API, not the repo: the repo is private, so a link
+    // to it would 404 for exactly the audience most likely to click.
+    expect(format).toContain("hunajapannu.fi/api/public/cowrie/summary");
+    expect(format).not.toContain("github.com");
   });
 
   it("does not throw when console is unavailable", () => {

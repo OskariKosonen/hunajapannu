@@ -77,12 +77,12 @@ export function printConsoleBanner() {
 
   console.log(
     "%c🍯 hunajapannu.fi%c — a real SSH/Telnet honeypot, wired to a real dashboard.\n" +
-      "%cYou opened the console. Respect. Here is everything:\n\n" +
-      "%c  source   %chttps://github.com/OskariKosonen/hunajapannu\n" +
-      "%c  api      %chttps://hunajapannu.fi/api/public/cowrie/summary\n" +
-      "%c  live     %chttps://hunajapannu.fi/api/public/cowrie/latest?limit=5\n\n" +
-      "%cThe whole public API is open and unauthenticated. Go on.\n" +
-      "%cNo, your password is not sent anywhere. Only 3 chars of its SHA-256. Check the source.",
-    honey, green, dim, dim, green, dim, green, dim, green, green, dim
+      "%cYou opened the console. Respect. Everything here is open and unauthenticated:\n\n" +
+      "%c  summary  %chttps://hunajapannu.fi/api/public/cowrie/summary\n" +
+      "%c  live     %chttps://hunajapannu.fi/api/public/cowrie/latest?limit=5\n" +
+      "%c  iocs     %chttps://hunajapannu.fi/api/public/cowrie/iocs?hours=24&format=txt\n" +
+      "%c  featured %chttps://hunajapannu.fi/api/public/cowrie/sessions/featured\n\n" +
+      "%cNo, your password is not sent anywhere. Only 3 chars of its SHA-256.",
+    honey, green, dim, dim, green, dim, green, dim, green, dim, green, green
   );
 }

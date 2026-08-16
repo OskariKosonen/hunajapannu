@@ -1,0 +1,18 @@
+# hunajapannu.fi — SSH/Telnet honeypot dashboard
+#
+# This host is a research honeypot and its public dashboard. It is meant to be
+# attacked; that is the point. Findings about the *dashboard or API* — as
+# opposed to the honeypot itself — are very welcome.
+
+Contact: https://www.linkedin.com/in/oskari-kosonen-ba2589294/
+Preferred-Languages: en, fi
+Canonical: https://hunajapannu.fi/.well-known/security.txt
+Expires: 2027-08-16T00:00:00.000Z
+
+# Scope
+#  in scope: hunajapannu.fi, /api/public/*
+#  out of scope: the honeypot's own fake SSH/Telnet services (port 22/23) —
+#                those are deliberately vulnerable and log everything you do.
+#
+# Note: /api/public/* is intentionally unauthenticated and read-only.
+# Rate limited to 500 requests / 15 minutes per IP.

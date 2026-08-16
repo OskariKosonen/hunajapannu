@@ -1,0 +1,69 @@
+name: VirusTotal enrichment
+
+# The dashboard shows a VirusTotal column for every captured sample, but the
+# thing that filled it was a script on the VPS that someone ran by hand. It
+# stopped on 2026-07-25 and every sample after that had an empty verdict while
+# the column carried on being displayed.
+#
+# This runs it on a schedule instead. Free-tier VirusTotal allows 4 lookups a
+# minute, so a run is deliberately bounded: 40 samples takes ~10 minutes and
+# the backlog drains over a few runs rather than one long job.
+
+on:
+  schedule:
+    # Every 6 hours. New samples are rare (264 in nine months), so this is
+    # about draining a backlog promptly, not keeping up with volume.
+    - cron: "20 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      batch:
+        description: "Max samples to look up this run"
+        required: false
+        default: "40"
+
+jobs:
+  enrich:
+    runs-on: [self-hosted, linux]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Enrich pending samples
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+          PGHOST: localhost
+          PGDATABASE: cowrie_db
+          PGUSER: ${{ secrets.PGUSER || 'cowrie_user' }}
+          PGPASSWORD: ${{ secrets.PGPASSWORD }}
+          VT_BATCH: ${{ github.event.inputs.batch || '40' }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${VT_API_KEY}" ]; then
+            echo "::warning::VT_API_KEY secret is not set — skipping. Add it in"
+            echo "::warning::Settings → Secrets → Actions to enable enrichment."
+            exit 0
+          fi
+          if [ -z "${PGPASSWORD}" ]; then
+            echo "::warning::PGPASSWORD secret is not set — skipping."
+            exit 0
+          fi
+
+          python3 -m venv /tmp/vt-venv
+          /tmp/vt-venv/bin/pip install --quiet --upgrade pip
+          /tmp/vt-venv/bin/pip install --quiet psycopg2-binary requests
+          /tmp/vt-venv/bin/python tools/vt_enrich.py
+
+      - name: Report coverage
+        if: always()
+        env:
+          PGPASSWORD: ${{ secrets.PGPASSWORD }}
+        run: |
+          set -uo pipefail
+          [ -z "${PGPASSWORD}" ] && exit 0
+          psql -h localhost -U "${{ secrets.PGUSER || 'cowrie_user' }}" -d cowrie_db -qtA -c "
+            SELECT 'samples: ' || COUNT(DISTINCT sha256)
+                 || ' | enriched: ' || COUNT(DISTINCT sha256) FILTER (WHERE vt_last_fetched IS NOT NULL)
+                 || ' | pending: '  || COUNT(DISTINCT sha256) FILTER (WHERE vt_last_fetched IS NULL)
+              FROM cowrie_files
+             WHERE sha256 ~ '^[A-Fa-f0-9]{64}\$'" || true
+          exit 0

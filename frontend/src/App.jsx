@@ -6,6 +6,8 @@ import FeaturedAttack from "./components/FeaturedAttack";
 import TrendPanel from "./components/TrendPanel";
 import TopCredentialsPanel from "./components/TopCredentialsPanel";
 import PasswordCheck from "./components/PasswordCheck";
+import IocExport from "./components/IocExport";
+import EngineeringNotes from "./components/EngineeringNotes";
 import TopCountriesPanel from "./components/TopCountriesPanel";
 import CommandsPanel from "./components/CommandsPanel";
 import TopMalwarePanel from "./components/TopMalwarePanel";
@@ -61,6 +63,7 @@ const CONFIG = {
     SESSIONS: "/api/public/cowrie/sessions",
     FEATURED_SESSION: "/api/public/cowrie/sessions/featured",
     PASSWORD_RANGE: "/api/public/cowrie/passwords/range",
+    IOCS: "/api/public/cowrie/iocs",
     MITRE: "/api/public/cowrie/mitre",
   },
 
@@ -606,6 +609,9 @@ function App() {
               isMobile={isMobile}
               />
             </ErrorBoundary>
+            <ErrorBoundary name="IOC export">
+              <IocExport endpoint={E.IOCS} />
+            </ErrorBoundary>
             <ErrorBoundary name="Password check">
               <PasswordCheck
                 endpoint={E.PASSWORD_RANGE}
@@ -641,6 +647,9 @@ function App() {
 
         <ErrorBoundary name="Topology">
           <AsciiTopology />
+        </ErrorBoundary>
+        <ErrorBoundary name="Engineering notes">
+          <EngineeringNotes />
         </ErrorBoundary>
         <footer className="mt-4 pt-3 border-t border-emerald-900/60 text-center text-[0.65rem] text-green-600">
           hunajapannu.fi
