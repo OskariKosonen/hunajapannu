@@ -36,27 +36,41 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --all
+
+          # Remember what was running so the health check can put it back.
+          PREV_SHA=$(git rev-parse HEAD)
+          echo "PREV_SHA=$PREV_SHA" >> "$GITHUB_ENV"
+          echo "Currently deployed: $PREV_SHA"
+
           git reset --hard origin/main
-          cd backend
-          npm ci
-          cd ..
+          echo "Deploying:          $(git rev-parse HEAD)"
+
+          cd backend && npm ci && cd ..
+
           echo "Applying migrations"
-          shopt -s nullglob
-          migs=(db/migrations/*.sql)
-          if [ ${#migs[@]} -eq 0 ]; then
-            echo "  (no migration files found)"
-          else
-            for f in "${migs[@]}"; do
-              echo "  - $f"
-              sudo -u postgres psql -d cowrie_db -v ON_ERROR_STOP=1 -f "$f" \
-                || echo "  (skipped/failed: $f — review if unexpected)"
-            done
+          # Runs each migration once, records it in schema_migrations, and
+          # fails the deploy if one errors. This used to be a loop ending in
+          # `|| echo "(skipped/failed)"`, which is how migration 006 aborted
+          # on 2026-08-12 while the deploy went green and /top-asn served an
+          # empty aggregate table for days.
+          #
+          # pm2 has not restarted yet at this point, so the API is still
+          # serving the previous revision from memory. Put the working tree
+          # back to match it rather than leaving the two out of step until
+          # someone restarts pm2 by hand.
+          if ! ./db/apply-migrations.sh sudo -u postgres psql -d cowrie_db; then
+            echo "::error::Migration failed; restoring the working tree to $PREV_SHA. The running API was not restarted and is unaffected."
+            git reset --hard "$PREV_SHA"
+            (cd backend && npm ci)
+            exit 1
           fi
+
           pm2 restart cowrie-api
 
       - name: Backend health check
+        working-directory: ${{ env.REPO_DIR }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           # The app loads two MaxMind databases before it starts listening,
           # and on a loaded box that has taken well over the old 25s window —
           # a deploy failed on 2026-08-11 with the backend coming up ~70s
@@ -67,9 +81,29 @@ jobs:
             fi
             echo "  waiting for backend... ($i)"; sleep 2
           done
-          echo "  backend did not become healthy; dumping pm2 state and logs:"
+
+          echo "::error::Backend did not become healthy; rolling back to $PREV_SHA"
           pm2 describe cowrie-api || true
           pm2 logs cowrie-api --nostream --lines 100 || true
+
+          # Roll the code back. Migrations are deliberately NOT reverted:
+          # these are additive (new tables, columns, indexes, triggers) and
+          # the previous revision runs fine against the newer schema, whereas
+          # a half-understood down-migration on live data is how you turn a
+          # failed deploy into a lost database.
+          echo "--- rolling back ---"
+          git reset --hard "$PREV_SHA"
+          (cd backend && npm ci)
+          pm2 restart cowrie-api
+
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3001/health; then
+              echo "::warning::Deploy failed and was rolled back to $PREV_SHA. The site is up on the previous revision; the schema is left at the newer version."
+              exit 1
+            fi
+            sleep 2
+          done
+          echo "::error::Rollback to $PREV_SHA also failed to come up. The API is down."
           exit 1
 
       - name: Deploy frontend

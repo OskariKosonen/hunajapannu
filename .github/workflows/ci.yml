@@ -44,6 +44,12 @@ jobs:
       - run: npm ci
       - name: Syntax check
         run: node --check index.js
+      - name: Unit tests
+        # Pure logic that fails *silently* in production: a wrong MITRE regex
+        # mislabels attacks, broken LIKE-escaping turns a search into a full
+        # table match, an inverted skew sign reads a dead feed as fresh data.
+        # All three still return HTTP 200, so no smoke test can catch them.
+        run: npm test
       - name: Boot against a real database
         # Catches what a syntax check cannot: a query referencing a column that
         # does not exist, a migration that fails to apply, a route that throws
@@ -59,62 +65,171 @@ jobs:
           set -euo pipefail
           export PGPASSWORD
 
-          echo "--- applying schema and migrations ---"
+          PSQL=(psql -h localhost -U postgres -d cowrie_db)
+          API=http://localhost:3999
+          PUB=$API/api/public/cowrie
+          fail=0
+
+          # assert <description> <expected> <actual>
+          assert() {
+            if [ "$2" = "$3" ]; then
+              printf '  ok   %s\n' "$1"
+            else
+              printf '  FAIL %s: expected %s, got %s\n' "$1" "$2" "$3"; fail=1
+            fi
+          }
+          # jq_get <url> <filter>  — the value, or "ERR" if the call failed.
+          jq_get() { curl -fsS "$1" 2>/dev/null | jq -r "$2" 2>/dev/null || echo ERR; }
+          status() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+
+          echo "--- applying schema ---"
           # schema.sql is a pg_dump: it assigns ownership and grants to
           # cowrie_user, and \restrict guards depend on the psql version.
-          psql -h localhost -U postgres -d cowrie_db -q \
+          "${PSQL[@]}" -q \
             -c "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='cowrie_user') THEN CREATE ROLE cowrie_user LOGIN PASSWORD 'ci'; END IF; END \$\$;"
           grep -v '^\\restrict\|^\\unrestrict' ../db/schema.sql > /tmp/schema.sql
-          psql -h localhost -U postgres -d cowrie_db -v ON_ERROR_STOP=1 -q -f /tmp/schema.sql
-          for f in ../db/migrations/*.sql; do
-            echo "  $f"
-            psql -h localhost -U postgres -d cowrie_db -v ON_ERROR_STOP=1 -q -f "$f"
-          done
+          "${PSQL[@]}" -v ON_ERROR_STOP=1 -q -f /tmp/schema.sql
+
+          echo "--- applying migrations through the ledger ---"
+          # Same script the deploy runs, so CI exercises the real code path.
+          ../db/apply-migrations.sh "${PSQL[@]}"
+
+          expected_migrations=$(ls ../db/migrations/*.sql | wc -l)
+          recorded=$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM schema_migrations")
+          assert "every migration recorded in the ledger" "$expected_migrations" "$recorded"
+
+          echo "--- the ledger must not re-run what it already applied ---"
+          # grep -c exits 1 on no matches, which set -e would treat as fatal.
+          again=$(../db/apply-migrations.sh "${PSQL[@]}" | grep -c '(already applied)' || true)
+          assert "second run skips all migrations" "$expected_migrations" "$again"
+
+          echo "--- migrations must still be re-runnable (FORCE=1) ---"
+          # Production replayed every migration on every deploy for months, and
+          # the FORCE escape hatch still does. If a migration is not idempotent
+          # this is where it breaks, not in production at 3am.
+          FORCE=1 ../db/apply-migrations.sh "${PSQL[@]}" > /tmp/force.log 2>&1 || {
+            echo "  FAIL a migration is not re-runnable:"; tail -20 /tmp/force.log; fail=1;
+          }
+
+          echo "--- seeding synthetic traffic ---"
+          # Without this every endpoint below is asserted against empty tables,
+          # which is how an empty cowrie_asn_agg passed CI in August.
+          "${PSQL[@]}" -v ON_ERROR_STOP=1 -q -f ../db/testdata/seed.sql
+          assert "seed produced events" "12" \
+            "$("${PSQL[@]}" -qtA -c 'SELECT count(*) FROM cowrie_events')"
+          # These four tables are populated only by trigger, so this is also the
+          # only coverage sync_cowrie_event_aggs / sync_cowrie_files_agg have.
+          assert "trigger filled cowrie_asn_agg" "3" \
+            "$("${PSQL[@]}" -qtA -c 'SELECT count(*) FROM cowrie_asn_agg')"
+          assert "trigger filled cowrie_country_agg" "3" \
+            "$("${PSQL[@]}" -qtA -c 'SELECT count(*) FROM cowrie_country_agg')"
+          assert "trigger filled cowrie_unique_creds" "4" \
+            "$("${PSQL[@]}" -qtA -c 'SELECT count(*) FROM cowrie_unique_creds')"
+          assert "trigger filled cowrie_files_agg" "2" \
+            "$("${PSQL[@]}" -qtA -c 'SELECT count(*) FROM cowrie_files_agg')"
+          # unique_ips must count distinct IPs, not events: AS4134 saw 8 events
+          # from 2 addresses. Getting this wrong (the FOUND semantics after
+          # ON CONFLICT DO NOTHING) would show 8 and look plausible.
+          assert "AS4134 totals" "8|2" \
+            "$("${PSQL[@]}" -qtA -c 'SELECT total || $$|$$ || unique_ips FROM cowrie_asn_agg WHERE asn = 4134')"
+          # Migration 005: first_seen falls back to timestamp when mtime is NULL.
+          assert "files_agg first_seen never null" "0" \
+            "$("${PSQL[@]}" -qtA -c 'SELECT count(*) FROM cowrie_files_agg WHERE first_seen IS NULL')"
 
           echo "--- starting API ---"
           node index.js & pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
           for i in $(seq 1 30); do
-            curl -fsS "http://localhost:3999/health" >/dev/null 2>&1 && break
+            curl -fsS "$API/health" >/dev/null 2>&1 && break
             sleep 1
           done
 
-          echo "--- smoke-testing every public endpoint ---"
-          fail=0
+          echo "--- every public endpoint answers 200 ---"
           for path in \
-            "health" \
-            "api/health" \
-            "api/public/cowrie/summary" \
-            "api/public/cowrie/latest?limit=1" \
-            "api/public/cowrie/events-per-hour?hours=24" \
-            "api/public/cowrie/commands?limit=5&search=wget" \
-            "api/public/cowrie/creds?limit=5&search=root" \
-            "api/public/cowrie/creds/unique-count" \
-            "api/public/cowrie/files?limit=5&search=elf" \
-            "api/public/cowrie/top-asn?limit=5" \
-            "api/public/cowrie/top-countries?limit=5" \
-            "api/public/cowrie/ip-stats" \
-            "api/public/cowrie/mitre" \
-            "api/public/cowrie/sessions?limit=5" ; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:3999/$path")
-            if [ "$code" = "200" ]; then
-              printf '  ok   %s\n' "$path"
-            else
-              printf '  FAIL %s -> %s\n' "$path" "$code"; fail=1
-            fi
+            "$API/health" \
+            "$API/api/health" \
+            "$PUB/summary" \
+            "$PUB/latest?limit=1" \
+            "$PUB/events-per-hour?hours=24" \
+            "$PUB/commands?limit=5&search=wget" \
+            "$PUB/creds?limit=5&search=root" \
+            "$PUB/creds/unique-count" \
+            "$PUB/files?limit=5" \
+            "$PUB/top-asn?limit=5" \
+            "$PUB/top-countries?limit=5" \
+            "$PUB/ip-stats" \
+            "$PUB/mitre" \
+            "$PUB/sessions?limit=5" ; do
+            assert "200 ${path#"$API/"}" "200" "$(status "$path")"
           done
 
-          # A missing session must 404, not 500.
-          code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:3999/api/public/cowrie/sessions/does-not-exist")
-          [ "$code" = "404" ] && printf '  ok   sessions/:id 404s when absent\n' \
-                              || { printf '  FAIL sessions/:id -> %s\n' "$code"; fail=1; }
+          echo "--- and returns the seeded data, not an empty envelope ---"
+          assert "top-asn leader is AS4134"      "4134"       "$(jq_get "$PUB/top-asn?limit=5"      '.rows[0].asn')"
+          assert "top-asn unique_ips"            "2"          "$(jq_get "$PUB/top-asn?limit=5"      '.rows[0].unique_ips')"
+          assert "top-countries leader is CN"    "CN"         "$(jq_get "$PUB/top-countries?limit=5" '.[0].country_iso')"
+          assert "commands returns rows"         "7"          "$(jq_get "$PUB/commands?limit=100"   '.total')"
+          assert "creds returns rows"            "4"          "$(jq_get "$PUB/creds?limit=100"      '.total')"
+          assert "files returns rows"            "2"          "$(jq_get "$PUB/files?limit=100"      '.total')"
+          assert "sessions returns rows"         "3"          "$(jq_get "$PUB/sessions?limit=100"   '.total')"
+          assert "latest returns rows"           "true"       "$(jq_get "$PUB/latest?limit=10"      'length > 0')"
+          assert "events-per-hour has a bucket"  "true"       "$(jq_get "$PUB/events-per-hour?hours=24" 'length > 0')"
+          assert "summary counts the last 24h"   "true"       "$(jq_get "$PUB/summary"              '.attacks24h > 0')"
 
-          # Ingest must reject an unauthenticated write.
-          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
-                 -d '{"events":[]}' "http://localhost:3999/api/cowrie/events")
-          [ "$code" = "401" ] && printf '  ok   ingest rejects missing token\n' \
-                              || { printf '  FAIL ingest auth -> %s\n' "$code"; fail=1; }
+          # Ingest freshness: the seed is minutes old, so health must read as
+          # live. This is the check that stayed green for four days in August
+          # while nothing was arriving.
+          assert "health reports ingest fresh"   "false"      "$(jq_get "$API/health" '.ingestStale')"
+          assert "health reports no clock skew"  "false"      "$(jq_get "$API/health" '.clockSkewed')"
 
-          kill $pid 2>/dev/null || true
+          echo "--- MITRE tagging is applied server-side ---"
+          assert "wget tagged T1105" "true" \
+            "$(jq_get "$PUB/commands?limit=100&search=wget" '[.rows[].tags[]] | index("T1105") != null')"
+          assert "tag filter narrows results" "2" \
+            "$(jq_get "$PUB/commands?limit=100&tag=T1105" '.total')"
+          assert "an unknown tag is ignored, not fatal" "7" \
+            "$(jq_get "$PUB/commands?limit=100&tag=NOPE" '.total')"
+
+          echo "--- search escaping ---"
+          # /creds, /files, /top-asn and /sessions search in SQL with
+          # ILIKE '%term%', so these are the endpoints that exercise the
+          # metacharacter escaping. Unescaped, ILIKE '%%%' matches every row,
+          # returning 200 and a full result set that looks like a working
+          # search. (/commands filters its cached snapshot in JS instead, so
+          # it is checked separately below.)
+          # root/123456 and root/toor; admin/admin and user/pass must not match.
+          assert "creds: a real term matches"   "2" "$(jq_get "$PUB/creds?limit=100&search=root" '.total')"
+          assert "creds: literal % matches none" "0" "$(jq_get "$PUB/creds?limit=100&search=%25" '.total')"
+          assert "creds: literal _ matches none" "0" "$(jq_get "$PUB/creds?limit=100&search=%5F" '.total')"
+          assert "files: literal % matches none" "0" "$(jq_get "$PUB/files?limit=100&search=%25" '.total')"
+          assert "asn:   literal % matches none" "0" "$(jq_get "$PUB/top-asn?limit=100&search=%25" '.total')"
+          # In-memory filtering path.
+          assert "commands: a real term matches" "2" "$(jq_get "$PUB/commands?limit=100&search=wget" '.total')"
+          assert "commands: nonsense matches none" "0" "$(jq_get "$PUB/commands?limit=100&search=zzzq" '.total')"
+
+          echo "--- session drill-down ---"
+          assert "known session resolves" "s001" "$(jq_get "$PUB/sessions/s001" '.session.session_id')"
+          assert "its timeline has events" "true" "$(jq_get "$PUB/sessions/s001" '.events | length > 0')"
+          assert "missing session 404s" "404" "$(status "$PUB/sessions/does-not-exist")"
+
+          echo "--- ingest write path ---"
+          assert "rejects a missing token" "401" \
+            "$(status -X POST -H 'Content-Type: application/json' -d '{"events":[]}' "$API/api/cowrie/events")"
+          assert "rejects a wrong token" "401" \
+            "$(status -X POST -H 'Content-Type: application/json' -H 'Authorization: Bearer nope' \
+               -d '{"events":[]}' "$API/api/cowrie/events")"
+          accepted=$(curl -fsS -X POST -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $INGEST_API_KEY" \
+            -d '{"events":[{"src_ip":"203.0.113.7","dest_port":22,"username":"ci","password":"ci-pass","command":"curl http://ci/probe","session_id":"ci-1"}]}' \
+            "$API/api/cowrie/events" | jq -r '.inserted')
+          assert "accepts an authenticated write" "1" "$accepted"
+          # The write must reach all three tables, not just cowrie_events.
+          assert "ingested event stored" "1" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_events WHERE session_id = 'ci-1'")"
+          assert "ingested command deduped into cowrie_unique_commands" "1" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_unique_commands WHERE command = 'curl http://ci/probe'")"
+          assert "ingested credential stored" "1" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_unique_creds WHERE username = 'ci'")"
+
           exit $fail
 
     services:

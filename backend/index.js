@@ -3,6 +3,9 @@ const { Pool } = require('pg');
 const maxmind = require('maxmind');
 const { LRUCache } = require('lru-cache');
 const rateLimit = require('express-rate-limit');
+const { MITRE_SIGNATURES, MITRE_IDS, tagCommand } = require('./lib/mitre');
+const { parseListParams } = require('./lib/params');
+const { assessIngest } = require('./lib/health');
 
 // ============================================================================
 // Configuration Constants
@@ -150,56 +153,7 @@ const summaryCache = {
   expiresAt: 0,
 };
 
-// ============================================================================
-// MITRE ATT&CK Command Tagging
-// ============================================================================
-
-/**
- * Signatures matched against captured commands. These used to live in the
- * frontend, which meant shipping all 3000+ commands to the browser just to
- * tag and count them. Tagging here lets the API filter by technique and
- * return only the page being displayed. Display metadata (colours) stays in
- * the frontend, keyed by id.
- */
-const MITRE_SIGNATURES = [
-  { id: 'T1490', name: 'Impact (T1490)', description: 'Destructive cleanup',
-    patterns: [/rm\s+-rf/i, /chattr\s+-i/i, /dd\s+if=/i] },
-  { id: 'T1105', name: 'Ingress Tool Transfer (T1105)', description: 'wget/curl/scp drops',
-    patterns: [/wget/i, /curl/i, /tftp/i, /ftp\s/i, /scp/i] },
-  { id: 'T1021', name: 'Remote Services (T1021)', description: 'Pivot via SSH/Telnet',
-    patterns: [/ssh\s/i, /telnet/i, /dropbear/i] },
-  { id: 'T1098', name: 'Account Manipulation (T1098)', description: 'SSH key + password tampering',
-    patterns: [/authorized_keys/i, /chattr/i, /lockr/i, /chpasswd/i, /mkdir\s+-p\s+~\/\.ssh/i] },
-  { id: 'T1059', name: 'Cmd/Scripting (T1059)', description: 'Shells & interpreters',
-    patterns: [/bash/i, /\bsh\b/i, /python/i, /perl/i, /busybox/i] },
-  { id: 'T1562', name: 'Defense Evasion (T1562)', description: 'Cleanup + disabling protections',
-    patterns: [/rm\s+-rf/i, /pkill/i, /echo\s+>\s+\/etc\/hosts\.deny/i, /clean\.sh/i] },
-  { id: 'T1595', name: 'Reconnaissance (T1595)', description: 'Scanning & discovery',
-    patterns: [/nmap/i, /masscan/i, /whois/i, /dig\s/i, /nslookup/i, /curl\s+http:\/\/\d+/i] },
-  { id: 'T1082', name: 'System Info Discovery (T1082)', description: 'uname/lscpu/proc snooping',
-    patterns: [/uname/i, /lscpu/i, /cat\s+\/proc\/cpuinfo/i, /cat\s+\/proc\/uptime/i,
-               /df\s+-h/i, /free\s+-m/i, /nproc/i, /which\s+ls/i, /ps\s/i] },
-];
-
-const MITRE_IDS = new Set(MITRE_SIGNATURES.map((s) => s.id));
-
-/**
- * Command strings are stable and few (one row per unique command), so the
- * regex result for a given string never changes — cache it rather than
- * re-running 40 patterns on every request.
- */
-const mitreTagCache = new LRUCache({ max: 20000 });
-
-function tagCommand(command) {
-  if (!command) return [];
-  const cached = mitreTagCache.get(command);
-  if (cached) return cached;
-  const tags = MITRE_SIGNATURES
-    .filter((sig) => sig.patterns.some((p) => p.test(command)))
-    .map((sig) => sig.id);
-  mitreTagCache.set(command, tags);
-  return tags;
-}
+// MITRE signature definitions and tagCommand() now live in ./lib/mitre.
 
 const leaderboardCache = new Map();
 
@@ -211,24 +165,7 @@ function getCachedLeaderboard(key) {
   return null;
 }
 
-/**
- * Parses the limit/offset/search trio shared by the paginated list endpoints.
- * Search is used as an ILIKE '%term%' argument, so escape the LIKE
- * metacharacters — otherwise a '%' typed by a user matches everything.
- */
-function parseListParams(req, { defaultLimit, maxLimit }) {
-  const rawLimit = parseInt(req.query.limit, 10);
-  const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : defaultLimit, 1), maxLimit);
-
-  const rawOffset = parseInt(req.query.offset, 10);
-  const offset = Math.max(Number.isFinite(rawOffset) ? rawOffset : 0, 0);
-
-  const rawSearch = typeof req.query.search === 'string' ? req.query.search.trim() : '';
-  const search = rawSearch.slice(0, 200);
-  const like = search ? `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
-
-  return { limit, offset, search, like };
-}
+// parseListParams() now lives in ./lib/params.
 
 function setCachedLeaderboard(key, data) {
   leaderboardCache.set(key, { data, expiresAt: Date.now() + LEADERBOARD_CACHE_TTL_MS });
@@ -651,28 +588,18 @@ async function healthCheck(_req, res) {
     // were arriving at all. "Serving requests" is not the same as "working".
     const { rows } = await pool.query('SELECT MAX(timestamp) AS last_event FROM cowrie_events');
     const lastEvent = rows[0]?.last_event ? new Date(rows[0].last_event) : null;
-    const ageSeconds = lastEvent ? Math.round((Date.now() - lastEvent.getTime()) / 1000) : null;
 
-    // A negative age means events are timestamped in the future, i.e. the
-    // sensor's clock or timezone disagrees with ours. Surface it rather than
-    // reading it as "very fresh" — future timestamps would otherwise mask a
-    // stopped feed for as long as the skew lasts.
-    const clockSkewSeconds = ageSeconds != null && ageSeconds < 0 ? -ageSeconds : 0;
-    const clockSkewed = clockSkewSeconds > CLOCK_SKEW_TOLERANCE_SECONDS;
-
-    const ingestStale = ageSeconds == null || ageSeconds > INGEST_STALE_AFTER_SECONDS;
+    const ingest = assessIngest(lastEvent, Date.now(), {
+      staleAfterSeconds: INGEST_STALE_AFTER_SECONDS,
+      skewToleranceSeconds: CLOCK_SKEW_TOLERANCE_SECONDS,
+    });
 
     // Still HTTP 200 when only ingestion is stale: the service itself is
     // healthy, and failing this would make deploys fail for an unrelated
     // reason. Alerting keys on the ingestStale flag instead.
     res.json({
-      status: ingestStale || clockSkewed ? 'degraded' : 'ok',
+      ...ingest,
       db: 'connected',
-      lastEventAt: lastEvent ? lastEvent.toISOString() : null,
-      lastEventAgeSeconds: ageSeconds,
-      ingestStale,
-      clockSkewed,
-      clockSkewSeconds,
       staleAfterSeconds: INGEST_STALE_AFTER_SECONDS,
       timestamp: new Date().toISOString(),
     });
