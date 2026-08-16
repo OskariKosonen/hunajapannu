@@ -26,6 +26,24 @@ it rather than continuing.
 | `FORCE=1` | Re-apply every migration, ignoring the ledger. CI uses this to prove migrations are still idempotent. |
 | `ALLOW_CHECKSUM_DRIFT=1` | Warn instead of failing when a file no longer matches what was applied. |
 
+## Running the CI suite locally
+
+```sh
+tools/ci-local.sh
+```
+
+Schema, migrations, seed and every endpoint assertion, against a throwaway
+Postgres 16 container. About a minute. It extracts the assertions from
+`.github/workflows/ci.yml` rather than copying them, so there is one set of
+checks and it is the set CI runs.
+
+No local `psql` is needed — the script shims it through the container. Only
+docker, jq, python3 (pyyaml) and node.
+
+Worth running before a push. Two bugs in the payload-URL export reached
+production because the checks that would have caught them were only ever run
+after the push, and were only written after reading the broken output.
+
 ## Rules
 
 **Never edit a migration that has been applied.** Its checksum is recorded, and
