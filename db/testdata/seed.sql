@@ -57,7 +57,7 @@ VALUES
   -- (one 2026-08-09 session holds twelve exact copies of every event).
   -- /sessions/featured must rank by DISTINCT commands: by raw count s004 (6)
   -- beats s001 (4) and the front page would replay one line six times over.
-  (now() - interval '20 min', '203.0.113.9', 22, 'root', 'toor',  NULL,             's004', 'BR', 64512, 'Example Telecom', 'Sao Paulo'),
+  (now() - interval '20 min', '203.0.113.9', 22, 'admin','123456', NULL,            's004', 'BR', 64512, 'Example Telecom', 'Sao Paulo'),
   (now() - interval '19 min', '203.0.113.9', 22, NULL,   NULL,    'cat /etc/passwd', 's004', 'BR', 64512, 'Example Telecom', 'Sao Paulo'),
   (now() - interval '19 min', '203.0.113.9', 22, NULL,   NULL,    'cat /etc/passwd', 's004', 'BR', 64512, 'Example Telecom', 'Sao Paulo'),
   (now() - interval '19 min', '203.0.113.9', 22, NULL,   NULL,    'cat /etc/passwd', 's004', 'BR', 64512, 'Example Telecom', 'Sao Paulo'),

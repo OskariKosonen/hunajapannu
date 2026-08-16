@@ -1,11 +1,12 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import SessionsPanel from "../components/SessionsPanel";
 import SessionDrawer from "../components/SessionDrawer";
 import CommandsPanel from "../components/CommandsPanel";
 import EventsPanel from "../components/EventsPanel";
 import FeaturedAttack from "../components/FeaturedAttack";
+import PasswordCheck from "../components/PasswordCheck";
 import AreaSparkline from "../components/common/AreaSparkline";
 
 const noop = () => {};
@@ -344,6 +345,106 @@ describe("FeaturedAttack", () => {
       ],
     }} />);
     expect(screen.getAllByText("ls")).toHaveLength(2);
+  });
+});
+
+describe("PasswordCheck", () => {
+  // sha256("123456") = 8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92
+  const HASH = "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92";
+  const props = {
+    endpoint: "/api/public/cowrie/passwords/range",
+    formatNumber: (n) => String(n),
+    uniqueCredCount: 203819,
+  };
+
+  const typeAndCheck = async (value) => {
+    fireEvent.change(screen.getByLabelText(/password to check/i), { target: { value } });
+    fireEvent.click(screen.getByRole("button", { name: /^check$/i }));
+  };
+
+  // No crypto stub: the test environment has real WebCrypto, so these
+  // exercise the actual SHA-256 and the real prefix/suffix split rather than
+  // a mock that would happily agree with a broken implementation.
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it("sends only the hash prefix, never the password", async () => {
+    // The entire premise of the feature. If this regresses it becomes a
+    // credential-harvesting form.
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ prefix: "8d969", results: [] }) })
+    );
+    global.fetch = fetchMock;
+
+    render(<PasswordCheck {...props} />);
+    await typeAndCheck("123456");
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toBe("/api/public/cowrie/passwords/range/8d969");
+    expect(url).not.toContain("123456");
+    // No body, no second argument carrying one.
+    expect(fetchMock.mock.calls[0][1]).toBeUndefined();
+  });
+
+  it("reports a match found in the returned range", async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          prefix: "8d969",
+          results: [{ suffix: HASH.slice(5), pairs: 3, attempts: 4812, usernames: ["root", "admin"] }],
+        }),
+      })
+    );
+    render(<PasswordCheck {...props} />);
+    await typeAndCheck("123456");
+    expect(await screen.findByText(/seen 4812 times/i)).toBeInTheDocument();
+    expect(screen.getByText("root")).toBeInTheDocument();
+  });
+
+  it("says so when the prefix comes back with no matching suffix", async () => {
+    // The server answers identically whether or not the password is present;
+    // only the local suffix comparison decides.
+    global.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          prefix: "8d969",
+          results: [{ suffix: "a".repeat(59), pairs: 1, attempts: 1, usernames: ["x"] }],
+        }),
+      })
+    );
+    render(<PasswordCheck {...props} />);
+    await typeAndCheck("123456");
+    expect(await screen.findByText(/not in this corpus/i)).toBeInTheDocument();
+  });
+
+  it("surfaces a failed lookup instead of implying the password is safe", async () => {
+    global.fetch = vi.fn(() => Promise.resolve({ ok: false, status: 500 }));
+    render(<PasswordCheck {...props} />);
+    await typeAndCheck("123456");
+    expect(await screen.findByRole("alert")).toHaveTextContent(/API error 500/);
+    expect(screen.queryByText(/not in this corpus/i)).toBeNull();
+  });
+
+  it("masks the field by default and can reveal it", () => {
+    render(<PasswordCheck {...props} />);
+    const input = screen.getByLabelText(/password to check/i);
+    expect(input).toHaveAttribute("type", "password");
+    fireEvent.click(screen.getByRole("button", { name: /show/i }));
+    expect(input).toHaveAttribute("type", "text");
+  });
+
+  it("warns against entering a password actually in use", () => {
+    render(<PasswordCheck {...props} />);
+    expect(screen.getByText(/don't type a password you currently use/i)).toBeInTheDocument();
+  });
+
+  it("will not submit an empty value", () => {
+    global.fetch = vi.fn();
+    render(<PasswordCheck {...props} />);
+    expect(screen.getByRole("button", { name: /^check$/i })).toBeDisabled();
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 });
 

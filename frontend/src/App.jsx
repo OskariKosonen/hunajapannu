@@ -5,6 +5,7 @@ import EventsPanel from "./components/EventsPanel";
 import FeaturedAttack from "./components/FeaturedAttack";
 import TrendPanel from "./components/TrendPanel";
 import TopCredentialsPanel from "./components/TopCredentialsPanel";
+import PasswordCheck from "./components/PasswordCheck";
 import TopCountriesPanel from "./components/TopCountriesPanel";
 import CommandsPanel from "./components/CommandsPanel";
 import TopMalwarePanel from "./components/TopMalwarePanel";
@@ -58,6 +59,7 @@ const CONFIG = {
     SUMMARY: "/api/public/cowrie/summary",
     SESSIONS: "/api/public/cowrie/sessions",
     FEATURED_SESSION: "/api/public/cowrie/sessions/featured",
+    PASSWORD_RANGE: "/api/public/cowrie/passwords/range",
     MITRE: "/api/public/cowrie/mitre",
   },
 
@@ -589,6 +591,13 @@ function App() {
               formatTimestamp={formatTimestamp}
               formatDate={formatDate}
               isMobile={isMobile}
+              />
+            </ErrorBoundary>
+            <ErrorBoundary name="Password check">
+              <PasswordCheck
+                endpoint={E.PASSWORD_RANGE}
+                formatNumber={formatNumber}
+                uniqueCredCount={summaryStats.uniqueCredCount}
               />
             </ErrorBoundary>
             <ErrorBoundary name="Top credentials">

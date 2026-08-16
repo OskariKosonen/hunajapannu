@@ -123,7 +123,7 @@ jobs:
             "$("${PSQL[@]}" -qtA -c 'SELECT count(*) FROM cowrie_asn_agg')"
           assert "trigger filled cowrie_country_agg" "4" \
             "$("${PSQL[@]}" -qtA -c 'SELECT count(*) FROM cowrie_country_agg')"
-          assert "trigger filled cowrie_unique_creds" "4" \
+          assert "trigger filled cowrie_unique_creds" "5" \
             "$("${PSQL[@]}" -qtA -c 'SELECT count(*) FROM cowrie_unique_creds')"
           assert "trigger filled cowrie_files_agg" "2" \
             "$("${PSQL[@]}" -qtA -c 'SELECT count(*) FROM cowrie_files_agg')"
@@ -169,7 +169,7 @@ jobs:
           assert "top-asn unique_ips"            "2"          "$(jq_get "$PUB/top-asn?limit=5"      '.rows[0].unique_ips')"
           assert "top-countries leader is CN"    "CN"         "$(jq_get "$PUB/top-countries?limit=5" '.[0].country_iso')"
           assert "commands returns rows"         "8"          "$(jq_get "$PUB/commands?limit=100"   '.total')"
-          assert "creds returns rows"            "4"          "$(jq_get "$PUB/creds?limit=100"      '.total')"
+          assert "creds returns rows"            "5"          "$(jq_get "$PUB/creds?limit=100"      '.total')"
           assert "files returns rows"            "2"          "$(jq_get "$PUB/files?limit=100"      '.total')"
           assert "sessions returns rows"         "4"          "$(jq_get "$PUB/sessions?limit=100"   '.total')"
           assert "latest returns rows"           "true"       "$(jq_get "$PUB/latest?limit=10"      'length > 0')"
@@ -211,6 +211,24 @@ jobs:
           assert "known session resolves" "s001" "$(jq_get "$PUB/sessions/s001" '.session.session_id')"
           assert "its timeline has events" "true" "$(jq_get "$PUB/sessions/s001" '.events | length > 0')"
           assert "missing session 404s" "404" "$(status "$PUB/sessions/does-not-exist")"
+
+          echo "--- k-anonymous password lookup ---"
+          # sha256("123456") = 8d969eef6eca...  sha256("admin") = 8c6976e5b541...
+          # The seed uses both, so a real prefix must return a real hash.
+          assert "a seeded password is findable by prefix" "true" \
+            "$(jq_get "$PUB/passwords/range/8d969" '[.results[].suffix] | any(startswith("eef6eca"))')"
+          assert "it reports how many usernames used it" "2" \
+            "$(jq_get "$PUB/passwords/range/8d969" '.results[0].pairs')"
+          # The response must not leak the password or its full hash position:
+          # only suffixes, and only for the prefix asked about.
+          assert "every result matches the prefix asked for" "0" \
+            "$(jq_get "$PUB/passwords/range/8d969" '[.results[].suffix | length | select(. != 59)] | length')"
+          assert "an unused prefix returns an empty set, not an error" "0" \
+            "$(jq_get "$PUB/passwords/range/00000" '.results | length')"
+          # A bad prefix must be rejected rather than turned into a table scan.
+          assert "rejects a short prefix"    "400" "$(status "$PUB/passwords/range/8d9")"
+          assert "rejects a non-hex prefix"  "400" "$(status "$PUB/passwords/range/zzzzz")"
+          assert "rejects an over-long prefix" "400" "$(status "$PUB/passwords/range/8d969eef")"
 
           echo "--- featured session (front-page replay) ---"
           # s001 runs 4 commands; s002 runs 1; s003 runs 1. The busiest must win,

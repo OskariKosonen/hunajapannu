@@ -922,6 +922,62 @@ app.get('/api/public/cowrie/creds/unique-count', async (_req, res) => {
   }
 });
 
+/**
+ * GET /api/public/cowrie/passwords/range/:prefix
+ *
+ * k-anonymous password lookup, the model Have I Been Pwned uses.
+ *
+ * The caller hashes a password with SHA-256 and sends only the first five hex
+ * characters. This returns every stored hash sharing that prefix, as suffixes,
+ * and the caller finds its own match locally. The password itself never
+ * reaches this server, is never logged, and cannot be reconstructed from the
+ * request: a five-character prefix covers 1/1,048,576 of the hash space, and
+ * the response is identical whether or not the caller's password is in it.
+ *
+ * Response: { prefix, results: [{ suffix, pairs, attempts, usernames }] }
+ */
+app.get('/api/public/cowrie/passwords/range/:prefix', async (req, res) => {
+  const raw = typeof req.params.prefix === 'string' ? req.params.prefix.toLowerCase() : '';
+  // Exactly five hex characters. Anything else is a client bug or a probe;
+  // rejecting keeps the query bounded to one index lookup.
+  if (!/^[0-9a-f]{5}$/.test(raw)) {
+    return res.status(400).json({ error: 'prefix must be 5 hexadecimal characters' });
+  }
+
+  try {
+    // Index scan on idx_cowrie_unique_creds_pwhash_prefix (migration 008).
+    // Deliberately uncached: the key space is a million prefixes, so caching
+    // it would grow without bound for no benefit over an index lookup.
+    const { rows } = await pool.query(
+      `SELECT
+         password_sha256                                            AS hash,
+         COUNT(*)                                                   AS pairs,
+         COALESCE(SUM(total_events), 0)                             AS attempts,
+         (array_agg(DISTINCT username))[1:5]                        AS usernames
+       FROM cowrie_unique_creds
+       WHERE left(password_sha256, 5) = $1
+       GROUP BY password_sha256
+       ORDER BY attempts DESC
+       LIMIT 500`,
+      [raw]
+    );
+
+    res.json({
+      prefix: raw,
+      results: rows.map((r) => ({
+        suffix: String(r.hash).slice(5),
+        pairs: Number(r.pairs),
+        attempts: Number(r.attempts),
+        usernames: r.usernames || [],
+      })),
+    });
+  } catch (err) {
+    // Never echo the prefix into logs alongside an error payload.
+    console.error('Error in /api/public/cowrie/passwords/range:', err.message);
+    res.status(500).json({ error: 'Database query failed' });
+  }
+});
+
 // ============================================================================
 // Public Endpoints - File Download Statistics
 // ============================================================================

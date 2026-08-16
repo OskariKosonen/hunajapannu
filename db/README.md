@@ -73,6 +73,19 @@ looking numbers rather than an error.
 `cowrie_unique_commands` is the exception — it is maintained by the ingest
 endpoint, so `testdata/seed.sql` has to populate it explicitly.
 
+## Password hashes
+
+`cowrie_unique_creds.password_sha256` backs the k-anonymous password lookup
+(`/api/public/cowrie/passwords/range/:prefix`). The browser hashes a password
+with SHA-256 and sends only the first five hex characters; the API returns
+every stored hash sharing that prefix and the browser matches locally, so the
+password never reaches the server.
+
+The column is maintained by a `BEFORE INSERT` trigger rather than a
+`GENERATED ALWAYS` column: Postgres rejects the latter because `convert_to()`
+is stable, not immutable — it depends on the database encoding. The index is
+on `left(password_sha256, 5)`, matching the lookup exactly.
+
 ## Local database for testing
 
 ```sh
