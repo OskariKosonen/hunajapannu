@@ -69,6 +69,15 @@ jobs:
               echo "=================== forwarder env (keys only, no values) ==================="
               try_read "env file" sudo -n grep -o "^[A-Z_]*=" /etc/cowrie-forwarder.env | sed "s/^/  /"
 
+              echo "=================== clock / timezone ==================="
+              echo "  pi local:  $(date)"
+              echo "  pi as UTC: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+              timedatectl 2>/dev/null | sed "s/^/  /" || true
+              echo "  cowrie service TZ: $(systemctl show cowrie -p Environment --value 2>/dev/null || echo unknown)"
+
+              echo "=================== sudo rights (what deploys may do) ==================="
+              sudo -n -l 2>&1 | sed "s/^/  /" || echo "  (cannot list sudo rights without a password)"
+
               echo "=================== connectivity to API ==================="
               curl -s -o /dev/null -w "  GET /health -> %{http_code} in %{time_total}s\n" \
                 --max-time 20 https://hunajapannu.fi/api/public/cowrie/creds/unique-count || true

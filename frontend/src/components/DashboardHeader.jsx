@@ -17,7 +17,7 @@ const DashboardHeader = ({ timeZone, timeZoneLabel }) => (
             title={`All timestamps are shown in your local timezone (${timeZone})`}
             className="text-[0.65rem] px-2 py-0.5 rounded-full border border-emerald-800/70 text-emerald-400 bg-black/40 whitespace-nowrap"
           >
-            🕒 times in {timeZone}
+             times in {timeZone}
             {timeZoneLabel ? ` · ${timeZoneLabel}` : ""}
           </span>
         )}
