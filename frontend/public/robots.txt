@@ -1,7 +1,13 @@
-# The dashboard is public and indexable. The API is not interesting to crawl:
-# it is JSON, it changes every two minutes, and it is rate limited.
+# Cloudflare prepends a managed block to this file before it is served: a
+# "User-agent: *  Allow: /" group with content signals, then a Disallow for
+# each named AI crawler. Fetching /robots.txt shows theirs first and this
+# second, which is why the served file has two "User-agent: *" groups —
+# crawlers merge rules across matching groups, so the effect is additive.
+#
+# Everything below is additive to that: the dashboard is public and
+# indexable, the API is not worth crawling (JSON, changes every two minutes,
+# rate limited), and the sitemap lives here.
 User-agent: *
-Allow: /
 Disallow: /api/
 
 Sitemap: https://hunajapannu.fi/sitemap.xml
