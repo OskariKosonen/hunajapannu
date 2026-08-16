@@ -68,8 +68,11 @@ jobs:
         if: steps.probe.outputs.status == 'ok'
         run: echo "✅ ${{ steps.probe.outputs.detail }}"
 
-      # One open issue at a time: re-runs every 30 minutes must not create a
-      # new issue each time, and recovery should close it on its own.
+      # Notify once per incident, not once per poll. The first run of this
+      # watchdog against a real (and still unfixed) clock skew produced 17
+      # failed runs and 19 identical issue comments overnight — which is how
+      # you teach someone to ignore their alerts. A persistent condition is
+      # tracked by the open issue; only a new or changed condition is loud.
       - name: Open or update alert issue
         if: steps.probe.outputs.status != 'ok'
         uses: actions/github-script@v8
@@ -117,15 +120,23 @@ jobs:
             };
             const condition = CONDITIONS[status] || CONDITIONS.stale;
 
-            const body = [
+            const now = new Date().toISOString();
+            // Machine-readable marker so a later run can tell "same condition
+            // still happening" from "the condition changed".
+            const marker = (s) => `<!-- watchdog-status:${s} -->`;
+
+            const renderBody = (firstSeen) => [
+              marker(status),
               `**Problem:** ${detail}`,
               '',
-              `Detected at ${new Date().toISOString()} (check: \`${status}\`).`,
+              `First detected: ${firstSeen}`,
+              `Last checked:   ${now}  (check: \`${status}\`)`,
               '',
               'Where to look:',
               ...condition.steps.map((s, i) => `${i + 1}. ${s}`),
               '',
-              '_Raised automatically by `.github/workflows/ingest-watchdog.yml`. It closes itself once the check passes._',
+              '_Raised automatically by `.github/workflows/ingest-watchdog.yml`._',
+              '_While this stays open, repeat detections update it quietly instead of failing every run; it closes itself once the check passes._',
             ].join('\n');
 
             const { data: open } = await github.rest.issues.listForRepo({
@@ -135,30 +146,41 @@ jobs:
               labels: 'ingest-watchdog',
             });
 
-            if (open.length > 0) {
-              const issue = open[0];
-              await github.rest.issues.createComment({
+            if (open.length === 0) {
+              const { data: issue } = await github.rest.issues.create({
                 owner: context.repo.owner, repo: context.repo.repo,
-                issue_number: issue.number,
-                body: `Still failing: ${detail}`,
+                title: condition.title, body: renderBody(now), labels: ['ingest-watchdog'],
               });
-              // The condition can change while the issue is open (skew that
-              // becomes a stopped feed); keep the title matching reality.
-              if (issue.title !== condition.title) {
-                await github.rest.issues.update({
-                  owner: context.repo.owner, repo: context.repo.repo,
-                  issue_number: issue.number, title: condition.title, body,
-                });
-              }
-              core.setFailed(`${detail} (see #${issue.number})`);
+              core.setFailed(`${detail} (opened #${issue.number})`);
               return;
             }
 
-            const { data: issue } = await github.rest.issues.create({
+            const issue = open[0];
+            const previous = (issue.body || '').match(/<!-- watchdog-status:(\w+) -->/)?.[1];
+            const firstSeen = (issue.body || '').match(/First detected: (\S+)/)?.[1] || now;
+
+            // Editing the body does not notify anyone, so the issue can carry
+            // a fresh "last checked" without pinging on every poll.
+            await github.rest.issues.update({
               owner: context.repo.owner, repo: context.repo.repo,
-              title: condition.title, body, labels: ['ingest-watchdog'],
+              issue_number: issue.number,
+              title: condition.title,
+              body: renderBody(firstSeen),
             });
-            core.setFailed(`${detail} (opened #${issue.number})`);
+
+            if (previous === status) {
+              core.info(`${detail}\nAlready tracked in #${issue.number} since ${firstSeen} — not re-alerting.`);
+              return;
+            }
+
+            // The condition genuinely changed (skew that became a stopped
+            // feed, say). That is new information, so speak up again.
+            await github.rest.issues.createComment({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: issue.number,
+              body: `Condition changed from \`${previous || 'unknown'}\` to \`${status}\`: ${detail}`,
+            });
+            core.setFailed(`Condition changed to ${status}: ${detail} (see #${issue.number})`);
 
       - name: Close alert issue on recovery
         if: steps.probe.outputs.status == 'ok'
