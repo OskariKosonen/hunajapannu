@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import IocExport from "../components/IocExport";
 import OriginsPanel from "../components/OriginsPanel";
+import PayloadInfraPanel from "../components/PayloadInfraPanel";
 
 describe("IocExport", () => {
   const endpoint = "/api/public/cowrie/iocs";
@@ -114,5 +115,71 @@ describe("OriginsPanel", () => {
     render(<OriginsPanel {...props} view="asn" />);
     expect(screen.getByRole("button", { name: /networks/i })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: /countries/i })).toHaveAttribute("aria-pressed", "false");
+  });
+});
+
+describe("PayloadInfraPanel", () => {
+  const props = {
+    hosts: [
+      { host: "35.237.91.38", is_ip: true, country_iso: "US", asn: 15169,
+        org: "GOOGLE-CLOUD-PLATFORM", url_count: 44, attempts: 120,
+        first_seen: "2026-07-01T00:00:00Z",
+        urls: ["http://35.237.91.38/bins.sh", "http://35.237.91.38/arm7"] },
+      { host: "evil.example", is_ip: false, country_iso: null, asn: null, org: null,
+        url_count: 1, attempts: 3, first_seen: "2026-08-01T00:00:00Z",
+        urls: ["http://evil.example/x.sh"] },
+    ],
+    error: "", loading: false, total: 2,
+    formatNumber: (n) => Number(n).toLocaleString("en-GB"),
+    formatDate: (d) => String(d).slice(0, 10),
+  };
+
+  it("defangs hosts and URLs so a live malware link is never clickable", () => {
+    // This page may be open on a work machine. Rendering a live payload URL as
+    // a link would be a poor thing to do to a visitor.
+    const { container } = render(<PayloadInfraPanel {...props} />);
+    expect(screen.getByText("35.237.91[.]38")).toBeInTheDocument();
+    const links = [...container.querySelectorAll("a")].map((a) => a.getAttribute("href"));
+    expect(links.some((h) => h.includes("bins.sh"))).toBe(false);
+  });
+
+  it("flags cloud-hosted delivery, which IP reputation will not catch", () => {
+    render(<PayloadInfraPanel {...props} />);
+    expect(screen.getByText(/IP reputation will not flag this/i)).toBeInTheDocument();
+  });
+
+  it("does not flag a host that is not on a cloud provider", () => {
+    render(<PayloadInfraPanel {...props} hosts={[props.hosts[1]]} />);
+    expect(screen.queryByText(/IP reputation will not flag/i)).toBeNull();
+  });
+
+  it("offers a VirusTotal pivot for addresses but not for names", () => {
+    const { container } = render(<PayloadInfraPanel {...props} />);
+    const vt = [...container.querySelectorAll("a")].filter((a) =>
+      a.getAttribute("href").includes("virustotal.com")
+    );
+    expect(vt).toHaveLength(1);
+    expect(vt[0].getAttribute("href")).toBe(
+      "https://www.virustotal.com/gui/ip-address/35.237.91.38"
+    );
+  });
+
+  it("shows the attribution it has, and says so when it has none", () => {
+    render(<PayloadInfraPanel {...props} />);
+    expect(screen.getByText(/AS15169 · GOOGLE-CLOUD-PLATFORM · US/)).toBeInTheDocument();
+    expect(screen.getByText("hostname")).toBeInTheDocument();
+  });
+
+  it("keeps the URL list collapsed so hosts stay scannable", () => {
+    const { container } = render(<PayloadInfraPanel {...props} />);
+    expect(container.querySelectorAll("details").length).toBe(2);
+    expect(screen.getAllByText("show URLs").length).toBe(2);
+  });
+
+  it("distinguishes no data from a failure", () => {
+    const { rerender } = render(<PayloadInfraPanel {...props} hosts={[]} total={0} />);
+    expect(screen.getByText(/no download URLs captured/i)).toBeInTheDocument();
+    rerender(<PayloadInfraPanel {...props} hosts={[]} total={0} error="boom" />);
+    expect(screen.getByText(/failed to load payload hosts: boom/i)).toBeInTheDocument();
   });
 });

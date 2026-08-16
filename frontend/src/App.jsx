@@ -7,6 +7,7 @@ import TrendPanel from "./components/TrendPanel";
 import TopCredentialsPanel from "./components/TopCredentialsPanel";
 import PasswordCheck from "./components/PasswordCheck";
 import IocExport from "./components/IocExport";
+import PayloadInfraPanel from "./components/PayloadInfraPanel";
 import CommandsPanel from "./components/CommandsPanel";
 import TopMalwarePanel from "./components/TopMalwarePanel";
 import OriginsPanel from "./components/OriginsPanel";
@@ -62,6 +63,7 @@ const CONFIG = {
     FEATURED_SESSION: "/api/public/cowrie/sessions/featured",
     PASSWORD_RANGE: "/api/public/cowrie/passwords/range",
     IOCS: "/api/public/cowrie/iocs",
+    PAYLOAD_HOSTS: "/api/public/cowrie/payload-hosts",
     MITRE: "/api/public/cowrie/mitre",
   },
 
@@ -200,6 +202,7 @@ function App() {
   // The busiest session of the past week, replayed on the front page. 404s
   // on a quiet week, which the panel treats as "nothing to show".
   const featuredApi = useApi(E.FEATURED_SESSION);
+  const payloadHostsApi = useApi(buildUrl(E.PAYLOAD_HOSTS, { limit: 25 }));
 
   const sessionDetailApi = useApi(
     openSessionId ? `${E.SESSIONS}/${encodeURIComponent(openSessionId)}` : null,
@@ -233,7 +236,9 @@ function App() {
     eventsApi.refetch(); summaryApi.refetch(); commandsApi.refetch();
     credsApi.refetch(); filesApi.refetch(); trendApi.refetch();
     asnApi.refetch(); countriesApi.refetch(); sessionsApi.refetch();
-  }, [eventsApi, summaryApi, commandsApi, credsApi, filesApi, trendApi, asnApi, countriesApi, sessionsApi]);
+    payloadHostsApi.refetch();
+  }, [eventsApi, summaryApi, commandsApi, credsApi, filesApi, trendApi, asnApi, countriesApi,
+      sessionsApi, payloadHostsApi]);
 
   useVisibleInterval(refreshAll, CONFIG.REFRESH_INTERVAL);
 
@@ -612,6 +617,16 @@ function App() {
               formatTimestamp={formatTimestamp}
               formatDate={formatDate}
               isMobile={isMobile}
+              />
+            </ErrorBoundary>
+            <ErrorBoundary name="Payload hosts">
+              <PayloadInfraPanel
+                hosts={payloadHostsApi.rows}
+                error={payloadHostsApi.error}
+                loading={payloadHostsApi.loading}
+                total={payloadHostsApi.total}
+                formatNumber={formatNumber}
+                formatDate={formatDate}
               />
             </ErrorBoundary>
             <ErrorBoundary name="Top credentials">
