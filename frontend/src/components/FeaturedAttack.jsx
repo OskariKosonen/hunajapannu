@@ -13,7 +13,35 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
  * milliseconds to minutes, and a faithful replay would mostly be a still
  * image. The elapsed clock shows the true offset so the real pace is still
  * legible.
+ *
+ * It animates once per featured session, then stops. A typing animation is
+ * good the first time and an obstacle every time after: on a repeat visit you
+ * already know the story and just want to read it. The session id is recorded
+ * in localStorage when playback starts, so a first-time visitor gets the
+ * animation, anyone coming back gets the finished transcript immediately, and
+ * a genuinely new featured session animates once more. Replay is always one
+ * click away, and playback can be skipped rather than only paused.
  */
+
+const SEEN_KEY = "hunajapannu:replayed-session";
+
+const hasSeen = (sessionId) => {
+  try {
+    return window.localStorage.getItem(SEEN_KEY) === sessionId;
+  } catch {
+    // Private mode, disabled storage: fall back to animating. Better to
+    // over-play than to throw.
+    return false;
+  }
+};
+
+const markSeen = (sessionId) => {
+  try {
+    window.localStorage.setItem(SEEN_KEY, sessionId);
+  } catch {
+    /* ignore */
+  }
+};
 
 // Real gap -> replay gap. Long pauses collapse, but ordering and the sense of
 // "thinking, then acting" survive.
@@ -73,19 +101,27 @@ const FeaturedAttack = ({ data, loading, error, mitreById, countryFlag, onOpenFu
     });
   }, [data]);
 
-  // Reduced motion is a one-time read: the whole session renders at once and
-  // the loop below never starts. The parent keys this component by session id,
-  // so a new session remounts it rather than needing a reset effect.
-  const [reduced] = useState(() => prefersReducedMotion());
-  const [rawStep, setStep] = useState(0);
+  // Autoplay only when this is a session the viewer has not already watched,
+  // and motion is not reduced. Decided once, on mount, and recorded straight
+  // away — a reload should not replay just because the viewer left early.
+  const [autoplay] = useState(() => {
+    if (prefersReducedMotion()) return false;
+    const id = data?.session?.session_id;
+    if (!id || hasSeen(id)) return false;
+    markSeen(id);
+    return true;
+  });
+
+  const [rawStep, setStep] = useState(() => (autoplay ? 0 : Number.MAX_SAFE_INTEGER));
   const [typed, setTyped] = useState(0);
-  const [playing, setPlaying] = useState(() => !prefersReducedMotion());
+  const [playing, setPlaying] = useState(autoplay);
   const scrollRef = useRef(null);
 
-  const step = reduced ? lines.length : rawStep;
+  // Clamp here rather than tracking lines.length in state.
+  const step = Math.min(rawStep, lines.length);
 
   useEffect(() => {
-    if (reduced || !playing || lines.length === 0 || step >= lines.length) return;
+    if (!playing || lines.length === 0 || step >= lines.length) return;
 
     const line = lines[step];
     // Commands type out; connect/login lines land whole.
@@ -104,7 +140,7 @@ const FeaturedAttack = ({ data, loading, error, mitreById, countryFlag, onOpenFu
       step === 0 ? 400 : gapFor(line.gap)
     );
     return () => clearTimeout(id);
-  }, [playing, step, typed, lines, reduced]);
+  }, [playing, step, typed, lines]);
 
   // Keep the newest line in view without yanking the whole page around.
   useEffect(() => {
@@ -170,6 +206,19 @@ const FeaturedAttack = ({ data, loading, error, mitreById, countryFlag, onOpenFu
           >
             {done ? "↻ Replay" : playing ? "❚❚ Pause" : "▶ Play"}
           </button>
+          {!done && (
+            <button
+              type="button"
+              onClick={() => {
+                setPlaying(false);
+                setStep(lines.length);
+                setTyped(0);
+              }}
+              className="px-2.5 py-1 rounded-md border border-emerald-700/70 text-emerald-300 hover:border-emerald-500 hover:text-emerald-100 transition text-[0.68rem]"
+            >
+              Skip
+            </button>
+          )}
           {onOpenFull && (
             <button
               type="button"

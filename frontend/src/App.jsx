@@ -143,7 +143,7 @@ function App() {
   useEffect(() => {
     const original = document.title;
     const onVisibility = () => {
-      document.title = document.hidden ? "🍯 they're still knocking…" : original;
+      document.title = document.hidden ? "they're still knocking…" : original;
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
@@ -552,7 +552,6 @@ function App() {
                 peakHourLabel={peakHourLabel}
               />
             </ErrorBoundary>
-
             <ErrorBoundary name="Sessions">
               <SessionsPanel
               sessions={sessions}
@@ -566,14 +565,6 @@ function App() {
               formatDuration={formatDuration}
               countryFlag={countryFlag}
               isMobile={isMobile}
-              />
-            </ErrorBoundary>
-            <ErrorBoundary name="Top countries">
-              <TopCountriesPanel
-              topCountries={topCountries}
-              countriesError={countriesApi.error}
-              countriesLoading={countriesApi.loading}
-              countryFlag={countryFlag}
               />
             </ErrorBoundary>
             <ErrorBoundary name="Top commands">
@@ -609,16 +600,6 @@ function App() {
               isMobile={isMobile}
               />
             </ErrorBoundary>
-            <ErrorBoundary name="IOC export">
-              <IocExport endpoint={E.IOCS} />
-            </ErrorBoundary>
-            <ErrorBoundary name="Password check">
-              <PasswordCheck
-                endpoint={E.PASSWORD_RANGE}
-                formatNumber={formatNumber}
-                uniqueCredCount={summaryStats.uniqueCredCount}
-              />
-            </ErrorBoundary>
             <ErrorBoundary name="Top credentials">
               <TopCredentialsPanel
               creds={creds}
@@ -628,6 +609,24 @@ function App() {
               search={credsSearch}
               onSearch={setCredsSearch}
               pageSize={CONFIG.PAGE_SIZE.CREDS}
+              />
+            </ErrorBoundary>
+            <ErrorBoundary name="Password check">
+              <PasswordCheck
+                endpoint={E.PASSWORD_RANGE}
+                formatNumber={formatNumber}
+                uniqueCredCount={summaryStats.uniqueCredCount}
+              />
+            </ErrorBoundary>
+            <ErrorBoundary name="IOC export">
+              <IocExport endpoint={E.IOCS} />
+            </ErrorBoundary>
+            <ErrorBoundary name="Top countries">
+              <TopCountriesPanel
+              topCountries={topCountries}
+              countriesError={countriesApi.error}
+              countriesLoading={countriesApi.loading}
+              countryFlag={countryFlag}
               />
             </ErrorBoundary>
             <ErrorBoundary name="Top ASNs">
