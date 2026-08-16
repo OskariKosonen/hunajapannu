@@ -30,7 +30,7 @@ function payloadFor(url) {
   if (url.includes("/top-asn")) return { rows: [{ asn: 4134, org: "Chinanet", total: 7, unique_ips: 3 }], total: 1 };
   if (url.includes("/top-countries")) return [{ country_iso: "CN", total: 7, unique_ips: 3 }];
   if (url.includes("/events-per-hour")) return [{ hour: "2026-08-16T09:00:00.000Z", events: 7 }];
-  if (url.includes("/summary")) return { attacks24h: 7, peakEvents: 7, peakHour: "2026-08-16T09:00:00.000Z", malwareSamples: 1, uniqueCommands: 1, uniqueCredCount: 1, uniqueIpPercent: 42 };
+  if (url.includes("/summary")) return { attacks24h: 7, peakEvents: 7, peakHour: "2026-08-16T09:00:00.000Z", malwareSamples: 1, uniqueCommands: 1, uniqueCredCount: 1, uniqueIpPercent: 42, lifetimeEvents: 7682319, lifetimeUniqueIps: 24122, lifetimeCountries: 153, firstEventAt: "2025-11-24T11:17:57.647Z" };
   if (url.includes("/latest")) return [{ timestamp: "2026-08-16T10:00:20Z", src_ip: "1.2.3.4", dest_port: 22, username: null, password: null, command: null, session_id: "abc123", country_iso: "CN", asn: 4134, org: "Chinanet", city: "Beijing" }];
   return [];
 }
@@ -106,6 +106,32 @@ describe("App", () => {
     await waitFor(() =>
       expect(requested.some((u) => u.includes("/sessions") && u.includes("search=china"))).toBe(true)
     );
+  });
+
+  it("shows the hero as soon as the summary lands, without waiting for events", async () => {
+    // The boot screen used to gate on /summary AND /latest, so the most
+    // striking content on the page sat behind whichever was slower.
+    global.fetch = vi.fn((url) => {
+      const u = String(url);
+      requested.push(u);
+      if (u.includes("/latest")) return new Promise(() => {}); // never resolves
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(payloadFor(u)) });
+    });
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("hunajapannu.fi")).toBeInTheDocument());
+    // Lifetime figures come from /summary and should already be on screen.
+    expect(screen.getByText(/attacks recorded/i)).toBeInTheDocument();
+  });
+
+  it("renders the lifetime figures the summary returns", async () => {
+    // These shipped broken: /summary returned them and ProjectSummary accepted
+    // them, but App never threaded them into summaryStats, so the `> 0` guard
+    // on the hero strip was always false and it silently never rendered.
+    render(<App />);
+    expect(await screen.findByText(/attacks recorded/i)).toBeInTheDocument();
+    expect(screen.getByText("7.7M")).toBeInTheDocument();
+    expect(screen.getByText("24,122")).toBeInTheDocument();
+    expect(screen.getByText("153")).toBeInTheDocument();
   });
 
   it("keeps rendering when one endpoint fails", async () => {

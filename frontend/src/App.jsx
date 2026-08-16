@@ -221,8 +221,14 @@ function App() {
   const summaryData = summaryApi.raw;
   const mitreSignatures = mitreApi.rows;
 
-  // First paint waits only on the two panels above the fold.
-  const loading = eventsApi.loading && events.length === 0 && summaryApi.raw == null;
+  // First paint waits on /summary alone.
+  //
+  // It used to wait on /summary AND /latest, so the whole page sat behind a
+  // boot screen until the slower of the two returned — and the most striking
+  // content on the page (7.7M attacks, 24k attackers) is entirely in the
+  // summary. Once that lands, the header and hero render immediately and the
+  // panels below fill in against the skeletons they already have.
+  const loading = summaryApi.loading && summaryApi.raw == null;
 
   const refreshAll = useCallback(() => {
     eventsApi.refetch(); summaryApi.refetch(); commandsApi.refetch();
@@ -383,6 +389,14 @@ function App() {
         : "N/A",
       uniqueIpPercent: summaryData?.uniqueIpPercent ?? null,
       uniqueCredCount: summaryData?.uniqueCredCount ?? null,
+      // Lifetime figures drive the hero strip. They were added to /summary and
+      // to ProjectSummary's props but never threaded through here, so
+      // summaryStats.lifetimeEvents was undefined, the `> 0` guard was false,
+      // and the strip silently never rendered.
+      lifetimeEvents: summaryData?.lifetimeEvents ?? 0,
+      lifetimeUniqueIps: summaryData?.lifetimeUniqueIps ?? 0,
+      lifetimeCountries: summaryData?.lifetimeCountries ?? 0,
+      firstEventAt: summaryData?.firstEventAt ?? null,
     }),
     [summaryData, totalTrendEvents, filesApi.total, commandsApi.total, creds]
   );
@@ -531,16 +545,17 @@ function App() {
           />
         </ErrorBoundary>
 
-        <div className="grid gap-5 sm:gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,2.4fr)] overflow-x-auto sm:overflow-visible">
+        <div className="grid gap-5 sm:gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,2.4fr)]">
           <ErrorBoundary name="Live events">
             <EventsPanel
             events={events}
             eventLimit={eventLimit}
             formatTimestamp={formatTimestamp}
             renderGeoPill={renderGeoPill}
+            isMobile={isMobile}
             />
           </ErrorBoundary>
-          <div className="space-y-3.5 sm:space-y-4 min-w-[320px] sm:min-w-0">
+          <div className="space-y-3.5 sm:space-y-4 min-w-0">
             <ErrorBoundary name="Events (24h)">
               <TrendPanel
                 trend={trend}
