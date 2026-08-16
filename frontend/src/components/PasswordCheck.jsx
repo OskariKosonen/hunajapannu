@@ -4,17 +4,26 @@ import { memo, useCallback, useId, useState } from "react";
  * "Have the bots tried your password?"
  *
  * Uses the k-anonymity model Have I Been Pwned uses: the password is hashed
- * with SHA-256 in the browser, and only the first five hex characters of that
+ * with SHA-256 in the browser, and only the first few hex characters of that
  * hash are sent. The API answers with every stored hash sharing that prefix,
  * and the match is found here, locally. The password itself never crosses the
  * network, so this cannot become a credential-harvesting form even by
  * accident — which matters, because a box on a security site inviting you to
  * type a password is exactly the shape of a phishing page.
  *
+ * Three characters, not HIBP's five. The prefix length has to be sized to the
+ * corpus: HIBP holds ~850M hashes, so 5 chars leaves ~800 candidates per
+ * lookup. This honeypot holds ~262k passwords, where 5 chars returned exactly
+ * one hash — the caller's own — so there was no anonymity set at all. 3 chars
+ * gives 4,096 buckets and ~64 candidates.
+ *
  * The caveat below the field is deliberate and stays.
  */
 
-const PREFIX_LENGTH = 5;
+const PREFIX_LENGTH = 3;
+// Rough candidates per bucket at this corpus size; shown so the claim above is
+// checkable rather than a vague assurance.
+const ANONYMITY_SET = 60;
 
 /** Hex SHA-256 via WebCrypto. Requires a secure context (https or localhost). */
 async function sha256Hex(text) {
@@ -124,8 +133,9 @@ const PasswordCheck = ({ endpoint, formatNumber, uniqueCredCount }) => {
 
         <p className="text-[0.6rem] text-emerald-600 leading-relaxed">
           Your password never leaves this page. It is hashed here with SHA-256 and only the
-          first {PREFIX_LENGTH} characters of that hash are sent, so the server sees roughly a
-          millionth of the hash space and cannot tell which password you checked.{" "}
+          first {PREFIX_LENGTH} characters of that hash are sent — one of {(16 ** PREFIX_LENGTH).toLocaleString()}{" "}
+          buckets shared by roughly {ANONYMITY_SET} other captured passwords, so the server
+          cannot tell which one you asked about.{" "}
           <span className="text-emerald-500">
             Still — don't type a password you currently use, into this or any other site.
           </span>
@@ -178,7 +188,8 @@ const PasswordCheck = ({ endpoint, formatNumber, uniqueCredCount }) => {
           <p className="text-[0.58rem] text-emerald-800">
             Sent prefix <code className="text-emerald-600">{state.prefix}</code> — the server
             returned {formatNumber(state.candidates)}{" "}
-            {state.candidates === 1 ? "hash" : "hashes"} sharing it, matched locally.
+            {state.candidates === 1 ? "hash" : "hashes"} sharing it, matched locally — it cannot
+            tell which of them you were asking about.
           </p>
         )}
       </div>

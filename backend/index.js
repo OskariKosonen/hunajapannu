@@ -927,25 +927,31 @@ app.get('/api/public/cowrie/creds/unique-count', async (_req, res) => {
  *
  * k-anonymous password lookup, the model Have I Been Pwned uses.
  *
- * The caller hashes a password with SHA-256 and sends only the first five hex
+ * The caller hashes a password with SHA-256 and sends only the first three hex
  * characters. This returns every stored hash sharing that prefix, as suffixes,
  * and the caller finds its own match locally. The password itself never
- * reaches this server, is never logged, and cannot be reconstructed from the
- * request: a five-character prefix covers 1/1,048,576 of the hash space, and
- * the response is identical whether or not the caller's password is in it.
+ * reaches this server and is never logged.
+ *
+ * Three characters, not HIBP's five: the prefix has to be sized to the corpus.
+ * HIBP holds ~850M hashes so 5 chars hides a caller among ~800 candidates;
+ * this corpus holds ~262k, where 5 chars returned exactly one hash — the
+ * caller's own — and the anonymity set was a single entry. 3 chars gives 4,096
+ * buckets and ~64 candidates, so the server cannot tell which was asked for.
  *
  * Response: { prefix, results: [{ suffix, pairs, attempts, usernames }] }
  */
 app.get('/api/public/cowrie/passwords/range/:prefix', async (req, res) => {
   const raw = typeof req.params.prefix === 'string' ? req.params.prefix.toLowerCase() : '';
-  // Exactly five hex characters. Anything else is a client bug or a probe;
-  // rejecting keeps the query bounded to one index lookup.
-  if (!/^[0-9a-f]{5}$/.test(raw)) {
-    return res.status(400).json({ error: 'prefix must be 5 hexadecimal characters' });
+  // Exactly three hex characters. Anything else is a client bug or a probe;
+  // rejecting keeps the query bounded to one index lookup. A longer prefix is
+  // refused rather than accepted: it would shrink the anonymity set, which is
+  // the one property this endpoint exists to provide.
+  if (!/^[0-9a-f]{3}$/.test(raw)) {
+    return res.status(400).json({ error: 'prefix must be 3 hexadecimal characters' });
   }
 
   try {
-    // Index scan on idx_cowrie_unique_creds_pwhash_prefix (migration 008).
+    // Index scan on idx_cowrie_unique_creds_pwhash_prefix3 (migration 009).
     // Deliberately uncached: the key space is a million prefixes, so caching
     // it would grow without bound for no benefit over an index lookup.
     const { rows } = await pool.query(
@@ -955,17 +961,17 @@ app.get('/api/public/cowrie/passwords/range/:prefix', async (req, res) => {
          COALESCE(SUM(total_events), 0)                             AS attempts,
          (array_agg(DISTINCT username))[1:5]                        AS usernames
        FROM cowrie_unique_creds
-       WHERE left(password_sha256, 5) = $1
+       WHERE left(password_sha256, 3) = $1
        GROUP BY password_sha256
        ORDER BY attempts DESC
-       LIMIT 500`,
+       LIMIT 2000`,
       [raw]
     );
 
     res.json({
       prefix: raw,
       results: rows.map((r) => ({
-        suffix: String(r.hash).slice(5),
+        suffix: String(r.hash).slice(3),
         pairs: Number(r.pairs),
         attempts: Number(r.attempts),
         usernames: r.usernames || [],

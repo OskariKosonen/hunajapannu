@@ -213,22 +213,24 @@ jobs:
           assert "missing session 404s" "404" "$(status "$PUB/sessions/does-not-exist")"
 
           echo "--- k-anonymous password lookup ---"
-          # sha256("123456") = 8d969eef6eca...  sha256("admin") = 8c6976e5b541...
-          # The seed uses both, so a real prefix must return a real hash.
+          # sha256("123456") = 8d969eef6eca...  The seed uses it under two
+          # usernames, so a real prefix must return a real hash.
           assert "a seeded password is findable by prefix" "true" \
-            "$(jq_get "$PUB/passwords/range/8d969" '[.results[].suffix] | any(startswith("eef6eca"))')"
-          assert "it reports how many usernames used it" "2" \
-            "$(jq_get "$PUB/passwords/range/8d969" '.results[0].pairs')"
-          # The response must not leak the password or its full hash position:
-          # only suffixes, and only for the prefix asked about.
-          assert "every result matches the prefix asked for" "0" \
-            "$(jq_get "$PUB/passwords/range/8d969" '[.results[].suffix | length | select(. != 59)] | length')"
+            "$(jq_get "$PUB/passwords/range/8d9" '[.results[].suffix] | any(startswith("69eef6eca"))')"
+          assert "it aggregates every username that used it" "2" \
+            "$(jq_get "$PUB/passwords/range/8d9" '.results[0].pairs')"
+          # Suffix = 64 hex chars minus the 3-char prefix. A wrong slice here
+          # would make every lookup silently miss.
+          assert "results are suffixes of the right length" "0" \
+            "$(jq_get "$PUB/passwords/range/8d9" '[.results[].suffix | length | select(. != 61)] | length')"
           assert "an unused prefix returns an empty set, not an error" "0" \
-            "$(jq_get "$PUB/passwords/range/00000" '.results | length')"
-          # A bad prefix must be rejected rather than turned into a table scan.
-          assert "rejects a short prefix"    "400" "$(status "$PUB/passwords/range/8d9")"
-          assert "rejects a non-hex prefix"  "400" "$(status "$PUB/passwords/range/zzzzz")"
-          assert "rejects an over-long prefix" "400" "$(status "$PUB/passwords/range/8d969eef")"
+            "$(jq_get "$PUB/passwords/range/000" '.results | length')"
+          # The prefix must stay short: a longer one shrinks the anonymity set,
+          # which is the one property this endpoint exists to provide. 5 chars
+          # over this corpus returned exactly the caller's own hash.
+          assert "rejects a 5-char prefix" "400" "$(status "$PUB/passwords/range/8d969")"
+          assert "rejects a 2-char prefix" "400" "$(status "$PUB/passwords/range/8d")"
+          assert "rejects a non-hex prefix" "400" "$(status "$PUB/passwords/range/zzz")"
 
           echo "--- featured session (front-page replay) ---"
           # s001 runs 4 commands; s002 runs 1; s003 runs 1. The busiest must win,

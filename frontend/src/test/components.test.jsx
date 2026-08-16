@@ -371,7 +371,7 @@ describe("PasswordCheck", () => {
     // The entire premise of the feature. If this regresses it becomes a
     // credential-harvesting form.
     const fetchMock = vi.fn(() =>
-      Promise.resolve({ ok: true, json: () => Promise.resolve({ prefix: "8d969", results: [] }) })
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ prefix: "8d9", results: [] }) })
     );
     global.fetch = fetchMock;
 
@@ -380,7 +380,9 @@ describe("PasswordCheck", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
     const url = String(fetchMock.mock.calls[0][0]);
-    expect(url).toBe("/api/public/cowrie/passwords/range/8d969");
+    // 3 characters, not 5: at this corpus size a 5-char prefix returned
+    // exactly one hash, so the anonymity set was the caller alone.
+    expect(url).toBe("/api/public/cowrie/passwords/range/8d9");
     expect(url).not.toContain("123456");
     // No body, no second argument carrying one.
     expect(fetchMock.mock.calls[0][1]).toBeUndefined();
@@ -391,8 +393,8 @@ describe("PasswordCheck", () => {
       Promise.resolve({
         ok: true,
         json: () => Promise.resolve({
-          prefix: "8d969",
-          results: [{ suffix: HASH.slice(5), pairs: 3, attempts: 4812, usernames: ["root", "admin"] }],
+          prefix: "8d9",
+          results: [{ suffix: HASH.slice(3), pairs: 3, attempts: 4812, usernames: ["root", "admin"] }],
         }),
       })
     );
@@ -409,8 +411,8 @@ describe("PasswordCheck", () => {
       Promise.resolve({
         ok: true,
         json: () => Promise.resolve({
-          prefix: "8d969",
-          results: [{ suffix: "a".repeat(59), pairs: 1, attempts: 1, usernames: ["x"] }],
+          prefix: "8d9",
+          results: [{ suffix: "a".repeat(61), pairs: 1, attempts: 1, usernames: ["x"] }],
         }),
       })
     );
