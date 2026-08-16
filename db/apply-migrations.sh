@@ -37,7 +37,17 @@ MIGRATIONS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/migrations"
 
 # -q quiet, -t tuples only, -A unaligned: gives bare values we can test on.
 psql_value() { "${PSQL[@]}" -v ON_ERROR_STOP=1 -qtA -c "$1"; }
-psql_file()  { "${PSQL[@]}" -v ON_ERROR_STOP=1 -q -f "$1"; }
+
+# Feed migrations in on stdin rather than passing a path to psql.
+#
+# Under `sudo -u postgres psql`, psql opens the file *as postgres*, which
+# cannot traverse /home/admin (mode 750) to reach the repo. The old deploy
+# loop got away with a relative path only because psql inherited admin's
+# working directory and the kernel resolved from that directory handle
+# instead of from /. Redirecting means the shell — still running as the
+# invoking user — reads the file, so the database user needs no filesystem
+# access to the repo at all, whatever the path or the directory modes.
+psql_file()  { "${PSQL[@]}" -v ON_ERROR_STOP=1 -q -f - < "$1"; }
 
 # ---------------------------------------------------------------------------
 # Preflight
