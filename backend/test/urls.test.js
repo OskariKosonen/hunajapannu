@@ -1,6 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { extractUrls, hostOf, isIp } = require('../lib/urls');
+const { extractUrls, hostOf, isIp, defangIp, defangUrl } = require('../lib/urls');
 
 /**
  * A missed shape here is a delivery host nobody ever sees, which is the whole
@@ -75,5 +75,46 @@ describe('isIp', () => {
     assert.equal(isIp('1.2.3.4'), true);
     assert.equal(isIp('evil.example'), false);
     assert.equal(isIp('1.2.3'), false);
+  });
+});
+
+describe('defangUrl', () => {
+  test('neuters the scheme and brackets the host, leaving the path readable', () => {
+    assert.equal(defangUrl('http://1.2.3.4/bins.sh'), 'hxxp://1.2.3[.]4/bins.sh');
+  });
+
+  test('an address defangs identically with or without a port', () => {
+    // Production shipped these two lines side by side in one export:
+    //   hxxp://176.65.139[.]89/bot     and     hxxp://106[.]13[.]23[.]149:6819/linux
+    // The port rode along in the host capture, so the address test failed and
+    // the name branch bracketed every dot.
+    assert.equal(defangUrl('http://106.13.23.149:6819/linux'), 'hxxp://106.13.23[.]149:6819/linux');
+    assert.equal(defangUrl('http://106.13.23.149/linux'), 'hxxp://106.13.23[.]149/linux');
+  });
+
+  test('a name brackets every dot, which is the convention for domains', () => {
+    assert.equal(
+      defangUrl('https://raw.githubusercontent.com/a/b.sh'),
+      'hxxps://raw[.]githubusercontent[.]com/a/b.sh'
+    );
+  });
+
+  test('a name keeps its port too', () => {
+    assert.equal(defangUrl('http://evil.example:8080/x'), 'hxxp://evil[.]example:8080/x');
+  });
+
+  test('a bare host with no scheme still defangs', () => {
+    assert.equal(defangUrl('1.2.3.4'), '1.2.3[.]4');
+    assert.equal(defangUrl('evil.example'), 'evil[.]example');
+  });
+
+  test('an address matches defangIp exactly, so ?type=ips and ?type=urls agree', () => {
+    for (const ip of ['1.2.3.4', '35.237.91.38', '106.13.23.149']) {
+      assert.equal(defangUrl(`http://${ip}/x`), `hxxp://${defangIp(ip)}/x`);
+    }
+  });
+
+  test('leaves a query string and fragment on the path side', () => {
+    assert.equal(defangUrl('http://1.2.3.4/x?a=1#f'), 'hxxp://1.2.3[.]4/x?a=1#f');
   });
 });

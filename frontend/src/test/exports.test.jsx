@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import IocExport from "../components/IocExport";
 import OriginsPanel from "../components/OriginsPanel";
 import PayloadInfraPanel from "../components/PayloadInfraPanel";
+import { defangUrl } from "../lib/defang";
 
 describe("IocExport", () => {
   const endpoint = "/api/public/cowrie/iocs";
@@ -174,6 +175,23 @@ describe("PayloadInfraPanel", () => {
     const { container } = render(<PayloadInfraPanel {...props} />);
     expect(container.querySelectorAll("details").length).toBe(2);
     expect(screen.getAllByText("show URLs").length).toBe(2);
+  });
+
+  // The backend has the same function in lib/urls.js with its own tests. The
+  // two builds share no module, so these cases are the guard against drift.
+  it("defangs an address the same way whether or not it carries a port", () => {
+    // Production shipped both forms in one export: the port rode along in the
+    // host capture, failed the address test, and every dot got bracketed.
+    expect(defangUrl("http://106.13.23.149/linux")).toBe("hxxp://106.13.23[.]149/linux");
+    expect(defangUrl("http://106.13.23.149:6819/linux")).toBe("hxxp://106.13.23[.]149:6819/linux");
+    expect(defangUrl("http://evil.example:8080/x")).toBe("hxxp://evil[.]example:8080/x");
+  });
+
+  it("leaves the payload path alone so the indicator stays readable", () => {
+    expect(defangUrl("http://1.2.3.4/bins.sh")).toBe("hxxp://1.2.3[.]4/bins.sh");
+    expect(defangUrl("https://raw.githubusercontent.com/a/b.sh")).toBe(
+      "hxxps://raw[.]githubusercontent[.]com/a/b.sh"
+    );
   });
 
   it("distinguishes no data from a failure", () => {

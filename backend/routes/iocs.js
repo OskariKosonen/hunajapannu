@@ -6,35 +6,12 @@
 const { pool } = require('../db');
 const { LIMITS } = require('../config');
 const { getCachedLeaderboard, setCachedLeaderboard } = require('../cache');
-const { extractUrls, hostOf } = require('../lib/urls');
+// Defanging lives in lib/urls.js with the extraction it belongs to, so it can
+// be unit tested and so the URL and IP forms cannot drift apart.
+const { extractUrls, hostOf, defangIp, defangUrl } = require('../lib/urls');
 
 module.exports = function registerIocRoutes(app) {
   const IOC_MAX_ROWS = 5000;
-
-  const defangIp = (ip) => String(ip).replace(/\.(?=[^.]*$)/, '[.]');
-
-  // hxxp://1.2.3[.]4/bins.sh — the convention analysts expect, so a delivery
-  // URL can go in a ticket without becoming a live link or tripping a link
-  // scanner. Only the host is defanged: mangling the path as well makes the
-  // indicator harder to read and harder to re-fang for use.
-  // hxxp://1.2.3[.]4/bins.sh — the convention analysts expect, so a delivery
-  // URL can go in a ticket without becoming a live link or tripping a link
-  // scanner. Only the host is bracketed: mangling the path as well makes the
-  // indicator harder to read and harder to re-fang for use.
-  const defangUrl = (value) => {
-    const str = String(value);
-    const m = str.match(/^([a-z]+):\/\/([^/?#]*)(.*)$/i);
-    const host = m ? m[2] : str;
-    // An address defangs like defangIp does — last dot only — so the same IP
-    // reads identically whether it came out of ?type=ips or ?type=urls.
-    // A name defangs every dot, which is the usual convention for domains.
-    const bracketed = /^(?:\d{1,3}\.){3}\d{1,3}$/.test(host)
-      ? host.replace(/\.(?=[^.]*$)/, '[.]')
-      : host.replace(/\./g, '[.]');
-    if (!m) return bracketed;
-    return `${m[1].replace(/^http/i, 'hxxp')}://${bracketed}${m[3]}`;
-  };
-
 
   app.get('/api/public/cowrie/iocs', async (req, res) => {
     const rawHours = parseInt(req.query.hours, 10);
@@ -145,11 +122,18 @@ module.exports = function registerIocRoutes(app) {
 
     // A comment header travels with the data: an indicator list with no
     // provenance or timestamp is close to useless a week later.
+    //
+    // URLs are the one type that is not windowed — cowrie_unique_commands
+    // records first/last seen rather than one row per use, and a delivery host
+    // stays an indicator after the last fetch from it. Printing "last 24h" over
+    // that list would be a plain lie about the data's coverage.
     const header = [
       `# hunajapannu.fi — ${
       type === 'ips' ? 'attacker IPs' : type === 'urls' ? 'payload delivery URLs' : 'malware hashes'
     }`,
-      `# window: last ${hours}h   generated: ${generatedAt}`,
+      type === 'urls'
+        ? `# window: all captured commands   generated: ${generatedAt}`
+        : `# window: last ${hours}h   generated: ${generatedAt}`,
       `# source: SSH/Telnet honeypot, Finland (Telia consumer broadband)`,
       `# ${rows.length} indicators${defang ? ' (defanged)' : ''}`,
       '#',
@@ -168,8 +152,15 @@ module.exports = function registerIocRoutes(app) {
     }
 
     // CSV
+    //
+    // Dates go out as ISO 8601. String(Date) yields the runtime's locale form —
+    // "Sat Jul 25 2026 19:34:58 GMT+0300 (Eastern European Summer Time)" — which
+    // is what this shipped, and which no consumer of an indicator feed can parse
+    // or sort. The JSON path never had the problem because JSON.stringify
+    // serialises Dates as ISO already.
     const esc = (v) => {
-      const str = v == null ? '' : String(v);
+      if (v == null) return '';
+      const str = v instanceof Date ? v.toISOString() : String(v);
       return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
     };
     const columns = type === 'ips'

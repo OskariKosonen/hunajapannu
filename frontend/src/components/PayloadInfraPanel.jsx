@@ -1,6 +1,7 @@
 import { memo } from "react";
 import LoadingSkeleton from "./common/LoadingSkeleton";
 import ScrollShadow from "./common/ScrollShadow";
+import { defangUrl } from "../lib/defang";
 
 /**
  * The machines serving the second stage.
@@ -15,21 +16,8 @@ import ScrollShadow from "./common/ScrollShadow";
  * poor thing to do.
  */
 
-// Host only, not the path: mangling "bins.sh" into "bins[.]sh" makes the
-// indicator harder to read and harder to re-fang for use.
-const defangUrl = (value) => {
-    const str = String(value);
-    const m = str.match(/^([a-z]+):\/\/([^/?#]*)(.*)$/i);
-    const host = m ? m[2] : str;
-    // An address defangs like defangIp does — last dot only — so the same IP
-    // reads identically whether it came out of ?type=ips or ?type=urls.
-    // A name defangs every dot, which is the usual convention for domains.
-    const bracketed = /^(?:\d{1,3}\.){3}\d{1,3}$/.test(host)
-      ? host.replace(/\.(?=[^.]*$)/, "[.]")
-      : host.replace(/\./g, "[.]");
-    if (!m) return bracketed;
-    return `${m[1].replace(/^http/i, "hxxp")}://${bracketed}${m[3]}`;
-};
+// defangUrl lives in lib/defang.js: a component file that also exports a
+// helper breaks fast refresh, and the helper is shared with the IOC export.
 
 /** Cloud providers are worth calling out: hosting here defeats IP reputation. */
 const CLOUD = /google|amazon|aws|azure|microsoft|digitalocean|oracle|linode|vultr|hetzner|ovh/i;

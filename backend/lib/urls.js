@@ -34,4 +34,32 @@ function extractUrls(command) {
 
 const isIp = (host) => IPV4.test(String(host));
 
-module.exports = { extractUrls, hostOf, isIp };
+/** 1.2.3.4 -> 1.2.3[.]4 — last dot only, the usual convention for addresses. */
+const defangIp = (ip) => String(ip).replace(/\.(?=[^.]*$)/, '[.]');
+
+/**
+ * hxxp://1.2.3[.]4:8080/bins.sh — safe to paste into a ticket.
+ *
+ * Only the host is bracketed. Mangling the path as well ("bins[.]sh") makes the
+ * indicator harder to read and harder to re-fang for use.
+ *
+ * The port is split off before deciding address-or-name, because it lives in
+ * the same capture group as the host. Leaving it attached made "1.2.3.4:6819"
+ * fail the address test and fall through to the name branch, so a host that
+ * happened to carry a port defanged every dot while the same address without
+ * one defanged only the last. The point of matching defangIp here is that one
+ * address reads identically whether it arrived via ?type=ips or ?type=urls.
+ */
+function defangUrl(value) {
+  const str = String(value);
+  const m = str.match(/^([a-z]+):\/\/([^/?#]*)(.*)$/i);
+  const hostPort = m ? m[2] : str;
+  const portAt = hostPort.lastIndexOf(':');
+  const host = portAt === -1 ? hostPort : hostPort.slice(0, portAt);
+  const port = portAt === -1 ? '' : hostPort.slice(portAt);
+  const bracketed = isIp(host) ? defangIp(host) : host.replace(/\./g, '[.]');
+  if (!m) return `${bracketed}${port}`;
+  return `${m[1].replace(/^http/i, 'hxxp')}://${bracketed}${port}${m[3]}`;
+}
+
+module.exports = { extractUrls, hostOf, isIp, defangIp, defangUrl };

