@@ -138,12 +138,12 @@ describe("App", () => {
     global.fetch = vi.fn((url) => {
       const u = String(url);
       requested.push(u);
-      if (u.includes("/top-asn")) return Promise.resolve({ ok: false, status: 500 });
+      if (u.includes("/top-countries")) return Promise.resolve({ ok: false, status: 500 });
       return Promise.resolve({ ok: true, json: () => Promise.resolve(payloadFor(u)) });
     });
     render(<App />);
     await waitFor(() => expect(screen.getByText("hunajapannu.fi")).toBeInTheDocument());
-    expect(await screen.findByText(/failed to load asns/i)).toBeInTheDocument();
+    expect(await screen.findByText(/failed to load geo/i)).toBeInTheDocument();
     // The rest of the dashboard is unaffected.
     expect(screen.getAllByText(/wget http:\/\/a\/b\.sh/).length).toBeGreaterThan(0);
   });

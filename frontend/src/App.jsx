@@ -8,10 +8,9 @@ import TopCredentialsPanel from "./components/TopCredentialsPanel";
 import PasswordCheck from "./components/PasswordCheck";
 import IocExport from "./components/IocExport";
 import EngineeringNotes from "./components/EngineeringNotes";
-import TopCountriesPanel from "./components/TopCountriesPanel";
 import CommandsPanel from "./components/CommandsPanel";
 import TopMalwarePanel from "./components/TopMalwarePanel";
-import TopAsnPanel from "./components/TopAsnPanel";
+import OriginsPanel from "./components/OriginsPanel";
 import AsciiTopology from "./components/AsciiTopology";
 import SessionsPanel from "./components/SessionsPanel";
 import SessionDrawer from "./components/SessionDrawer";
@@ -169,6 +168,7 @@ function App() {
   const [asnSearch, setAsnSearch] = useUrlState("asn");
   const [sessionSearch, setSessionSearch] = useUrlState("q");
   const [commandFilter, setCommandFilter] = useUrlState("tag", "all");
+  const [originView, setOriginView] = useUrlState("origins", "countries");
   const [openSessionId, setOpenSessionId] = useUrlState("session");
 
   const debouncedCommandSearch = useDebounced(commandSearch, CONFIG.SEARCH_DEBOUNCE_MS);
@@ -636,24 +636,23 @@ function App() {
             <ErrorBoundary name="IOC export">
               <IocExport endpoint={E.IOCS} />
             </ErrorBoundary>
-            <ErrorBoundary name="Top countries">
-              <TopCountriesPanel
-              topCountries={topCountries}
-              countriesError={countriesApi.error}
-              countriesLoading={countriesApi.loading}
-              countryFlag={countryFlag}
-              />
-            </ErrorBoundary>
-            <ErrorBoundary name="Top ASNs">
-              <TopAsnPanel
-              topAsn={topAsn}
-              asnError={asnApi.error}
-              asnLoading={asnApi.loading}
-              asnTotal={asnApi.total}
-              search={asnSearch}
-              onSearch={setAsnSearch}
-              pageSize={CONFIG.PAGE_SIZE.ASN}
-              isMobile={isMobile}
+            <ErrorBoundary name="Origins">
+              <OriginsPanel
+                view={originView}
+                onView={setOriginView}
+                topCountries={topCountries}
+                countriesError={countriesApi.error}
+                countriesLoading={countriesApi.loading}
+                countryFlag={countryFlag}
+                topAsn={topAsn}
+                asnError={asnApi.error}
+                asnLoading={asnApi.loading}
+                asnTotal={asnApi.total}
+                search={asnSearch}
+                onSearch={setAsnSearch}
+                pageSize={CONFIG.PAGE_SIZE.ASN}
+                formatNumber={formatNumber}
+                isMobile={isMobile}
               />
             </ErrorBoundary>
           </div>

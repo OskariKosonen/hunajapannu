@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import IocExport from "../components/IocExport";
 import EngineeringNotes from "../components/EngineeringNotes";
+import OriginsPanel from "../components/OriginsPanel";
 
 describe("IocExport", () => {
   const endpoint = "/api/public/cowrie/iocs";
@@ -88,5 +89,56 @@ describe("EngineeringNotes", () => {
     const { container } = render(<EngineeringNotes />);
     fireEvent.click(screen.getByRole("button"));
     expect(container.querySelectorAll("a").length).toBe(0);
+  });
+});
+
+describe("OriginsPanel", () => {
+  const props = {
+    view: "countries",
+    onView: () => {},
+    topCountries: [{ country_iso: "CN", total: 1548513, unique_ips: 3970 }],
+    countriesError: "", countriesLoading: false, countryFlag: () => "🏴",
+    topAsn: [{ asn: 4134, org: "Chinanet", total: 441665, unique_ips: 19 }],
+    asnError: "", asnLoading: false, asnTotal: 1,
+    search: "", onSearch: () => {}, pageSize: 50,
+    formatNumber: (n) => Number(n).toLocaleString("en-GB"),
+    isMobile: false,
+  };
+
+  it("shows countries by default and networks on demand", () => {
+    const { rerender } = render(<OriginsPanel {...props} />);
+    expect(screen.getByText("CN")).toBeInTheDocument();
+    expect(screen.queryByText(/Chinanet/)).toBeNull();
+    rerender(<OriginsPanel {...props} view="asn" />);
+    expect(screen.getByText("AS4134")).toBeInTheDocument();
+    expect(screen.queryByText("CN")).toBeNull();
+  });
+
+  it("separates thousands so magnitudes can be ranked at a glance", () => {
+    render(<OriginsPanel {...props} />);
+    expect(screen.getByText("1,548,513")).toBeInTheDocument();
+  });
+
+  it("only offers search on the view the API can search", () => {
+    // Countries arrive whole (153 rows); a box there would be decoration.
+    const { rerender } = render(<OriginsPanel {...props} />);
+    expect(screen.queryByPlaceholderText(/search network/i)).toBeNull();
+    rerender(<OriginsPanel {...props} view="asn" />);
+    expect(screen.getByPlaceholderText(/search network/i)).toBeInTheDocument();
+  });
+
+  it("flags a failure in the view you are not currently looking at", () => {
+    // Merging two panels into one otherwise hides half the errors: the failing
+    // view no longer has its own panel to report in.
+    render(<OriginsPanel {...props} asnError="boom" />);
+    const networks = screen.getByRole("button", { name: /networks/i });
+    expect(networks).toHaveTextContent("!");
+    expect(screen.getByRole("button", { name: /countries/i })).not.toHaveTextContent("!");
+  });
+
+  it("marks the active view for assistive tech", () => {
+    render(<OriginsPanel {...props} view="asn" />);
+    expect(screen.getByRole("button", { name: /networks/i })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /countries/i })).toHaveAttribute("aria-pressed", "false");
   });
 });
