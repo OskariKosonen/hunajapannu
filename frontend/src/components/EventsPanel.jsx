@@ -1,5 +1,6 @@
 import { memo } from "react";
 import ScrollShadow from "./common/ScrollShadow";
+import { EMPTY_STATES } from "../lib/flavour";
 
 const EventsPanel = ({ events, eventLimit, formatTimestamp, renderGeoPill }) => (
   // flex column + h-full: the right-hand column stacks six panels and is far
@@ -73,8 +74,11 @@ const EventsPanel = ({ events, eventLimit, formatTimestamp, renderGeoPill }) => 
       </ScrollShadow>
 
       {events.length === 0 && (
-        <div className="shrink-0 py-6 text-center text-xs text-green-500">
-          <span className="text-green-400">$</span> No events yet – waiting for attackers...
+        <div className="shrink-0 py-6 text-center text-xs text-green-500 space-y-1">
+          <div>
+            <span className="text-green-400">$</span> {EMPTY_STATES.events.line}
+          </div>
+          <div className="text-[0.65rem] text-emerald-700">{EMPTY_STATES.events.hint}</div>
         </div>
       )}
     </div>

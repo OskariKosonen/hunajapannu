@@ -2,6 +2,7 @@ import { memo } from "react";
 import LoadingSkeleton from "./common/LoadingSkeleton";
 import ScrollShadow from "./common/ScrollShadow";
 import SearchBox from "./common/SearchBox";
+import { EMPTY_STATES } from "../lib/flavour";
 
 /**
  * Recent attacker sessions. Every event already carries a session_id, so
@@ -47,8 +48,11 @@ const SessionsPanel = ({
         <LoadingSkeleton />
       ) : sessions.length === 0 ? (
         !sessionsError && (
-          <div className="text-[0.68rem] text-emerald-500">
-            {search ? "No sessions match that search." : "No sessions in the last 24 hours."}
+          <div className="text-[0.68rem] text-emerald-500 space-y-0.5">
+            <div>{(search ? EMPTY_STATES.sessionsSearch : EMPTY_STATES.sessions).line}</div>
+            <div className="text-emerald-700">
+              {(search ? EMPTY_STATES.sessionsSearch : EMPTY_STATES.sessions).hint}
+            </div>
           </div>
         )
       ) : isMobile ? (

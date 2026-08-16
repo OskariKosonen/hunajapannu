@@ -14,8 +14,9 @@ import AsciiTopology from "./components/AsciiTopology";
 import SessionsPanel from "./components/SessionsPanel";
 import SessionDrawer from "./components/SessionDrawer";
 import ErrorBoundary from "./components/common/ErrorBoundary";
-import { useApi, useDebounced, useMediaQuery, useVisibleInterval, buildUrl } from "./hooks/useApi";
+import { useApi, useDebounced, useMediaQuery, useVisibleInterval, useRotatingWord, buildUrl } from "./hooks/useApi";
 import { useUrlState } from "./hooks/useUrlState";
+import { BOOT_MESSAGES, LOADING_WORDS, EMPTY_STATES } from "./lib/flavour";
 
 // ============================================
 // CONFIGURATION CONSTANTS
@@ -90,15 +91,6 @@ const MITRE_COLORS = {
 const MITRE_FALLBACK_COLOR = "border-emerald-400/60 text-emerald-100 bg-emerald-500/10";
 
 
-const BOOT_MESSAGES = [
-  { label: "Tip #404", detail: "uname -s -v -n -m? Red flag fr fr." },
-  { label: "NPC Behavior", detail: "cat /proc/uptime" },
-  { label: "🚨 SUS ALERT", detail: "Why is bro echoing base64 again?" },
-  { label: "Pro Hacker Tip", detail: "root:root" },
-  { label: "Loading", detail: "Trust the process." },
-  { label: "Pro Hacker Tip", detail: "rm -rf /var/log/*" },
-  { label: "Pro Tip", detail: "cat /etc/passwd | grep root" },
-];
 
 
 /**
@@ -137,6 +129,25 @@ function App() {
   const [loadingTip] = useState(
     () => BOOT_MESSAGES[Math.floor(Math.random() * BOOT_MESSAGES.length)] || null
   );
+
+  // Rotating status word on the boot screen, Claude-Code style. Only ticks
+  // while the boot screen is actually up.
+  const bootWord = useRotatingWord(LOADING_WORDS, { active: true, intervalMs: 900 });
+
+  // Polling pauses while the tab is hidden, so nothing arrives to count while
+  // you are away — but the attackers do not stop. Say so in the tab title and
+  // put it back on return.
+  useEffect(() => {
+    const original = document.title;
+    const onVisibility = () => {
+      document.title = document.hidden ? "🍯 they're still knocking…" : original;
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      document.title = original;
+    };
+  }, []);
 
   // Breakpoint via matchMedia: fires only when the breakpoint is crossed,
   // rather than re-rendering the tree on every pixel of a window drag.
@@ -427,8 +438,10 @@ function App() {
         <div className="relative z-10 w-full max-w-2xl space-y-6 border border-green-500/40 bg-slate-950/70 backdrop-blur-sm rounded-2xl px-6 py-8 shadow-[0_0_40px_rgba(16,185,129,0.25)]">
           <div className="text-center space-y-2">
             <p className="text-sm tracking-[0.3em] uppercase text-emerald-400">hunajapannu.fi</p>
-            <h1 className="text-2xl font-semibold text-green-100">Loading attack data from PostgreSQL</h1>
-            <p className="text-xs text-emerald-500">Preparing dashboard...</p>
+            <h1 className="text-2xl font-semibold text-green-100">
+              {bootWord}<span className="animate-pulse">…</span>
+            </h1>
+            <p className="text-xs text-emerald-500">Pulling attack data out of PostgreSQL.</p>
           </div>
 
           <div className="loading-bar h-1 rounded-full bg-emerald-900/40 overflow-hidden">

@@ -159,3 +159,21 @@ export function useVisibleInterval(callback, intervalMs) {
     };
   }, [intervalMs]);
 }
+
+/**
+ * Cycles through a list of words, in the spirit of Claude Code's rotating
+ * loading verbs. Starts on a random entry so two panels loading at once do
+ * not chant in unison, and stops entirely when the caller is not loading —
+ * an idle timer firing every 1.4s forever is not free.
+ */
+export function useRotatingWord(words, { active = true, intervalMs = 1400 } = {}) {
+  const [index, setIndex] = useState(() => Math.floor(Math.random() * words.length));
+
+  useEffect(() => {
+    if (!active || words.length < 2) return;
+    const id = setInterval(() => setIndex((i) => (i + 1) % words.length), intervalMs);
+    return () => clearInterval(id);
+  }, [active, words.length, intervalMs]);
+
+  return words[index % words.length];
+}

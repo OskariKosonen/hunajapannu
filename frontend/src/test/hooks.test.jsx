@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { buildUrl, useApi, useDebounced } from "../hooks/useApi";
+import { buildUrl, useApi, useDebounced, useRotatingWord } from "../hooks/useApi";
 import { useUrlState } from "../hooks/useUrlState";
 
 describe("buildUrl", () => {
@@ -128,5 +128,48 @@ describe("useUrlState", () => {
     const { result } = renderHook(() => useUrlState("q"));
     act(() => result.current[1]("y"));
     expect(new URLSearchParams(window.location.search).get("session")).toBe("abc");
+  });
+});
+
+describe("useRotatingWord", () => {
+  const WORDS = ["Baiting", "Simmering", "Tarpitting"];
+
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it("advances through the list on an interval", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0); // start deterministically
+    const { result } = renderHook(() => useRotatingWord(WORDS, { intervalMs: 1000 }));
+    expect(result.current).toBe("Baiting");
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(result.current).toBe("Simmering");
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(result.current).toBe("Tarpitting");
+  });
+
+  it("wraps around rather than running off the end", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { result } = renderHook(() => useRotatingWord(WORDS, { intervalMs: 1000 }));
+    act(() => { vi.advanceTimersByTime(3000); });
+    expect(result.current).toBe("Baiting");
+  });
+
+  it("does not tick while inactive, so idle panels hold no timer", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    const { result } = renderHook(() => useRotatingWord(WORDS, { active: false, intervalMs: 1000 }));
+    act(() => { vi.advanceTimersByTime(10000); });
+    expect(result.current).toBe("Baiting");
+  });
+
+  it("starts somewhere random so parallel panels do not chant in unison", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.7);
+    const { result } = renderHook(() => useRotatingWord(WORDS));
+    expect(result.current).toBe("Tarpitting");
+  });
+
+  it("survives a single-word list without dividing by zero", () => {
+    const { result } = renderHook(() => useRotatingWord(["Only"]));
+    act(() => { vi.advanceTimersByTime(5000); });
+    expect(result.current).toBe("Only");
   });
 });
