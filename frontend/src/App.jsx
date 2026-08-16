@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import DashboardHeader from "./components/DashboardHeader";
 import ProjectSummary from "./components/ProjectSummary";
 import EventsPanel from "./components/EventsPanel";
+import FeaturedAttack from "./components/FeaturedAttack";
 import TrendPanel from "./components/TrendPanel";
 import TopCredentialsPanel from "./components/TopCredentialsPanel";
 import TopCountriesPanel from "./components/TopCountriesPanel";
@@ -56,6 +57,7 @@ const CONFIG = {
     TOP_COUNTRIES: "/api/public/cowrie/top-countries",
     SUMMARY: "/api/public/cowrie/summary",
     SESSIONS: "/api/public/cowrie/sessions",
+    FEATURED_SESSION: "/api/public/cowrie/sessions/featured",
     MITRE: "/api/public/cowrie/mitre",
   },
 
@@ -180,6 +182,10 @@ function App() {
   const mitreApi = useApi(E.MITRE);
 
   // The drawer is driven by the URL, so a shared link opens straight into it.
+  // The busiest session of the past week, replayed on the front page. 404s
+  // on a quiet week, which the panel treats as "nothing to show".
+  const featuredApi = useApi(E.FEATURED_SESSION);
+
   const sessionDetailApi = useApi(
     openSessionId ? `${E.SESSIONS}/${encodeURIComponent(openSessionId)}` : null,
     { enabled: Boolean(openSessionId) }
@@ -268,6 +274,24 @@ function App() {
       day: "2-digit",
     });
   }, [localTimeZone]);
+
+  // Thousands separators. "203819" reads like an id; "203,819" reads like a
+  // quantity, which is the whole point of putting it on the page.
+  const formatNumber = useCallback((n) => {
+    if (n == null) return "—";
+    const v = Number(n);
+    return Number.isFinite(v) ? v.toLocaleString(CONFIG.TIME_LOCALE) : "—";
+  }, []);
+
+  // Large lifetime counters, shortened so "7,682,298" does not dominate the
+  // hero row it shares with four other figures.
+  const formatCompact = useCallback((n) => {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return "—";
+    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(v >= 10_000_000 ? 0 : 1)}M`;
+    if (v >= 10_000) return `${Math.round(v / 1000)}k`;
+    return v.toLocaleString(CONFIG.TIME_LOCALE);
+  }, []);
 
   // Convert byte size to human-readable format (B, KB, MB, GB)
   const formatBytes = (bytes) => {
@@ -468,8 +492,27 @@ function App() {
          ipStatsError={summaryApi.error}
          uniqueCredsLoading={summaryApi.loading}
          uniqueCredsError={summaryApi.error}
+         formatNumber={formatNumber}
+         formatCompact={formatCompact}
+         formatDate={formatDate}
          />
        </ErrorBoundary>
+
+        {/* The counts above say how much; this says what. Sits directly under
+            the hero because it is the most interesting thing on the page. */}
+        <ErrorBoundary name="Featured attack">
+          <FeaturedAttack
+            // Remount on a new session so the replay restarts from the top.
+            key={featuredApi.raw?.session?.session_id || "none"}
+            data={featuredApi.raw}
+            loading={featuredApi.loading}
+            error={featuredApi.error}
+            mitreById={mitreById}
+            countryFlag={countryFlag}
+            onOpenFull={openSession}
+          />
+        </ErrorBoundary>
+
         <div className="grid gap-5 sm:gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,2.4fr)] overflow-x-auto sm:overflow-visible">
           <ErrorBoundary name="Live events">
             <EventsPanel

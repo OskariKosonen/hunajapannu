@@ -181,7 +181,8 @@ async function getSummaryStats() {
 
   // pool.query (not a single checked-out client) so the five queries actually
   // run in parallel — node-postgres serializes queries issued on one client.
-  const [eventsAgg, filesAgg, commandsAgg, credsAgg, ipStatsAgg] = await Promise.all([
+  const [eventsAgg, filesAgg, commandsAgg, credsAgg, ipStatsAgg, lifetimeAgg, firstEventAgg] =
+    await Promise.all([
     pool.query(
       `SELECT SUM(events_per_hour.events) AS total, MAX(events_per_hour.hour) AS peak_hour, MAX(events_per_hour.events) AS peak_events
        FROM (
@@ -205,6 +206,19 @@ async function getSummaryStats() {
        WHERE timestamp >= $1`,
       [twentyFourHoursAgo]
     ),
+    // Lifetime totals. The 24h figure alone undersells the sensor: it has
+    // been collecting since March. Read from cowrie_country_agg, which the
+    // trigger keeps current — one row per country, so this is a 150-row scan
+    // rather than an aggregate over 7.7M events. Every event with geo data
+    // belongs to exactly one country, so SUM(unique_ips) is the global
+    // distinct-IP count.
+    pool.query(
+      `SELECT COALESCE(SUM(total), 0)      AS lifetime_events,
+              COALESCE(SUM(unique_ips), 0) AS lifetime_unique_ips,
+              COUNT(*)                     AS lifetime_countries
+       FROM cowrie_country_agg`
+    ),
+    pool.query('SELECT MIN(timestamp) AS first_event FROM cowrie_events'),
   ]);
 
   const totalTrendEvents = Number(eventsAgg.rows[0]?.total || 0);
@@ -221,6 +235,10 @@ async function getSummaryStats() {
       Number(ipStatsAgg.rows[0]?.total_events || 0) > 0
         ? (Number(ipStatsAgg.rows[0].unique_ips || 0) / Number(ipStatsAgg.rows[0].total_events)) * 100
         : 0,
+    lifetimeEvents: Number(lifetimeAgg.rows[0]?.lifetime_events || 0),
+    lifetimeUniqueIps: Number(lifetimeAgg.rows[0]?.lifetime_unique_ips || 0),
+    lifetimeCountries: Number(lifetimeAgg.rows[0]?.lifetime_countries || 0),
+    firstEventAt: firstEventAgg.rows[0]?.first_event || null,
   };
 
   summaryCache.data = summary;
@@ -1261,54 +1279,115 @@ app.get('/api/public/cowrie/sessions', async (req, res) => {
  *
  * Response: { session: {...}, events: Array<Event> }
  */
+async function loadSessionTimeline(id) {
+  const { rows } = await pool.query(
+    `SELECT
+       timestamp,
+       src_ip,
+       dest_port,
+       username,
+       password,
+       command,
+       country_iso,
+       city,
+       asn,
+       org
+     FROM cowrie_events
+     WHERE session_id = $1
+     ORDER BY timestamp ASC
+     LIMIT $2`,
+    [id, LIMITS.MAX_SESSION_EVENTS]
+  );
+
+  if (rows.length === 0) return null;
+
+  const first = rows[0];
+  const last = rows[rows.length - 1];
+  return {
+    session: {
+      session_id: id,
+      src_ip: first.src_ip,
+      country_iso: first.country_iso,
+      city: first.city,
+      asn: first.asn,
+      org: first.org,
+      started_at: first.timestamp,
+      ended_at: last.timestamp,
+      duration_ms: new Date(last.timestamp) - new Date(first.timestamp),
+      events: rows.length,
+      truncated: rows.length === LIMITS.MAX_SESSION_EVENTS,
+    },
+    // Tag commands the same way the commands panel does, so a session
+    // timeline shows which techniques the attacker actually used.
+    events: rows.map((r) => ({ ...r, tags: r.command ? tagCommand(r.command) : [] })),
+  };
+}
+
+/**
+ * GET /api/public/cowrie/sessions/featured
+ *
+ * The busiest session in the recent past, with its full timeline — the same
+ * shape as /sessions/:id so the client can treat them identically.
+ *
+ * The front page replays this. Ordering the normal session list by recency
+ * is right for a log but wrong for a showcase: most sessions are a bot
+ * connecting, trying one password and leaving, so the newest session is
+ * almost always two lines long. This picks the one that actually did
+ * something over a wider window.
+ *
+ * Registered before /sessions/:id, which would otherwise match "featured".
+ */
+app.get('/api/public/cowrie/sessions/featured', async (req, res) => {
+  const rawHours = parseInt(req.query.hours, 10);
+  const hours = Math.min(
+    Math.max(Number.isFinite(rawHours) ? rawHours : LIMITS.MAX_HOURS_LOOKBACK, 1),
+    LIMITS.MAX_HOURS_LOOKBACK
+  );
+
+  const cacheKey = `featured:${hours}`;
+  const cached = getCachedLeaderboard(cacheKey);
+  if (cached) return res.json(cached);
+
+  try {
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+    // Bounded by idx_events_timestamp: a week is tens of thousands of rows,
+    // not the 7.7M-row scan that used to starve the pool.
+    const { rows } = await pool.query(
+      `SELECT session_id
+       FROM cowrie_events
+       WHERE timestamp >= $1 AND session_id IS NOT NULL
+       GROUP BY session_id
+       HAVING COUNT(*) FILTER (WHERE command IS NOT NULL AND command <> '') > 0
+       ORDER BY COUNT(*) FILTER (WHERE command IS NOT NULL AND command <> '') DESC,
+                COUNT(*) DESC
+       LIMIT 1`,
+      [since]
+    );
+
+    if (rows.length === 0) {
+      // A quiet week is not an error; the client hides the panel.
+      return res.status(404).json({ error: 'No session with commands in this window' });
+    }
+
+    const payload = await loadSessionTimeline(rows[0].session_id);
+    if (!payload) return res.status(404).json({ error: 'Session not found' });
+
+    setCachedLeaderboard(cacheKey, payload);
+    res.json(payload);
+  } catch (err) {
+    console.error('Error in /api/public/cowrie/sessions/featured:', err);
+    res.status(500).json({ error: 'Database query failed' });
+  }
+});
+
 app.get('/api/public/cowrie/sessions/:id', async (req, res) => {
   const id = typeof req.params.id === 'string' ? req.params.id.slice(0, 64) : '';
   if (!id) return res.status(400).json({ error: 'Invalid session id' });
 
   try {
-    const { rows } = await pool.query(
-      `SELECT
-         timestamp,
-         src_ip,
-         dest_port,
-         username,
-         password,
-         command,
-         country_iso,
-         city,
-         asn,
-         org
-       FROM cowrie_events
-       WHERE session_id = $1
-       ORDER BY timestamp ASC
-       LIMIT $2`,
-      [id, LIMITS.MAX_SESSION_EVENTS]
-    );
-
-    if (rows.length === 0) {
-      return res.status(404).json({ error: 'Session not found' });
-    }
-
-    const first = rows[0];
-    const last = rows[rows.length - 1];
-    res.json({
-      session: {
-        session_id: id,
-        src_ip: first.src_ip,
-        country_iso: first.country_iso,
-        city: first.city,
-        asn: first.asn,
-        org: first.org,
-        started_at: first.timestamp,
-        ended_at: last.timestamp,
-        duration_ms: new Date(last.timestamp) - new Date(first.timestamp),
-        events: rows.length,
-        truncated: rows.length === LIMITS.MAX_SESSION_EVENTS,
-      },
-      // Tag commands the same way the commands panel does, so a session
-      // timeline shows which techniques the attacker actually used.
-      events: rows.map((r) => ({ ...r, tags: r.command ? tagCommand(r.command) : [] })),
-    });
+    const payload = await loadSessionTimeline(id);
+    if (!payload) return res.status(404).json({ error: 'Session not found' });
+    res.json(payload);
   } catch (err) {
     console.error('Error in /api/public/cowrie/sessions/:id:', err);
     res.status(500).json({ error: 'Database query failed' });

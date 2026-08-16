@@ -159,7 +159,8 @@ jobs:
             "$PUB/top-countries?limit=5" \
             "$PUB/ip-stats" \
             "$PUB/mitre" \
-            "$PUB/sessions?limit=5" ; do
+            "$PUB/sessions?limit=5" \
+            "$PUB/sessions/featured" ; do
             assert "200 ${path#"$API/"}" "200" "$(status "$path")"
           done
 
@@ -210,6 +211,18 @@ jobs:
           assert "known session resolves" "s001" "$(jq_get "$PUB/sessions/s001" '.session.session_id')"
           assert "its timeline has events" "true" "$(jq_get "$PUB/sessions/s001" '.events | length > 0')"
           assert "missing session 404s" "404" "$(status "$PUB/sessions/does-not-exist")"
+
+          echo "--- featured session (front-page replay) ---"
+          # s001 runs 4 commands; s002 runs 1; s003 runs 1. The busiest must win,
+          # not the most recent — picking by recency is what makes the normal
+          # list useless for this, since most sessions are two lines long.
+          assert "picks the busiest session" "s001" "$(jq_get "$PUB/sessions/featured" '.session.session_id')"
+          assert "returns its full timeline" "5" "$(jq_get "$PUB/sessions/featured" '.events | length')"
+          assert "commands carry MITRE tags" "true" \
+            "$(jq_get "$PUB/sessions/featured" '[.events[].tags[]] | length > 0')"
+          # "featured" must not be swallowed by the /sessions/:id route.
+          assert "featured is not read as a session id" "false" \
+            "$(jq_get "$PUB/sessions/featured" '.session.session_id == "featured"')"
 
           echo "--- ingest write path ---"
           assert "rejects a missing token" "401" \
