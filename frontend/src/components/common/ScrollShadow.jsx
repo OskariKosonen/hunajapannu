@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-const ScrollShadow = ({ children, className = "", topScrollbar = false }) => {
+/**
+ * @param {string} [className]          classes for the scrolling element itself
+ * @param {string} [containerClassName] classes for the positioned wrapper, so a
+ *   caller can make the whole thing a flex child that fills its parent
+ */
+const ScrollShadow = ({ children, className = "", containerClassName = "", topScrollbar = false }) => {
   const scrollRef = useRef(null);
   const topScrollRef = useRef(null);
   const [hasShadow, setHasShadow] = useState({ left: false, right: false });
@@ -68,7 +73,7 @@ const ScrollShadow = ({ children, className = "", topScrollbar = false }) => {
   }, [children, topScrollbar]);
 
   return (
-    <div className="relative">
+    <div className={`relative ${containerClassName}`}>
       {topScrollbar && (
         <div
           ref={topScrollRef}

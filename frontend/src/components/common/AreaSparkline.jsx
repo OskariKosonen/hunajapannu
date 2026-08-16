@@ -1,49 +1,96 @@
-import { memo, useId, useState } from "react";
+import { memo, useId, useState, useRef, useLayoutEffect } from "react";
 
 /**
  * Area chart for the hourly-events series.
  *
  * Replaces Recharts, which cost 317 kB (98 kB gzipped) — by a wide margin the
- * largest asset on the page — to draw twenty-four points. This is plain SVG
- * scaled by viewBox, so it is responsive without measuring anything, and it
- * keeps the parts that were actually used: gridlines, axis labels, and a
- * tooltip on hover.
+ * largest asset on the page — to draw twenty-four points.
+ *
+ * The SVG is rendered at the container's measured pixel size rather than a
+ * fixed viewBox stretched to fit. The earlier version used
+ * preserveAspectRatio="none", which scales the coordinate system unevenly on
+ * each axis: text came out horizontally squashed, the hover dot rendered as an
+ * ellipse, and dashed gridlines smeared. Measuring means one unit is one CSS
+ * pixel, so nothing distorts at any width.
  *
  * @param {Array<{label: string, value: number}>} data
- * @param {number} [max] Upper bound for the y-axis; defaults to the data max.
+ * @param {number} [max] Lower bound for the y-axis; the axis never ends below it.
  */
+
+/** Rounds an axis maximum up to a 1/2/5 x 10^n step so tick labels read cleanly. */
+const niceCeil = (value) => {
+  if (value <= 0) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  const normalised = value / magnitude;
+  const step = normalised <= 1 ? 1 : normalised <= 2 ? 2 : normalised <= 5 ? 5 : 10;
+  return step * magnitude;
+};
+
 const AreaSparkline = ({ data, max, height = 160 }) => {
   const gradientId = useId();
   const [hover, setHover] = useState(null);
+  const containerRef = useRef(null);
+  // Falls back to a sensible width until measured (and under jsdom, which has
+  // no layout at all), so the geometry below never divides by zero.
+  const [width, setWidth] = useState(600);
+
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      const w = el.clientWidth;
+      if (w > 0) setWidth(w);
+    };
+    measure();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   if (!data || data.length === 0) return null;
 
-  // A fixed coordinate space, stretched to the container by preserveAspectRatio.
-  const W = 600;
-  const H = 200;
-  const PAD = { top: 12, right: 8, bottom: 22, left: 34 };
-  const plotW = W - PAD.left - PAD.right;
-  const plotH = H - PAD.top - PAD.bottom;
+  const W = width;
+  const H = height;
+  const PAD = { top: 10, right: 10, bottom: 20, left: 40 };
+  const plotW = Math.max(W - PAD.left - PAD.right, 1);
+  const plotH = Math.max(H - PAD.top - PAD.bottom, 1);
 
-  const peak = Math.max(max || 0, ...data.map((d) => d.value), 1);
+  const dataPeak = Math.max(...data.map((d) => d.value), 0);
+  // Round the axis up so gridlines land on 0 / 500 / 1000 rather than 0 / 410 / 819.
+  const axisMax = niceCeil(Math.max(dataPeak, max || 0, 1));
+
   const x = (i) => PAD.left + (data.length === 1 ? plotW / 2 : (i / (data.length - 1)) * plotW);
-  const y = (v) => PAD.top + plotH - (v / peak) * plotH;
+  const y = (v) => PAD.top + plotH - (v / axisMax) * plotH;
 
-  const line = data.map((d, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(d.value).toFixed(1)}`).join(" ");
-  const area = `${line} L${x(data.length - 1).toFixed(1)},${PAD.top + plotH} L${x(0).toFixed(1)},${PAD.top + plotH} Z`;
+  const line = data
+    .map((d, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(d.value).toFixed(1)}`)
+    .join(" ");
+  const baseline = (PAD.top + plotH).toFixed(1);
+  const area = `${line} L${x(data.length - 1).toFixed(1)},${baseline} L${x(0).toFixed(1)},${baseline} Z`;
 
-  // Four y-gridlines, and at most six x-labels so they never collide.
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(peak * f));
-  const xStep = Math.max(1, Math.ceil(data.length / 6));
+  const yTicks = [0, 0.25, 0.5, 0.75, 1];
+  // Roughly 52px per label, so narrow screens thin them out instead of colliding.
+  const maxLabels = Math.max(2, Math.floor(plotW / 52));
+  const xStep = Math.max(1, Math.ceil(data.length / maxLabels));
+  const colW = plotW / Math.max(data.length - 1, 1);
 
   return (
-    <div className="relative w-full" style={{ height }}>
+    <div ref={containerRef} className="relative w-full" style={{ height }}>
       <svg
+        width={W}
+        height={H}
         viewBox={`0 0 ${W} ${H}`}
-        preserveAspectRatio="none"
-        className="w-full h-full overflow-visible"
+        // max-w-full stops the 600px fallback overflowing a narrower
+        // container in the frame before the measurement lands.
+        className="block max-w-full"
         role="img"
-        aria-label={`Events per hour. Peak ${peak}. ${data.length} points from ${data[0].label} to ${data[data.length - 1].label}.`}
+        aria-label={`Events per hour. Peak ${dataPeak}. ${data.length} points from ${data[0].label} to ${data[data.length - 1].label}.`}
         onMouseLeave={() => setHover(null)}
       >
         <defs>
@@ -53,33 +100,51 @@ const AreaSparkline = ({ data, max, height = 160 }) => {
           </linearGradient>
         </defs>
 
-        {yTicks.map((t, i) => {
-          const gy = PAD.top + plotH - (i / (yTicks.length - 1)) * plotH;
+        {yTicks.map((f) => {
+          const gy = PAD.top + plotH - f * plotH;
           return (
-            <g key={t + "-" + i}>
-              <line x1={PAD.left} x2={W - PAD.right} y1={gy} y2={gy} stroke="#0f172a" strokeDasharray="3 3" />
-              {/* vectorEffect keeps text from stretching with preserveAspectRatio="none" */}
+            <g key={f}>
+              <line
+                x1={PAD.left}
+                x2={W - PAD.right}
+                y1={gy}
+                y2={gy}
+                stroke="#0f172a"
+                strokeDasharray="3 3"
+              />
               <text x={PAD.left - 6} y={gy + 3} textAnchor="end" fontSize="9" fill="#5eead4">
-                {t}
+                {Math.round(axisMax * f).toLocaleString()}
               </text>
             </g>
           );
         })}
 
         <path d={area} fill={`url(#${gradientId})`} />
-        <path d={line} fill="none" stroke="#34d399" strokeWidth="2" vectorEffect="non-scaling-stroke" />
+        <path d={line} fill="none" stroke="#34d399" strokeWidth="2" />
 
-        {data.map((d, i) =>
-          i % xStep === 0 ? (
-            <text key={`x${i}`} x={x(i)} y={H - 6} textAnchor="middle" fontSize="9" fill="#5eead4">
+        {data.map((d, i) => {
+          if (i % xStep !== 0) return null;
+          // Anchor the outermost labels inward; centred, they hang off the
+          // edge of the viewBox and get clipped.
+          const px = x(i);
+          const anchor = px < PAD.left + 16 ? "start" : px > W - PAD.right - 16 ? "end" : "middle";
+          return (
+            <text key={`x${i}`} x={px} y={H - 5} textAnchor={anchor} fontSize="9" fill="#5eead4">
               {d.label}
             </text>
-          ) : null
-        )}
+          );
+        })}
 
         {hover != null && (
           <g pointerEvents="none">
-            <line x1={x(hover)} x2={x(hover)} y1={PAD.top} y2={PAD.top + plotH} stroke="#34d399" strokeOpacity="0.4" />
+            <line
+              x1={x(hover)}
+              x2={x(hover)}
+              y1={PAD.top}
+              y2={PAD.top + plotH}
+              stroke="#34d399"
+              strokeOpacity="0.4"
+            />
             <circle cx={x(hover)} cy={y(data[hover].value)} r="3.5" fill="#f472b6" />
           </g>
         )}
@@ -89,9 +154,9 @@ const AreaSparkline = ({ data, max, height = 160 }) => {
         {data.map((d, i) => (
           <rect
             key={`hit${i}`}
-            x={x(i) - plotW / (2 * Math.max(data.length - 1, 1))}
+            x={x(i) - colW / 2}
             y={PAD.top}
-            width={plotW / Math.max(data.length - 1, 1)}
+            width={colW}
             height={plotH}
             fill="transparent"
             onMouseEnter={() => setHover(i)}
@@ -105,7 +170,7 @@ const AreaSparkline = ({ data, max, height = 160 }) => {
           style={{ left: `${(x(hover) / W) * 100}%`, top: 0 }}
         >
           <div className="font-semibold">{data[hover].label}</div>
-          <div>{data[hover].value} events</div>
+          <div>{data[hover].value.toLocaleString()} events</div>
         </div>
       )}
     </div>

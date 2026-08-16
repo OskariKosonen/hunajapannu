@@ -22,9 +22,12 @@ const CONFIG = {
   // API refresh intervals (milliseconds)
   REFRESH_INTERVAL: 120000, // 2 minutes
 
-  // Events table display limits
+  // Events table display limits. The desktop feed sits beside a column of six
+  // stacked panels and stretches to their combined height, so 58 rows left the
+  // terminal part-empty on a tall viewport; 100 fills it and scrolls past that.
+  // (The API caps /latest at 200.)
   MOBILE_EVENT_LIMIT: 20,
-  DESKTOP_EVENT_LIMIT: 58,
+  DESKTOP_EVENT_LIMIT: 100,
   MOBILE_BREAKPOINT: 768, // Tailwind md breakpoint in pixels
 
   // Wait for typing to settle before hitting the API
