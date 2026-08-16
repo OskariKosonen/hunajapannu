@@ -4,7 +4,7 @@ API schema, batches, and POSTs over HTTPS with a bearer token. The byte offset
 is persisted only after a successful POST, so backend downtime never drops
 events (keep log-rotation retention longer than your worst-case outage).
 Delivery is at-least-once. Zero third-party deps."""
-import json, os, sys, time, urllib.request, urllib.error
+import datetime, json, os, sys, time, urllib.request, urllib.error
 
 LOG_PATH   = os.environ.get("COWRIE_LOG", "/home/cowrie/var/log/cowrie/cowrie.json")
 STATE_PATH = os.environ.get("FWD_STATE", "/var/lib/cowrie-forwarder/state.json")
@@ -31,8 +31,38 @@ def save_state(state):
     with open(tmp, "w") as f: json.dump(state, f)
     os.replace(tmp, STATE_PATH)
 
+# Cowrie formats its timestamps from the machine's local wall clock but suffixes
+# them with "Z", so on a Pi set to Europe/London every event was recorded an
+# hour ahead of reality for the whole of BST — proven by comparing this
+# forwarder's own clock against the label on an event it was posting at the
+# time. Set FWD_COWRIE_TZ=local to reinterpret those naive wall-clock readings
+# in the machine's timezone and emit real UTC. Leave it unset (or "utc") if
+# Cowrie is ever fixed to emit genuine UTC, otherwise the correction would be
+# applied twice.
+COWRIE_TZ = os.environ.get("FWD_COWRIE_TZ", "utc").strip().lower()
+
+def _parse_naive(s):
+    body = s[:-1] if s[-1:] in ("Z", "z") else s
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.datetime.strptime(body, fmt)
+        except ValueError:
+            pass
+    return None
+
+def normalize_ts(s):
+    if not s or COWRIE_TZ != "local":
+        return s
+    naive = _parse_naive(s)
+    if naive is None:
+        return s  # unrecognised shape: pass through rather than mangle it
+    # astimezone() on a naive datetime reads it as local time using the offset
+    # in force on that date, so GMT readings pass through unchanged and only
+    # BST ones shift. That keeps winter data correct without a special case.
+    return naive.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
 def map_event(ev):
-    eid = ev.get("eventid"); ts, ip, sess = ev.get("timestamp"), ev.get("src_ip"), ev.get("session")
+    eid = ev.get("eventid"); ts, ip, sess = normalize_ts(ev.get("timestamp")), ev.get("src_ip"), ev.get("session")
     if eid in ("cowrie.login.success", "cowrie.login.failed"):
         return "event", {"timestamp": ts, "src_ip": ip, "session_id": sess, "dest_port": DECOY_PORT,
                          "username": ev.get("username"), "password": ev.get("password")}

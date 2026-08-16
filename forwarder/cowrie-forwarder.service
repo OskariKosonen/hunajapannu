@@ -8,6 +8,10 @@ Type=simple
 User=forwarder
 Group=forwarder
 EnvironmentFile=/etc/cowrie-forwarder.env
+# Cowrie writes local wall-clock times labelled "Z". Reinterpret them in the
+# machine's timezone so the backend stores real UTC. Remove this if Cowrie is
+# ever fixed at the source, or the shift would be applied twice.
+Environment=FWD_COWRIE_TZ=local
 ExecStart=/usr/bin/python3 /opt/cowrie-forwarder/forwarder.py
 Restart=always
 RestartSec=5
