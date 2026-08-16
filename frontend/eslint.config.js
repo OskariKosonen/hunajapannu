@@ -34,4 +34,22 @@ export default defineConfig([
       globals: globals.node,
     },
   },
+  {
+    // Tests run under Vitest with globals enabled, and reach for Node's
+    // `global` to stub fetch.
+    files: ['src/test/**/*.{js,jsx}'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+        describe: 'readonly',
+        it: 'readonly',
+        expect: 'readonly',
+        vi: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
+      },
+    },
+  },
 ])

@@ -1,10 +1,8 @@
-import { useEffect, useState, useMemo, useCallback, useRef, lazy, Suspense } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import DashboardHeader from "./components/DashboardHeader";
 import ProjectSummary from "./components/ProjectSummary";
 import EventsPanel from "./components/EventsPanel";
-// Recharts is ~60% of the bundle and only this panel needs it, so it loads
-// on demand instead of blocking first paint.
-const TrendPanel = lazy(() => import("./components/TrendPanel"));
+import TrendPanel from "./components/TrendPanel";
 import TopCredentialsPanel from "./components/TopCredentialsPanel";
 import TopCountriesPanel from "./components/TopCountriesPanel";
 import CommandsPanel from "./components/CommandsPanel";
@@ -13,6 +11,9 @@ import TopAsnPanel from "./components/TopAsnPanel";
 import AsciiTopology from "./components/AsciiTopology";
 import SessionsPanel from "./components/SessionsPanel";
 import SessionDrawer from "./components/SessionDrawer";
+import ErrorBoundary from "./components/common/ErrorBoundary";
+import { useApi, useDebounced, useMediaQuery, useVisibleInterval, buildUrl } from "./hooks/useApi";
+import { useUrlState } from "./hooks/useUrlState";
 
 // ============================================
 // CONFIGURATION CONSTANTS
@@ -37,6 +38,7 @@ const CONFIG = {
     CREDS: 100,
     FILES: 50,
     ASN: 50,
+    COUNTRIES: 50,
     SESSIONS: 40,
   },
 
@@ -48,20 +50,12 @@ const CONFIG = {
     FILES: "/api/public/cowrie/files",
     TRENDS: "/api/public/cowrie/events-per-hour?hours=24",
     TOP_ASN: "/api/public/cowrie/top-asn",
-    TOP_COUNTRIES: "/api/public/cowrie/top-countries?limit=1000",
+    TOP_COUNTRIES: "/api/public/cowrie/top-countries",
     SUMMARY: "/api/public/cowrie/summary",
     SESSIONS: "/api/public/cowrie/sessions",
     MITRE: "/api/public/cowrie/mitre",
   },
 
-  // Chart dimensions and calculations
-  CHART: {
-    SVG_VIEWBOX: "0 0 100 40",
-    VERTICAL_RANGE: 22,
-    VERTICAL_PADDING: 30,
-    VERTICAL_MIDPOINT: 18,
-  },
-  
   // Every timestamp is rendered in the viewer's own timezone; this is only
   // the fallback for when the browser will not report one.
   DEFAULT_TIMEZONE: "Europe/Helsinki",
@@ -99,16 +93,6 @@ const BOOT_MESSAGES = [
   { label: "Pro Tip", detail: "cat /etc/passwd | grep root" },
 ];
 
-/** Delays a rapidly-changing value (a search box) so it can drive requests. */
-function useDebounced(value, delay) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
-}
-
 
 /**
  * Get the user's local timezone
@@ -141,80 +125,30 @@ const getTimeZoneLabel = (timeZone) => {
 };
 
 function App() {
-  // Data state: API responses for each data type
-  const [events, setEvents] = useState([]);
-  const [commands, setCommands] = useState([]);
-  const [creds, setCreds] = useState([]);
-  const [downloads, setDownloads] = useState([]);
-  const [trend, setTrend] = useState([]);
-  const [topAsn, setTopAsn] = useState([]);
-  const [topCountries, setTopCountries] = useState([]);
-  const [summaryData, setSummaryData] = useState(null);
-  const [commandFilter, setCommandFilter] = useState("all");
-
-  // Server-driven metadata and totals
-  const [mitreSignatures, setMitreSignatures] = useState([]);
-  const [commandTagCounts, setCommandTagCounts] = useState({});
-  const [commandsTotal, setCommandsTotal] = useState(0);
-  const [credsTotal, setCredsTotal] = useState(0);
-  const [downloadsTotal, setDownloadsTotal] = useState(0);
-  const [asnTotal, setAsnTotal] = useState(0);
-
-  // Search boxes. Raw value drives the input, the debounced value drives the
-  // request, so typing does not fire one fetch per keystroke.
-  const [commandSearch, setCommandSearch] = useState("");
-  const [credsSearch, setCredsSearch] = useState("");
-  const [downloadsSearch, setDownloadsSearch] = useState("");
-  const [asnSearch, setAsnSearch] = useState("");
-  const [sessionSearch, setSessionSearch] = useState("");
-
-  // Session drill-down
-  const [sessions, setSessions] = useState([]);
-  const [sessionsTotal, setSessionsTotal] = useState(0);
-  const [sessionsError, setSessionsError] = useState("");
-  const [sessionsLoading, setSessionsLoading] = useState(false);
-  const [activeSession, setActiveSession] = useState(null);
-  const [activeSessionLoading, setActiveSessionLoading] = useState(false);
-  const [activeSessionError, setActiveSessionError] = useState("");
-  const loadingTip = useMemo(() => {
-    if (!BOOT_MESSAGES.length) return null;
-    const randomIndex = Math.floor(Math.random() * BOOT_MESSAGES.length);
-    return BOOT_MESSAGES[randomIndex];
-  }, []);
-
-  // Global loading/error states (only events uses global, others use panel-level)
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [commandsError, setCommandsError] = useState("");
-  const [credsError, setCredsError] = useState("");
-  const [downloadsError, setDownloadsError] = useState("");
-  const [trendError, setTrendError] = useState("");
-  const [asnError, setAsnError] = useState("");
-  const [countriesError, setCountriesError] = useState("");
-  const [summaryError, setSummaryError] = useState("");
-
-  // Per-panel loading states for granular UX feedback
-  const [commandsLoading, setCommandsLoading] = useState(false);
-  const [credsLoading, setCredsLoading] = useState(false);
-  const [downloadsLoading, setDownloadsLoading] = useState(false);
-  const [trendLoading, setTrendLoading] = useState(false);
-  const [asnLoading, setAsnLoading] = useState(false);
-  const [countriesLoading, setCountriesLoading] = useState(false);
-  const [summaryLoading, setSummaryLoading] = useState(false);
-
-  // UI state
-  const [scrollProgress, setScrollProgress] = useState(0);
-  const [windowWidth, setWindowWidth] = useState(window.innerWidth);
-  const isMobile = useMemo(
-    () => windowWidth < CONFIG.MOBILE_BREAKPOINT,
-    [windowWidth]
+  // Lazy initialiser so the tip is picked once on mount rather than being a
+  // side effect of rendering.
+  const [loadingTip] = useState(
+    () => BOOT_MESSAGES[Math.floor(Math.random() * BOOT_MESSAGES.length)] || null
   );
 
-  // Declared here because the fetch callbacks below close over them.
-  const eventLimit = useMemo(
-    () => (isMobile ? CONFIG.MOBILE_EVENT_LIMIT : CONFIG.DESKTOP_EVENT_LIMIT),
-    [isMobile]
-  );
+  // Breakpoint via matchMedia: fires only when the breakpoint is crossed,
+  // rather than re-rendering the tree on every pixel of a window drag.
+  const isMobile = useMediaQuery(`(max-width: ${CONFIG.MOBILE_BREAKPOINT - 1}px)`);
+  const eventLimit = isMobile ? CONFIG.MOBILE_EVENT_LIMIT : CONFIG.DESKTOP_EVENT_LIMIT;
+
+  // Resolved once: resolvedOptions() is not free and this feeds both formatters.
+  const localTimeZone = useMemo(() => getLocalTimeZone() || CONFIG.DEFAULT_TIMEZONE, []);
+  const timeZoneLabel = useMemo(() => getTimeZoneLabel(localTimeZone), [localTimeZone]);
+
+  // Search boxes and the open session live in the query string, so a filtered
+  // view or a specific attacker session can be linked, bookmarked and reloaded.
+  const [commandSearch, setCommandSearch] = useUrlState("cmd");
+  const [credsSearch, setCredsSearch] = useUrlState("cred");
+  const [downloadsSearch, setDownloadsSearch] = useUrlState("file");
+  const [asnSearch, setAsnSearch] = useUrlState("asn");
+  const [sessionSearch, setSessionSearch] = useUrlState("q");
+  const [commandFilter, setCommandFilter] = useUrlState("tag", "all");
+  const [openSessionId, setOpenSessionId] = useUrlState("session");
 
   const debouncedCommandSearch = useDebounced(commandSearch, CONFIG.SEARCH_DEBOUNCE_MS);
   const debouncedCredsSearch = useDebounced(credsSearch, CONFIG.SEARCH_DEBOUNCE_MS);
@@ -222,335 +156,84 @@ function App() {
   const debouncedAsnSearch = useDebounced(asnSearch, CONFIG.SEARCH_DEBOUNCE_MS);
   const debouncedSessionSearch = useDebounced(sessionSearch, CONFIG.SEARCH_DEBOUNCE_MS);
 
-  const countryFlag = useCallback((country) => {
-    if (!country || country.length !== 2) return "🌐";
-    const code = country.toUpperCase();
-    // Convert ASCII A-Z to regional indicator symbols
-    const OFFSET = 127397;
-    return String.fromCodePoint(
-      code.charCodeAt(0) + OFFSET,
-      code.charCodeAt(1) + OFFSET
-    );
-  }, []);
+  // One line per panel: each manages its own rows, total, loading, error and
+  // request cancellation. Adding a panel no longer means adding six pieces of
+  // state and a fetch callback to this file.
+  const E = CONFIG.API_ENDPOINTS;
 
-  // Resolved once, not on every render: resolvedOptions() is not free, and
-  // this feeds the dependency array of both time formatters.
-  const localTimeZone = useMemo(
-    () => getLocalTimeZone() || CONFIG.DEFAULT_TIMEZONE,
-    []
+  const [commandTagCounts, setCommandTagCounts] = useState({});
+  const commandsApi = useApi(
+    buildUrl(E.COMMANDS, { limit: CONFIG.PAGE_SIZE.COMMANDS, search: debouncedCommandSearch, tag: commandFilter }),
+    { onData: (d) => d?.counts && setCommandTagCounts(d.counts) }
   );
-  const timeZoneLabel = useMemo(() => getTimeZoneLabel(localTimeZone), [localTimeZone]);
+  const credsApi = useApi(buildUrl(E.CREDENTIALS, { limit: CONFIG.PAGE_SIZE.CREDS, search: debouncedCredsSearch }));
+  const filesApi = useApi(buildUrl(E.FILES, { limit: CONFIG.PAGE_SIZE.FILES, search: debouncedDownloadsSearch }));
+  const asnApi = useApi(buildUrl(E.TOP_ASN, { limit: CONFIG.PAGE_SIZE.ASN, search: debouncedAsnSearch }));
+  const sessionsApi = useApi(buildUrl(E.SESSIONS, { limit: CONFIG.PAGE_SIZE.SESSIONS, search: debouncedSessionSearch }));
+  const eventsApi = useApi(buildUrl(E.LATEST_EVENTS, { limit: eventLimit }));
+  const trendApi = useApi(E.TRENDS);
+  const countriesApi = useApi(buildUrl(E.TOP_COUNTRIES, { limit: CONFIG.PAGE_SIZE.COUNTRIES }));
+  const summaryApi = useApi(E.SUMMARY);
+  const mitreApi = useApi(E.MITRE);
 
-  // EFFECTS
-  // Track scroll position for visual progress indicator
-  useEffect(() => {
-    const handleScroll = () => {
-      const scrollHeight =
-        document.documentElement.scrollHeight - window.innerHeight;
-      const scrolled = window.scrollY;
-      const progress = scrollHeight > 0 ? (scrolled / scrollHeight) * 100 : 0;
-      setScrollProgress(progress);
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  // Maintain window width state for responsive breakpoint checks
-  useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth);
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  // API FETCH FUNCTIONS
-  // Every in-flight request is registered here so a refresh, a new search or
-  // unmount can abort the previous one instead of racing it.
-  const inFlight = useRef(new Map());
-
-  const request = useCallback(async (key, url, { onData, onError, onLoading }) => {
-    inFlight.current.get(key)?.abort();
-    const controller = new AbortController();
-    inFlight.current.set(key, controller);
-
-    try {
-      if (onLoading) onLoading(true);
-      if (onError) onError("");
-      const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) throw new Error(`API error ${res.status}`);
-      onData(await res.json());
-    } catch (err) {
-      // An aborted request was replaced on purpose; not a failure to report.
-      if (err.name === "AbortError") return;
-      console.error(err);
-      if (onError) onError(err.message || "Failed to fetch");
-    } finally {
-      if (inFlight.current.get(key) === controller) {
-        inFlight.current.delete(key);
-        if (onLoading) onLoading(false);
-      }
-    }
-  }, []);
-
-  // The list endpoints answer { rows, total, ... }; the simple ones still
-  // answer a bare array.
-  const asRows = (data) => (Array.isArray(data) ? data : data?.rows ?? []);
-  const asTotal = (data) => (Array.isArray(data) ? data.length : Number(data?.total ?? 0));
-
-  const buildUrl = useCallback((base, params) => {
-    const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== "" && v != null && v !== "all") qs.set(k, v);
-    }
-    const q = qs.toString();
-    return q ? `${base}?${q}` : base;
-  }, []);
-
-  const fetchEvents = useCallback(
-    () =>
-      request("events", buildUrl(CONFIG.API_ENDPOINTS.LATEST_EVENTS, { limit: eventLimit }), {
-        onData: (d) => setEvents(asRows(d)),
-        onError: setError,
-      }),
-    [request, buildUrl, eventLimit]
+  // The drawer is driven by the URL, so a shared link opens straight into it.
+  const sessionDetailApi = useApi(
+    openSessionId ? `${E.SESSIONS}/${encodeURIComponent(openSessionId)}` : null,
+    { enabled: Boolean(openSessionId) }
   );
 
-  const fetchCommands = useCallback(
-    () =>
-      request(
-        "commands",
-        buildUrl(CONFIG.API_ENDPOINTS.COMMANDS, {
-          limit: CONFIG.PAGE_SIZE.COMMANDS,
-          search: debouncedCommandSearch,
-          tag: commandFilter,
-        }),
-        {
-          onData: (d) => {
-            setCommands(asRows(d));
-            setCommandsTotal(asTotal(d));
-            if (d?.counts) setCommandTagCounts(d.counts);
-          },
-          onError: setCommandsError,
-          onLoading: setCommandsLoading,
-        }
-      ),
-    [request, buildUrl, debouncedCommandSearch, commandFilter]
-  );
+  const openSession = useCallback((id) => setOpenSessionId(id || ""), [setOpenSessionId]);
+  const closeSession = useCallback(() => setOpenSessionId(""), [setOpenSessionId]);
 
-  const fetchCreds = useCallback(
-    () =>
-      request(
-        "creds",
-        buildUrl(CONFIG.API_ENDPOINTS.CREDENTIALS, {
-          limit: CONFIG.PAGE_SIZE.CREDS,
-          search: debouncedCredsSearch,
-        }),
-        {
-          onData: (d) => { setCreds(asRows(d)); setCredsTotal(asTotal(d)); },
-          onError: setCredsError,
-          onLoading: setCredsLoading,
-        }
-      ),
-    [request, buildUrl, debouncedCredsSearch]
-  );
+  const events = eventsApi.rows;
+  const commands = commandsApi.rows;
+  const creds = credsApi.rows;
+  const downloads = filesApi.rows;
+  const trend = trendApi.rows;
+  const topAsn = asnApi.rows;
+  const topCountries = countriesApi.rows;
+  const sessions = sessionsApi.rows;
+  const summaryData = summaryApi.raw;
+  const mitreSignatures = mitreApi.rows;
 
-  const fetchDownloads = useCallback(
-    () =>
-      request(
-        "files",
-        buildUrl(CONFIG.API_ENDPOINTS.FILES, {
-          limit: CONFIG.PAGE_SIZE.FILES,
-          search: debouncedDownloadsSearch,
-        }),
-        {
-          onData: (d) => { setDownloads(asRows(d)); setDownloadsTotal(asTotal(d)); },
-          onError: setDownloadsError,
-          onLoading: setDownloadsLoading,
-        }
-      ),
-    [request, buildUrl, debouncedDownloadsSearch]
-  );
+  // First paint waits only on the two panels above the fold.
+  const loading = eventsApi.loading && events.length === 0 && summaryApi.raw == null;
 
-  const fetchTopAsn = useCallback(
-    () =>
-      request(
-        "asn",
-        buildUrl(CONFIG.API_ENDPOINTS.TOP_ASN, {
-          limit: CONFIG.PAGE_SIZE.ASN,
-          search: debouncedAsnSearch,
-        }),
-        {
-          onData: (d) => { setTopAsn(asRows(d)); setAsnTotal(asTotal(d)); },
-          onError: setAsnError,
-          onLoading: setAsnLoading,
-        }
-      ),
-    [request, buildUrl, debouncedAsnSearch]
-  );
+  const refreshAll = useCallback(() => {
+    eventsApi.refetch(); summaryApi.refetch(); commandsApi.refetch();
+    credsApi.refetch(); filesApi.refetch(); trendApi.refetch();
+    asnApi.refetch(); countriesApi.refetch(); sessionsApi.refetch();
+  }, [eventsApi, summaryApi, commandsApi, credsApi, filesApi, trendApi, asnApi, countriesApi, sessionsApi]);
 
-  const fetchSessions = useCallback(
-    () =>
-      request(
-        "sessions",
-        buildUrl(CONFIG.API_ENDPOINTS.SESSIONS, {
-          limit: CONFIG.PAGE_SIZE.SESSIONS,
-          search: debouncedSessionSearch,
-        }),
-        {
-          onData: (d) => { setSessions(asRows(d)); setSessionsTotal(asTotal(d)); },
-          onError: setSessionsError,
-          onLoading: setSessionsLoading,
-        }
-      ),
-    [request, buildUrl, debouncedSessionSearch]
-  );
-
-  const fetchTrend = useCallback(
-    () =>
-      request("trend", CONFIG.API_ENDPOINTS.TRENDS, {
-        onData: (d) => setTrend(asRows(d)),
-        onError: setTrendError,
-        onLoading: setTrendLoading,
-      }),
-    [request]
-  );
-
-  const fetchTopCountries = useCallback(
-    () =>
-      request("countries", CONFIG.API_ENDPOINTS.TOP_COUNTRIES, {
-        onData: (d) => setTopCountries(asRows(d)),
-        onError: setCountriesError,
-        onLoading: setCountriesLoading,
-      }),
-    [request]
-  );
-
-  const fetchSummary = useCallback(
-    () =>
-      request("summary", CONFIG.API_ENDPOINTS.SUMMARY, {
-        onData: (d) => setSummaryData(d || null),
-        onError: (msg) => { setSummaryError(msg); if (msg) setSummaryData(null); },
-        onLoading: setSummaryLoading,
-      }),
-    [request]
-  );
-
-  // Open one session's full timeline.
-  const openSession = useCallback(
-    (sessionId) => {
-      if (!sessionId) return;
-      setActiveSession({ session: { session_id: sessionId }, events: [] });
-      request("session-detail", `${CONFIG.API_ENDPOINTS.SESSIONS}/${encodeURIComponent(sessionId)}`, {
-        onData: (d) => setActiveSession(d),
-        onError: setActiveSessionError,
-        onLoading: setActiveSessionLoading,
-      });
-    },
-    [request]
-  );
-
-  const closeSession = useCallback(() => {
-    inFlight.current.get("session-detail")?.abort();
-    setActiveSession(null);
-    setActiveSessionError("");
-  }, []);
-
-  // EFFECTS - data loading
-  // The technique catalogue is static; fetch it once.
-  useEffect(() => {
-    request("mitre", CONFIG.API_ENDPOINTS.MITRE, {
-      onData: (d) => setMitreSignatures(Array.isArray(d) ? d : []),
-      onError: () => {},
-    });
-  }, [request]);
-
-  // Initial load. Secondary panels start immediately but do not gate paint.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      fetchCommands();
-      fetchCreds();
-      fetchDownloads();
-      fetchTrend();
-      fetchTopAsn();
-      fetchTopCountries();
-      fetchSessions();
-      try {
-        await Promise.all([fetchEvents(), fetchSummary()]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-    // Runs once; the search-driven effects below handle subsequent refetches.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Refetch the search-driven panels whenever their query changes. Each of
-  // these aborts its own previous request, so fast typing cannot leave a stale
-  // response to land last.
-  useEffect(() => { fetchCommands(); }, [debouncedCommandSearch, commandFilter, fetchCommands]);
-  useEffect(() => { fetchCreds(); }, [debouncedCredsSearch, fetchCreds]);
-  useEffect(() => { fetchDownloads(); }, [debouncedDownloadsSearch, fetchDownloads]);
-  useEffect(() => { fetchTopAsn(); }, [debouncedAsnSearch, fetchTopAsn]);
-  useEffect(() => { fetchSessions(); }, [debouncedSessionSearch, fetchSessions]);
-
-  // Periodic refresh, paused while the tab is hidden. Previously this polled
-  // all eight endpoints every two minutes forever, including in background
-  // tabs nobody was looking at.
-  useEffect(() => {
-    const refreshAll = () => {
-      if (document.hidden) return;
-      fetchEvents();
-      fetchSummary();
-      fetchCommands();
-      fetchCreds();
-      fetchDownloads();
-      fetchTrend();
-      fetchTopAsn();
-      fetchTopCountries();
-      fetchSessions();
-    };
-
-    let interval = setInterval(refreshAll, CONFIG.REFRESH_INTERVAL);
-
-    // Coming back to a hidden tab, refresh once immediately and restart the
-    // timer so the next tick is a full interval away.
-    const onVisibility = () => {
-      if (document.hidden) {
-        clearInterval(interval);
-      } else {
-        refreshAll();
-        clearInterval(interval);
-        interval = setInterval(refreshAll, CONFIG.REFRESH_INTERVAL);
-      }
-    };
-
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [
-    fetchEvents, fetchSummary, fetchCommands, fetchCreds, fetchDownloads,
-    fetchTrend, fetchTopAsn, fetchTopCountries, fetchSessions,
-  ]);
-
-  // Abort anything still in flight on unmount.
-  useEffect(() => {
-    const pending = inFlight.current;
-    return () => { for (const c of pending.values()) c.abort(); };
-  }, []);
+  useVisibleInterval(refreshAll, CONFIG.REFRESH_INTERVAL);
 
   // Close the session drawer on Escape.
   useEffect(() => {
-    if (!activeSession) return;
+    if (!openSessionId) return;
     const onKey = (e) => { if (e.key === "Escape") closeSession(); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [activeSession, closeSession]);
+  }, [openSessionId, closeSession]);
 
-  // FORMATTING UTILITIES
+  // Track scroll position for the progress indicator.
+  const [scrollProgress, setScrollProgress] = useState(0);
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
+      setScrollProgress(scrollHeight > 0 ? (window.scrollY / scrollHeight) * 100 : 0);
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const countryFlag = useCallback((country) => {
+    if (!country || country.length !== 2) return "🌐";
+    const code = country.toUpperCase();
+    const OFFSET = 127397;
+    return String.fromCodePoint(code.charCodeAt(0) + OFFSET, code.charCodeAt(1) + OFFSET);
+  }, []);
+
+    // FORMATTING UTILITIES
   // Convert ISO timestamp to localized datetime string, respecting user timezone
   const formatTimestamp = useCallback((ts) => {
     if (!ts) return "—";
@@ -650,15 +333,15 @@ function App() {
   const summaryStats = useMemo(
     () => ({
       attacks24h: summaryData?.attacks24h ?? totalTrendEvents,
-      malwareSamples: summaryData?.malwareSamples ?? downloadsTotal,
-      uniqueCommands: summaryData?.uniqueCommands ?? commandsTotal,
+      malwareSamples: summaryData?.malwareSamples ?? filesApi.total,
+      uniqueCommands: summaryData?.uniqueCommands ?? commandsApi.total,
       topCredential: creds[0]
         ? `${creds[0].username} / ${creds[0].password}`
         : "N/A",
       uniqueIpPercent: summaryData?.uniqueIpPercent ?? null,
       uniqueCredCount: summaryData?.uniqueCredCount ?? null,
     }),
-    [summaryData, totalTrendEvents, downloadsTotal, commandsTotal, creds]
+    [summaryData, totalTrendEvents, filesApi.total, commandsApi.total, creds]
   );
 
   // Technique catalogue from the API, with local badge colours attached.
@@ -739,16 +422,16 @@ function App() {
     );
   }
 
-  if (error) {
+  if (eventsApi.error && events.length === 0) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
           <div className="bg-red-900 border border-red-500 text-red-400 px-4 py-3 rounded font-mono">
             <strong className="font-bold">ERROR: </strong>
-            <span className="block sm:inline">{error}</span>
+            <span className="block sm:inline">{eventsApi.error}</span>
           </div>
           <button
-            onClick={fetchEvents}
+            onClick={eventsApi.refetch}
             className="mt-4 bg-green-600 hover:bg-green-500 text-black font-bold py-2 px-4 rounded font-mono border border-green-400"
           >
             RETRY
@@ -772,48 +455,46 @@ function App() {
 
       <div className="w-full px-5 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5 sm:space-y-6 sm:max-w-7xl xl:max-w-screen-2xl 2xl:max-w-[1760px] sm:mx-auto flex-1">
         <DashboardHeader timeZone={localTimeZone} timeZoneLabel={timeZoneLabel} />
-       <ProjectSummary
+       <ErrorBoundary name="Summary">
+         <ProjectSummary
          summaryStats={summaryStats}
          attacksTrendDown={attacksTrendDown}
-        peakEvents={peak?.events}
-        peakHourLabel={peakHourLabel}
-        ipStatsLoading={summaryLoading}
-        ipStatsError={summaryError}
-       uniqueCredsLoading={summaryLoading}
-       uniqueCredsError={summaryError}
-      />
+         peakEvents={peak?.events}
+         peakHourLabel={peakHourLabel}
+         ipStatsLoading={summaryApi.loading}
+         ipStatsError={summaryApi.error}
+         uniqueCredsLoading={summaryApi.loading}
+         uniqueCredsError={summaryApi.error}
+         />
+       </ErrorBoundary>
         <div className="grid gap-5 sm:gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,2.4fr)] overflow-x-auto sm:overflow-visible">
-          <EventsPanel
+          <ErrorBoundary name="Live events">
+            <EventsPanel
             events={events}
             eventLimit={eventLimit}
             formatTimestamp={formatTimestamp}
             renderGeoPill={renderGeoPill}
-          />
-
+            />
+          </ErrorBoundary>
           <div className="space-y-3.5 sm:space-y-4 min-w-[320px] sm:min-w-0">
-            <Suspense
-              fallback={
-                <div className="border border-emerald-700/50 rounded-xl bg-slate-950/70 p-4 text-[0.68rem] text-emerald-500">
-                  Loading chart…
-                </div>
-              }
-            >
+            <ErrorBoundary name="Events (24h)">
               <TrendPanel
                 trend={trend}
                 maxTrendEvents={maxTrendEvents}
                 formatHourLabel={formatHourLabel}
-                trendError={trendError}
-                trendLoading={trendLoading}
+                trendError={trendApi.error}
+                trendLoading={trendApi.loading}
                 totalTrendEvents={totalTrendEvents}
                 peakHourLabel={peakHourLabel}
               />
-            </Suspense>
+            </ErrorBoundary>
 
-            <SessionsPanel
+            <ErrorBoundary name="Sessions">
+              <SessionsPanel
               sessions={sessions}
-              sessionsTotal={sessionsTotal}
-              sessionsError={sessionsError}
-              sessionsLoading={sessionsLoading}
+              sessionsTotal={sessionsApi.total}
+              sessionsError={sessionsApi.error}
+              sessionsLoading={sessionsApi.loading}
               search={sessionSearch}
               onSearch={setSessionSearch}
               onOpen={openSession}
@@ -821,20 +502,22 @@ function App() {
               formatDuration={formatDuration}
               countryFlag={countryFlag}
               isMobile={isMobile}
-            />
-
-            <TopCountriesPanel
+              />
+            </ErrorBoundary>
+            <ErrorBoundary name="Top countries">
+              <TopCountriesPanel
               topCountries={topCountries}
-              countriesError={countriesError}
-              countriesLoading={countriesLoading}
+              countriesError={countriesApi.error}
+              countriesLoading={countriesApi.loading}
               countryFlag={countryFlag}
-            />
-
-            <CommandsPanel
+              />
+            </ErrorBoundary>
+            <ErrorBoundary name="Top commands">
+              <CommandsPanel
               commands={commands}
-              commandsError={commandsError}
-              commandsLoading={commandsLoading}
-              commandsTotal={commandsTotal}
+              commandsError={commandsApi.error}
+              commandsLoading={commandsApi.loading}
+              commandsTotal={commandsApi.total}
               commandFilter={commandFilter}
               setCommandFilter={setCommandFilter}
               isCommandFilterActive={isCommandFilterActive}
@@ -845,13 +528,14 @@ function App() {
               onSearch={setCommandSearch}
               pageSize={CONFIG.PAGE_SIZE.COMMANDS}
               isMobile={isMobile}
-            />
-
-            <TopMalwarePanel
+              />
+            </ErrorBoundary>
+            <ErrorBoundary name="Top malware">
+              <TopMalwarePanel
               downloads={downloads}
-              downloadsError={downloadsError}
-              downloadsLoading={downloadsLoading}
-              downloadsTotal={downloadsTotal}
+              downloadsError={filesApi.error}
+              downloadsLoading={filesApi.loading}
+              downloadsTotal={filesApi.total}
               search={downloadsSearch}
               onSearch={setDownloadsSearch}
               pageSize={CONFIG.PAGE_SIZE.FILES}
@@ -859,43 +543,47 @@ function App() {
               formatTimestamp={formatTimestamp}
               formatDate={formatDate}
               isMobile={isMobile}
-            />
-
-            <TopCredentialsPanel
+              />
+            </ErrorBoundary>
+            <ErrorBoundary name="Top credentials">
+              <TopCredentialsPanel
               creds={creds}
-              credsError={credsError}
-              credsLoading={credsLoading}
-              credsTotal={credsTotal}
+              credsError={credsApi.error}
+              credsLoading={credsApi.loading}
+              credsTotal={credsApi.total}
               search={credsSearch}
               onSearch={setCredsSearch}
               pageSize={CONFIG.PAGE_SIZE.CREDS}
-            />
-
-            <TopAsnPanel
+              />
+            </ErrorBoundary>
+            <ErrorBoundary name="Top ASNs">
+              <TopAsnPanel
               topAsn={topAsn}
-              asnError={asnError}
-              asnLoading={asnLoading}
-              asnTotal={asnTotal}
+              asnError={asnApi.error}
+              asnLoading={asnApi.loading}
+              asnTotal={asnApi.total}
               search={asnSearch}
               onSearch={setAsnSearch}
               pageSize={CONFIG.PAGE_SIZE.ASN}
               isMobile={isMobile}
-            />
+              />
+            </ErrorBoundary>
           </div>
         </div>
 
-        <AsciiTopology />
-
+        <ErrorBoundary name="Topology">
+          <AsciiTopology />
+        </ErrorBoundary>
         <footer className="mt-4 pt-3 border-t border-emerald-900/60 text-center text-[0.65rem] text-green-600">
           hunajapannu.fi
         </footer>
       </div>
 
-      {activeSession && (
+      {openSessionId && (
         <SessionDrawer
-          data={activeSession}
-          loading={activeSessionLoading}
-          error={activeSessionError}
+          data={sessionDetailApi.raw}
+          loading={sessionDetailApi.loading}
+          error={sessionDetailApi.error}
           onClose={closeSession}
           formatTimestamp={formatTimestamp}
           formatDuration={formatDuration}

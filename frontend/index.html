@@ -8,10 +8,63 @@
       type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🍯%3C/text%3E%3C/svg%3E"
     />
-    <title>Hunajapannu</title>
+    <title>Hunajapannu — live SSH honeypot dashboard</title>
+
+    <!-- The site is shared from a LinkedIn profile, so a pasted link needs to
+         render as something other than a bare URL. -->
+    <meta
+      name="description"
+      content="A live SSH/Telnet honeypot dashboard: real attacks against a Raspberry Pi, with attacker session timelines, MITRE ATT&amp;CK-tagged commands, credential attempts and malware samples."
+    />
+    <meta name="author" content="Oskari Kosonen" />
+    <meta name="theme-color" content="#020617" />
+    <link rel="canonical" href="https://hunajapannu.fi/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://hunajapannu.fi/" />
+    <meta property="og:site_name" content="Hunajapannu" />
+    <meta property="og:title" content="Hunajapannu — live SSH honeypot dashboard" />
+    <meta
+      property="og:description"
+      content="Real attacks against a Raspberry Pi honeypot, live: attacker session timelines, MITRE ATT&amp;CK-tagged commands, credentials and malware samples."
+    />
+
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Hunajapannu — live SSH honeypot dashboard" />
+    <meta
+      name="twitter:description"
+      content="Real attacks against a Raspberry Pi honeypot, live: attacker session timelines, MITRE ATT&amp;CK-tagged commands, credentials and malware samples."
+    />
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <div
+        style="
+          min-height: 100vh;
+          background: #000;
+          color: #6ee7b7;
+          font-family: ui-monospace, monospace;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2rem;
+          text-align: center;
+        "
+      >
+        <div>
+          <h1 style="color: #86efac">hunajapannu.fi</h1>
+          <p>
+            This dashboard renders live honeypot data in the browser, so it needs
+            JavaScript enabled.
+          </p>
+          <p style="font-size: 0.85rem; color: #34d399">
+            The data itself is available without it, from the public JSON API at
+            <code>/api/public/cowrie/</code>.
+          </p>
+        </div>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

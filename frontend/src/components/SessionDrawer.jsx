@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useEffect, useRef } from "react";
 import LoadingSkeleton from "./common/LoadingSkeleton";
 
 /** Classifies an event so the timeline can show what kind of step it was. */
@@ -36,6 +36,44 @@ const SessionDrawer = ({
 }) => {
   const session = data?.session || {};
   const events = data?.events || [];
+  const panelRef = useRef(null);
+  const closeRef = useRef(null);
+
+  // A modal that opens without moving focus leaves keyboard and screen-reader
+  // users still on the page behind it. Move focus in on open, keep Tab inside
+  // while it is open, and hand focus back to whatever opened it on close.
+  useEffect(() => {
+    const previouslyFocused = document.activeElement;
+    closeRef.current?.focus();
+
+    const onKeyDown = (e) => {
+      if (e.key !== "Tab") return;
+      const focusable = panelRef.current?.querySelectorAll(
+        'a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusable || focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    // The page behind must not scroll under the open drawer.
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = previousOverflow;
+      if (previouslyFocused instanceof HTMLElement) previouslyFocused.focus();
+    };
+  }, []);
 
   return (
     <div
@@ -44,6 +82,7 @@ const SessionDrawer = ({
       role="presentation"
     >
       <aside
+        ref={panelRef}
         className="w-full sm:max-w-2xl h-full bg-slate-950 border-l border-emerald-700/60 shadow-2xl flex flex-col"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
@@ -56,7 +95,7 @@ const SessionDrawer = ({
               Session timeline
             </div>
             <div className="text-emerald-100 text-sm mt-1 flex items-center gap-2 flex-wrap">
-              <span>{countryFlag(session.country_iso)}</span>
+              <span aria-hidden="true">{countryFlag(session.country_iso)}</span>
               <span className="font-semibold">{session.src_ip || "—"}</span>
               <span className="text-[0.65rem] text-emerald-500 font-mono truncate">
                 {session.session_id}
@@ -69,6 +108,7 @@ const SessionDrawer = ({
             </div>
           </div>
           <button
+            ref={closeRef}
             type="button"
             onClick={onClose}
             aria-label="Close session timeline"

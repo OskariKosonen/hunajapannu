@@ -1,32 +1,5 @@
 import { useMemo, memo } from "react";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-
-const tooltipStyles = {
-  backgroundColor: "rgba(0,0,0,0.85)",
-  border: "1px solid rgba(16,185,129,0.4)",
-  borderRadius: "0.375rem",
-  padding: "0.5rem 0.75rem",
-};
-
-// Declared at module scope: defining it inside the component created a new
-// component type on every render, which remounts the tooltip each time.
-const CustomTooltip = ({ active, payload, label }) => {
-  if (!active || !payload || !payload.length) return null;
-  return (
-    <div style={tooltipStyles} className="text-emerald-100 text-[0.65rem]">
-      <div className="font-semibold">{label}</div>
-      <div>{payload[0].value} events</div>
-    </div>
-  );
-};
+import AreaSparkline from "./common/AreaSparkline";
 
 const TrendPanel = ({
   trend,
@@ -40,8 +13,8 @@ const TrendPanel = ({
   const chartData = useMemo(
     () =>
       trend.map((point) => ({
-        hourLabel: formatHourLabel(point.hour),
-        events: point.events || 0,
+        label: formatHourLabel(point.hour),
+        value: point.events || 0,
       })),
     [trend, formatHourLabel]
   );
@@ -79,40 +52,8 @@ const TrendPanel = ({
             </div>
           </div>
         ) : hasData ? (
-          <div className="relative h-32 sm:h-40 w-full min-w-0 bg-slate-950 border border-emerald-800/70 rounded-lg flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-              <AreaChart data={chartData} margin={{ top: 10, right: 10, bottom: 0, left: 10 }}>
-                <defs>
-                  <linearGradient id="trendAreaGradient" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#34d399" stopOpacity={0.45} />
-                    <stop offset="100%" stopColor="#34d399" stopOpacity={0.08} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#0f172a" strokeDasharray="3 3" />
-                <XAxis
-                  dataKey="hourLabel"
-                  tick={{ fill: "#5eead4", fontSize: 9 }}
-                  stroke="#1e293b"
-                  interval={Math.max(1, Math.floor(chartData.length / 4))}
-                />
-                <YAxis
-                  width={30}
-                  tick={{ fill: "#5eead4", fontSize: 9 }}
-                  stroke="#1e293b"
-                  allowDecimals={false}
-                  domain={[0, (dataMax) => Math.max(dataMax || 0, maxTrendEvents || 0)]}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Area
-                  type="monotone"
-                  dataKey="events"
-                  stroke="#34d399"
-                  strokeWidth={2}
-                  fill="url(#trendAreaGradient)"
-                  activeDot={{ r: 3, fill: "#f472b6" }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="relative w-full min-w-0 bg-slate-950 border border-emerald-800/70 rounded-lg p-2">
+            <AreaSparkline data={chartData} max={maxTrendEvents} height={150} />
           </div>
         ) : (
           !trendError && <div className="text-[0.6rem] text-emerald-500">No trend data yet.</div>

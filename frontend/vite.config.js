@@ -7,15 +7,21 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        // Recharts is the bulk of the bundle and only the trend chart needs
-        // it; keeping it in its own chunk (loaded lazily) stops it blocking
-        // first paint. React is split out too so it caches across deploys.
+        // React in its own chunk so it stays cached across deploys. The
+        // charting library that used to dominate this bundle is gone — the
+        // trend chart is now plain SVG.
         manualChunks: {
           react: ['react', 'react-dom'],
-          charts: ['recharts'],
         },
       },
     },
+  },
+
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './src/test/setup.js',
+    css: false,
   },
 
   server: {

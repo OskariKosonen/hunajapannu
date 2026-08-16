@@ -62,7 +62,7 @@ const SessionsPanel = ({
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-emerald-100 text-[0.8rem]">
-                  {countryFlag(s.country_iso)} {s.src_ip}
+                  <span aria-hidden="true">{countryFlag(s.country_iso)}</span> {s.src_ip}
                 </span>
                 <span className="text-[0.62rem] text-emerald-500">{formatDuration(s.duration_ms)}</span>
               </div>
@@ -100,13 +100,22 @@ const SessionsPanel = ({
                 <tr
                   key={s.session_id}
                   onClick={() => onOpen(s.session_id)}
-                  className="hover:bg-emerald-900/25 odd:bg-slate-950/50 transition-colors cursor-pointer"
-                  title="View session timeline"
+                  className="hover:bg-emerald-900/25 odd:bg-slate-950/50 transition-colors cursor-pointer focus-within:bg-emerald-900/30"
                 >
                   <td className="px-2.5 py-1.5 text-emerald-200">
                     <div className="flex items-center gap-1.5">
-                      <span>{countryFlag(s.country_iso)}</span>
-                      <span className="font-medium">{s.src_ip}</span>
+                      <span aria-hidden="true">{countryFlag(s.country_iso)}</span>
+                      {/* The row is clickable for mouse users, but the button
+                          is what makes it reachable by keyboard and what a
+                          screen reader announces. */}
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onOpen(s.session_id); }}
+                        aria-label={`View timeline for session from ${s.src_ip}${s.country_iso ? `, ${s.country_iso}` : ""}, ${s.events} events`}
+                        className="font-medium text-left hover:text-emerald-100 focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400 rounded-sm"
+                      >
+                        {s.src_ip}
+                      </button>
                     </div>
                     <div className="text-[0.6rem] text-emerald-500 truncate max-w-[16rem]">
                       {[s.city, s.org].filter(Boolean).join(" · ")}
