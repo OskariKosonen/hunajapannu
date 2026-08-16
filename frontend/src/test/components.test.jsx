@@ -323,6 +323,28 @@ describe("FeaturedAttack", () => {
     }} />);
     expect(screen.getByText("ls")).toBeInTheDocument();
   });
+
+  it("collapses events ingested more than once", () => {
+    // A 2026-08-09 session holds twelve exact copies of every event. Replaying
+    // "chattr -ia .ssh" twelve times reads as a broken page, not an attack.
+    withReducedMotion();
+    const dup = { timestamp: "2026-08-16T10:00:20Z", command: "chattr -ia .ssh", username: null, password: null, tags: ["T1098"] };
+    render(<FeaturedAttack {...props} data={{ session: attack.session, events: [dup, dup, dup, dup] }} />);
+    expect(screen.getAllByText("chattr -ia .ssh")).toHaveLength(1);
+  });
+
+  it("keeps a command genuinely run twice at different times", () => {
+    // Same text, different instant — that is a real repeat, not a duplicate.
+    withReducedMotion();
+    render(<FeaturedAttack {...props} data={{
+      session: attack.session,
+      events: [
+        { timestamp: "2026-08-16T10:00:20Z", command: "ls", username: null, password: null, tags: [] },
+        { timestamp: "2026-08-16T10:00:25Z", command: "ls", username: null, password: null, tags: [] },
+      ],
+    }} />);
+    expect(screen.getAllByText("ls")).toHaveLength(2);
+  });
 });
 
 describe("EventsPanel", () => {

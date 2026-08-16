@@ -1352,13 +1352,18 @@ app.get('/api/public/cowrie/sessions/featured', async (req, res) => {
     const since = new Date(Date.now() - hours * 60 * 60 * 1000);
     // Bounded by idx_events_timestamp: a week is tens of thousands of rows,
     // not the 7.7M-row scan that used to starve the pool.
+    // Rank by DISTINCT commands, not by how many command rows exist.
+    // Ranking by raw count picks whichever session is most duplicated: the
+    // first version of this chose a session with 48 events that were twelve
+    // exact copies of four commands, which replays as the same four lines
+    // over and over. Distinct commands is what "did the most" actually means.
     const { rows } = await pool.query(
       `SELECT session_id
        FROM cowrie_events
        WHERE timestamp >= $1 AND session_id IS NOT NULL
        GROUP BY session_id
-       HAVING COUNT(*) FILTER (WHERE command IS NOT NULL AND command <> '') > 0
-       ORDER BY COUNT(*) FILTER (WHERE command IS NOT NULL AND command <> '') DESC,
+       HAVING COUNT(DISTINCT NULLIF(command, '')) > 0
+       ORDER BY COUNT(DISTINCT NULLIF(command, '')) DESC,
                 COUNT(*) DESC
        LIMIT 1`,
       [since]
