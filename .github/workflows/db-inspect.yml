@@ -1,0 +1,69 @@
+name: DB inspect
+
+# Read-only column census. Manual trigger only.
+#
+# Deliberately narrow, because a previous diagnostics workflow printed a file
+# that happened to contain the database password into a run log. The rules here:
+#
+#   * connects as postgres over peer auth, exactly as the migration step does,
+#     so no password or secret is referenced anywhere in this file;
+#   * SELECT only, and only counts and aggregates — no row values, no dumps;
+#   * no `set -x`, no env printing, no reading files from disk.
+#
+# Anything that needs to see actual rows should be a real API endpoint with the
+# usual review, not an ad-hoc workflow.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: [self-hosted, linux]
+    steps:
+      - name: Column census
+        run: |
+          set -euo pipefail
+          PSQL=(sudo -u postgres psql -d cowrie_db -qtA -v ON_ERROR_STOP=1)
+
+          echo "=== is raw_json populated? ==="
+          # The only place a historical HASSH could be hiding. No code in the
+          # repo writes this column, but schema.sql is a dump of production and
+          # predates the repo, so an older ingest path may have.
+          "${PSQL[@]}" -c "
+            SELECT 'cowrie_events rows: ' || count(*) ||
+                   '   raw_json non-null: ' || count(raw_json)
+              FROM cowrie_events;"
+
+          echo
+          echo "=== existing hash-bearing columns ==="
+          "${PSQL[@]}" -c "
+            SELECT 'cowrie_files_agg.sha256 non-null: ' || count(sha256)
+              FROM cowrie_files_agg;"
+          "${PSQL[@]}" -c "
+            SELECT 'cowrie_unique_creds rows: ' || count(*) ||
+                   '   password_sha256 non-null: ' || count(password_sha256)
+              FROM cowrie_unique_creds;"
+
+          echo
+          echo "=== new capture (migration 010) ==="
+          "${PSQL[@]}" -c "
+            SELECT 'client_fingerprints rows: ' || count(*) ||
+                   '   with hassh: ' || count(hassh) ||
+                   '   with version: ' || count(client_version) ||
+                   '   distinct hassh: ' || count(DISTINCT hassh)
+              FROM cowrie_client_fingerprints;"
+          "${PSQL[@]}" -c "
+            SELECT 'tunnel_requests rows: ' || count(*) ||
+                   '   distinct destinations: ' || count(DISTINCT dst_host)
+              FROM cowrie_tunnel_requests;"
+
+          echo
+          echo "=== any other column that might already hold a hash ==="
+          # Names only, so this stays a census rather than a data dump.
+          "${PSQL[@]}" -c "
+            SELECT table_name || '.' || column_name || '  (' || data_type || ')'
+              FROM information_schema.columns
+             WHERE table_schema = 'public'
+               AND (column_name ILIKE '%hash%' OR column_name ILIKE '%sha%'
+                    OR column_name ILIKE '%fingerprint%' OR data_type = 'jsonb')
+             ORDER BY table_name, column_name;"
