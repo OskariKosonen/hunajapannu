@@ -13,17 +13,18 @@ import { memo, useCallback, useId, useState } from "react";
  *
  * Three characters, not HIBP's five. The prefix length has to be sized to the
  * corpus: HIBP holds ~850M hashes, so 5 chars leaves ~800 candidates per
- * lookup. This honeypot holds ~262k passwords, where 5 chars returned exactly
- * one hash — the caller's own — so there was no anonymity set at all. 3 chars
- * gives 4,096 buckets and ~64 candidates.
+ * lookup. This honeypot holds ~134k distinct passwords, where 5 chars returned
+ * exactly one hash — the caller's own — so there was no anonymity set at all.
+ * 3 chars gives 4,096 buckets, measured at ~33 candidates per lookup against
+ * production.
  *
  * The caveat below the field is deliberate and stays.
  */
 
 const PREFIX_LENGTH = 3;
-// Rough candidates per bucket at this corpus size; shown so the claim above is
-// checkable rather than a vague assurance.
-const ANONYMITY_SET = 60;
+// Deliberately not a hardcoded count: the corpus grows, and the exact number
+// of candidates for this lookup is reported after the check from the actual
+// response, so the claim stays checkable without drifting out of date.
 
 /** Hex SHA-256 via WebCrypto. Requires a secure context (https or localhost). */
 async function sha256Hex(text) {
@@ -133,9 +134,9 @@ const PasswordCheck = ({ endpoint, formatNumber, uniqueCredCount }) => {
 
         <p className="text-[0.6rem] text-emerald-600 leading-relaxed">
           Your password never leaves this page. It is hashed here with SHA-256 and only the
-          first {PREFIX_LENGTH} characters of that hash are sent — one of {(16 ** PREFIX_LENGTH).toLocaleString()}{" "}
-          buckets shared by roughly {ANONYMITY_SET} other captured passwords, so the server
-          cannot tell which one you asked about.{" "}
+          first {PREFIX_LENGTH} characters of that hash are sent — one of{" "}
+          {(16 ** PREFIX_LENGTH).toLocaleString()} buckets, shared by dozens of other captured
+          passwords, so the server cannot tell which one you asked about.{" "}
           <span className="text-emerald-500">
             Still — don't type a password you currently use, into this or any other site.
           </span>

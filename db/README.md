@@ -84,7 +84,27 @@ password never reaches the server.
 The column is maintained by a `BEFORE INSERT` trigger rather than a
 `GENERATED ALWAYS` column: Postgres rejects the latter because `convert_to()`
 is stable, not immutable — it depends on the database encoding. The index is
-on `left(password_sha256, 5)`, matching the lookup exactly.
+on `left(password_sha256, 3)`, matching the lookup exactly.
+
+**The prefix length is sized to this corpus, not copied from HIBP.** Migration
+008 used HIBP's 5 characters, which was wrong here. Measured against
+production:
+
+| Prefix | Buckets | Candidates per lookup |
+|---|---|---|
+| 5 (migration 008) | 1,048,576 | **0.25** — the caller's own hash, and nothing else |
+| 3 (migration 009) | 4,096 | ~33, in a ~5 KB response, ~150 ms |
+
+HIBP can afford 5 because it holds ~850M hashes; this table holds ~134k
+distinct passwords. At k=1 the server can infer which password was checked,
+which defeats the entire point, so the endpoint **rejects** a longer prefix
+rather than accepting one. If the corpus grows by an order of magnitude,
+4 characters becomes the right choice — re-measure before changing it.
+
+Migration 009's own comment quotes a ~262k corpus estimate taken from a
+40-prefix sample before the change; a 60-prefix sample afterwards put it at
+~134k. The migration is left as applied rather than corrected, because editing
+an applied migration is what the checksum guard exists to prevent.
 
 ## Local database for testing
 
