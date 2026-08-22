@@ -15,23 +15,16 @@ const ProjectSummary = ({
   <section className="relative overflow-hidden border border-green-500/60 rounded-xl bg-gradient-to-r from-slate-950 via-emerald-950/60 to-black shadow-xl backdrop-blur-[2px] hero-grid">
     <div className="absolute inset-0 opacity-25 bg-[radial-gradient(circle_at_20%_20%,rgba(16,185,129,0.3),transparent_35%),radial-gradient(circle_at_80%_0%,rgba(74,222,128,0.25),transparent_30%)] animate-heroGlow" />
     <div className="relative p-5 sm:p-6 space-y-4">
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
-            <p className="text-[0.65rem] uppercase tracking-[0.2em] text-emerald-400">
-              Project Summary
-            </p>
-            <h2 className="text-lg sm:text-xl font-semibold text-green-200">
-              Live SSH Attacks. Cyber Threat Intelligence. Much Wow.
-            </h2>
-            <p className="text-[0.65rem] text-emerald-500 max-w-md mt-1">
-              Sensor running in Finland on Telia's consumer network.
-            </p>
-          </div>
-          <span className="inline-flex items-center text-[0.65rem] px-3 py-1 rounded-full text-emerald-300 bg-black/40 border border-red-400 w-fit">
-            Data updates every 2 minutes
-          </span>
-        </div>
+      <div>
+        <p className="text-[0.65rem] uppercase tracking-[0.2em] text-emerald-400">
+          Project Summary
+        </p>
+        <h2 className="text-lg sm:text-xl font-semibold text-green-200">
+          Live SSH Attacks. Cyber Threat Intelligence. Much Wow.
+        </h2>
+        <p className="text-[0.65rem] text-emerald-500 max-w-md mt-1">
+          Sensor running in Finland on Telia's consumer network.
+        </p>
       </div>
 
       {/* Lifetime scale. The 24h cards below are the live pulse, but they
