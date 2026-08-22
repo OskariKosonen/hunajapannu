@@ -35,23 +35,14 @@ const EventsPanel = ({ events, eventLimit, formatTimestamp, renderGeoPill, isMob
   const shown = events.slice(0, eventLimit);
 
   return (
-    <div className="relative flex flex-col h-full overflow-hidden border border-emerald-700/50 rounded-xl bg-slate-950/70 shadow-[0_10px_35px_rgba(0,0,0,0.45)] backdrop-blur-sm min-w-0">
-      <div className="flex items-center px-4 py-2.5 bg-slate-950/70 border-b border-emerald-800/60 shrink-0">
-        <div className="flex space-x-2">
-          <span className="w-3 h-3 rounded-full bg-red-500" />
-          <span className="w-3 h-3 rounded-full bg-yellow-500" />
-          <span className="w-3 h-3 rounded-full bg-green-500" />
-        </div>
-        <div className="ml-4 text-[0.8rem] text-green-300 tracking-[0.08em] uppercase">
-          hunajapannu-terminal
-        </div>
+    <section className="relative flex flex-col h-full overflow-hidden border border-emerald-700/50 rounded-xl bg-slate-950/70 shadow-[0_10px_35px_rgba(0,0,0,0.45)] backdrop-blur-sm min-w-0">
+      <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-slate-950/70 border-b border-emerald-800/60 shrink-0">
+        <span className="text-[0.68rem] uppercase tracking-[0.18em] px-2 py-1 rounded-full border border-emerald-600/60 text-emerald-200 bg-emerald-500/5 whitespace-nowrap">
+          Live Events
+        </span>
       </div>
 
       <div className="flex flex-col flex-1 min-h-0 p-4 sm:p-5 w-full space-y-2">
-        <p className="shrink-0 text-[0.95rem] sm:text-[1rem] text-green-300">
-          <span className="text-green-500">$</span> ./hunajapannu-dashboard.sh
-        </p>
-
         {isMobile ? (
           // Cards: a nowrap table cannot be read on a 390px screen, and
           // side-scrolling the page to see the command column is worse than
@@ -165,7 +156,7 @@ const EventsPanel = ({ events, eventLimit, formatTimestamp, renderGeoPill, isMob
           </div>
         )}
       </div>
-    </div>
+    </section>
   );
 };
 
