@@ -26,10 +26,10 @@ const CONFIG = {
   // API refresh intervals (milliseconds)
   REFRESH_INTERVAL: 120000, // 2 minutes
 
-  // Events table display limits. The desktop feed sits beside a column of six
-  // stacked panels and stretches to their combined height, so 58 rows left the
-  // terminal part-empty on a tall viewport; 100 fills it and scrolls past that.
-  // (The API caps /latest at 200.)
+  // Events table display limits. The desktop feed is sized by the panel stack
+  // beside it rather than by its own content, so this is only how much history
+  // the feed holds — enough to scroll back through, not a lever for matching
+  // the two column heights. (The API caps /latest at 200.)
   MOBILE_EVENT_LIMIT: 20,
   DESKTOP_EVENT_LIMIT: 100,
   MOBILE_BREAKPOINT: 768, // Tailwind md breakpoint in pixels
@@ -549,16 +549,27 @@ function App() {
           />
         </ErrorBoundary>
 
-        <div className="grid gap-5 sm:gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,2.4fr)]">
-          <ErrorBoundary name="Live events">
-            <EventsPanel
-            events={events}
-            eventLimit={eventLimit}
-            formatTimestamp={formatTimestamp}
-            renderGeoPill={renderGeoPill}
-            isMobile={isMobile}
-            />
-          </ErrorBoundary>
+        <div className="grid gap-5 sm:gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,2.4fr)] lg:items-stretch">
+          {/* The feed must not size the row; the stack on the right does, and
+              the feed fills whatever that comes to and scrolls the rest. Taking
+              the panel out of flow at lg is what enforces it. While both
+              columns were in flow the row took the taller of the two, so
+              matching them meant hand-tuning the row count against a stack
+              whose height changes whenever a panel is added — and whichever
+              column lost ended in dead space. */}
+          <div className="min-w-0 lg:relative">
+            <div className="lg:absolute lg:inset-0">
+              <ErrorBoundary name="Live events">
+                <EventsPanel
+                  events={events}
+                  eventLimit={eventLimit}
+                  formatTimestamp={formatTimestamp}
+                  renderGeoPill={renderGeoPill}
+                  isMobile={isMobile}
+                />
+              </ErrorBoundary>
+            </div>
+          </div>
           <div className="space-y-3.5 sm:space-y-4 min-w-0">
             <ErrorBoundary name="Events (24h)">
               <TrendPanel
@@ -640,16 +651,6 @@ function App() {
               pageSize={CONFIG.PAGE_SIZE.CREDS}
               />
             </ErrorBoundary>
-            <ErrorBoundary name="Password check">
-              <PasswordCheck
-                endpoint={E.PASSWORD_RANGE}
-                formatNumber={formatNumber}
-                uniqueCredCount={summaryStats.uniqueCredCount}
-              />
-            </ErrorBoundary>
-            <ErrorBoundary name="IOC export">
-              <IocExport endpoint={E.IOCS} />
-            </ErrorBoundary>
             <ErrorBoundary name="Origins">
               <OriginsPanel
                 view={originView}
@@ -668,6 +669,16 @@ function App() {
                 formatNumber={formatNumber}
                 isMobile={isMobile}
               />
+            </ErrorBoundary>
+            <ErrorBoundary name="Password check">
+              <PasswordCheck
+                endpoint={E.PASSWORD_RANGE}
+                formatNumber={formatNumber}
+                uniqueCredCount={summaryStats.uniqueCredCount}
+              />
+            </ErrorBoundary>
+            <ErrorBoundary name="IOC export">
+              <IocExport endpoint={E.IOCS} />
             </ErrorBoundary>
           </div>
         </div>
