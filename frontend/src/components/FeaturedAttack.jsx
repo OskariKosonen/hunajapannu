@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 
 /**
  * Replays one real attacker session as a terminal.
@@ -17,10 +17,16 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
  * It animates once per featured session, then stops. A typing animation is
  * good the first time and an obstacle every time after: on a repeat visit you
  * already know the story and just want to read it. The session id is recorded
- * in localStorage when playback starts, so a first-time visitor gets the
- * animation, anyone coming back gets the finished transcript immediately, and
- * a genuinely new featured session animates once more. Replay is always one
- * click away, and playback can be skipped rather than only paused.
+ * in localStorage on first view, so a first-time visitor gets the animation,
+ * anyone coming back gets the finished transcript immediately, and a genuinely
+ * new featured session animates once more. Replay is always one click away,
+ * and playback can be skipped rather than only paused.
+ *
+ * That same record also collapses the panel on a return visit. This is the
+ * tallest thing on the page, and a viewer who has already read it should not
+ * have to scroll past it to reach the panels underneath. It folds down to its
+ * header, one click reopens it, and a genuinely new featured session arrives
+ * expanded like any first view.
  */
 
 const SEEN_KEY = "hunajapannu:replayed-session";
@@ -101,17 +107,22 @@ const FeaturedAttack = ({ data, loading, error, mitreById, countryFlag, onOpenFu
     });
   }, [data]);
 
-  // Autoplay only when this is a session the viewer has not already watched,
-  // and motion is not reduced. Decided once, on mount, and recorded straight
-  // away — a reload should not replay just because the viewer left early.
-  const [autoplay] = useState(() => {
-    if (prefersReducedMotion()) return false;
+  // Both decisions come out of a single localStorage read, taken before
+  // markSeen overwrites it: whether to animate, and whether to open collapsed.
+  // Recorded on view rather than when playback finishes — a viewer who left
+  // early has still seen it, and marking on view rather than on play is what
+  // lets a reduced-motion visitor, who never animates, still be recognised
+  // when they come back.
+  const [{ autoplay, seenBefore }] = useState(() => {
     const id = data?.session?.session_id;
-    if (!id || hasSeen(id)) return false;
+    if (!id) return { autoplay: false, seenBefore: false };
+    const seen = hasSeen(id);
     markSeen(id);
-    return true;
+    return { autoplay: !seen && !prefersReducedMotion(), seenBefore: seen };
   });
 
+  const [collapsed, setCollapsed] = useState(seenBefore);
+  const bodyId = useId();
   const [rawStep, setStep] = useState(() => (autoplay ? 0 : Number.MAX_SAFE_INTEGER));
   const [typed, setTyped] = useState(0);
   const [playing, setPlaying] = useState(autoplay);
@@ -191,33 +202,37 @@ const FeaturedAttack = ({ data, loading, error, mitreById, countryFlag, onOpenFu
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              if (done) {
-                setStep(0);
-                setTyped(0);
-                setPlaying(true);
-              } else {
-                setPlaying((p) => !p);
-              }
-            }}
-            className="px-2.5 py-1 rounded-md border border-emerald-700/70 text-emerald-300 hover:border-emerald-500 hover:text-emerald-100 transition text-[0.68rem] w-[4.6rem]"
-          >
-            {done ? "↻ Replay" : playing ? "❚❚ Pause" : "▶ Play"}
-          </button>
-          {!done && (
-            <button
-              type="button"
-              onClick={() => {
-                setPlaying(false);
-                setStep(lines.length);
-                setTyped(0);
-              }}
-              className="px-2.5 py-1 rounded-md border border-emerald-700/70 text-emerald-300 hover:border-emerald-500 hover:text-emerald-100 transition text-[0.68rem]"
-            >
-              Skip
-            </button>
+          {!collapsed && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  if (done) {
+                    setStep(0);
+                    setTyped(0);
+                    setPlaying(true);
+                  } else {
+                    setPlaying((p) => !p);
+                  }
+                }}
+                className="px-2.5 py-1 rounded-md border border-emerald-700/70 text-emerald-300 hover:border-emerald-500 hover:text-emerald-100 transition text-[0.68rem] w-[4.6rem]"
+              >
+                {done ? "↻ Replay" : playing ? "❚❚ Pause" : "▶ Play"}
+              </button>
+              {!done && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlaying(false);
+                    setStep(lines.length);
+                    setTyped(0);
+                  }}
+                  className="px-2.5 py-1 rounded-md border border-emerald-700/70 text-emerald-300 hover:border-emerald-500 hover:text-emerald-100 transition text-[0.68rem]"
+                >
+                  Skip
+                </button>
+              )}
+            </>
           )}
           {onOpenFull && (
             <button
@@ -228,11 +243,27 @@ const FeaturedAttack = ({ data, loading, error, mitreById, countryFlag, onOpenFu
               Full timeline
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => {
+              // Stop playback on the way down, or the replay keeps ticking
+              // behind a closed panel and is half over when it is reopened.
+              if (!collapsed) setPlaying(false);
+              setCollapsed((c) => !c);
+            }}
+            aria-expanded={!collapsed}
+            aria-controls={bodyId}
+            className="px-2.5 py-1 rounded-md border border-emerald-700/70 text-emerald-300 hover:border-emerald-500 hover:text-emerald-100 transition text-[0.68rem]"
+          >
+            {collapsed ? "▸ Show" : "▾ Hide"}
+          </button>
         </div>
       </div>
 
       <div
         ref={scrollRef}
+        id={bodyId}
+        hidden={collapsed}
         className="p-4 sm:p-5 font-mono text-[0.72rem] sm:text-[0.78rem] leading-relaxed h-[15rem] sm:h-[17rem] overflow-y-auto custom-scrollbar"
       >
         {visible.map((line, i) => {
@@ -274,7 +305,7 @@ const FeaturedAttack = ({ data, loading, error, mitreById, countryFlag, onOpenFu
         )}
       </div>
 
-      {techniques.length > 0 && (
+      {!collapsed && techniques.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 px-4 sm:px-5 py-3 border-t border-emerald-800/60 bg-black/30">
           <span className="text-[0.6rem] uppercase tracking-[0.15em] text-emerald-500 mr-1">
             Techniques

