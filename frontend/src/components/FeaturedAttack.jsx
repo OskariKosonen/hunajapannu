@@ -264,7 +264,7 @@ const FeaturedAttack = ({ data, loading, error, mitreById, countryFlag, onOpenFu
         ref={scrollRef}
         id={bodyId}
         hidden={collapsed}
-        className="p-4 sm:p-5 font-mono text-[0.72rem] sm:text-[0.78rem] leading-relaxed h-[15rem] sm:h-[17rem] overflow-y-auto custom-scrollbar"
+        className="p-4 sm:p-5 font-mono text-[0.72rem] sm:text-[0.78rem] leading-relaxed h-[15rem] sm:h-[17rem] overflow-y-auto custom-scrollbar fade-scroll-top"
       >
         {visible.map((line, i) => {
           const isCurrent = i === step && !done;

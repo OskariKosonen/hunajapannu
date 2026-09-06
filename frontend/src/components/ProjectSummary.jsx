@@ -20,7 +20,7 @@ const ProjectSummary = ({
           Project Summary
         </p>
         <h2 className="text-lg sm:text-xl font-semibold text-green-200">
-          Live SSH Attacks. Cyber Threat Intelligence. Much Wow.
+          Live SSH Attacks. Cyber Threat Intelligence. Much&nbsp;Wow.
         </h2>
         <p className="text-[0.65rem] text-emerald-500 max-w-md mt-1">
           Sensor running in Finland on Telia's consumer network.
@@ -62,7 +62,7 @@ const ProjectSummary = ({
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-3">
         <div className="border border-emerald-700/60 bg-slate-950/80 rounded-lg p-3">
           <div className="text-[0.65rem] text-emerald-400">Attacks / 24h</div>
           <div className="flex items-center gap-2">
@@ -84,7 +84,11 @@ const ProjectSummary = ({
         </div>
 
         <div className="border border-emerald-700/60 bg-slate-950/80 rounded-lg p-3">
-          <div className="text-[0.65rem] text-emerald-400">Unique source IPs / 24h</div>
+          {/* The value is uniqueIps/totalEvents as a percentage, so a label
+              reading "Unique source IPs" sat above a % and promised a count.
+              The old sub-label was wrong too: these are distinct IPs, not
+              first-time ones — nothing here tracks whether an IP is new. */}
+          <div className="text-[0.65rem] text-emerald-400">Unique IP share / 24h</div>
           <div className="flex items-baseline gap-2">
             <div className="text-xl font-bold text-green-100 tabular-nums">
               {summaryStats.uniqueIpPercent != null
@@ -95,7 +99,7 @@ const ProjectSummary = ({
               <span className="text-[0.6rem] text-emerald-500">updating...</span>
             )}
           </div>
-          <div className="text-[0.6rem] text-emerald-500">Attacks from new IPs</div>
+          <div className="text-[0.6rem] text-emerald-500">Distinct IPs as a share of all events</div>
           {ipStatsError && (
             <div className="mt-1 text-[0.55rem] text-red-400">{ipStatsError}</div>
           )}

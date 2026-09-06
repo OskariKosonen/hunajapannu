@@ -137,6 +137,17 @@ body {
   background: linear-gradient(180deg, #6ee7b7, #2dd4bf);
 }
 
+/* The attack replay auto-scrolls to keep the newest line in view, so the row
+   at the top of the box is almost always sliced through the middle and reads
+   as a rendering fault. Fading the first line or so into the background turns
+   that clip into an obvious "there is more above". A mask rather than an
+   overlay because the panel behind it is a gradient, so there is no single
+   colour an overlay could match. */
+.fade-scroll-top {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.4rem);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 1.4rem);
+}
+
 .hide-native-scrollbar {
   scrollbar-width: none;
 }

@@ -99,7 +99,7 @@ const EventsPanel = ({ events, eventLimit, formatTimestamp, renderGeoPill, isMob
                     (col) => (
                       <th
                         key={col}
-                        className="px-3 py-2 text-left font-semibold text-emerald-100 uppercase tracking-[0.14em] bg-slate-950"
+                        className="px-3 py-2 text-left font-semibold text-emerald-100 uppercase tracking-[0.14em] bg-slate-950 whitespace-nowrap"
                       >
                         {col}
                       </th>
@@ -125,11 +125,17 @@ const EventsPanel = ({ events, eventLimit, formatTimestamp, renderGeoPill, isMob
                       <td className="px-3 py-2 whitespace-nowrap text-yellow-300 text-right tabular-nums">
                         {ev.dest_port ?? 22}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-red-400">
-                        {ev.username || "NULL"}
+                      {/* Red is for a credential that was actually tried. An
+                          absent one is dimmed instead: most rows are a bare
+                          connect, so colouring those red spent the loudest
+                          colour on the page marking nothing, and "NULL" put
+                          a database word in front of visitors. The mobile
+                          cards below already rendered these as a dash. */}
+                      <td className={`px-3 py-2 whitespace-nowrap ${ev.username ? "text-red-400" : "text-emerald-800"}`}>
+                        {ev.username || "—"}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-red-400">
-                        {ev.password ?? "NULL"}
+                      <td className={`px-3 py-2 whitespace-nowrap ${ev.password ? "text-red-400" : "text-emerald-800"}`}>
+                        {ev.password || "—"}
                       </td>
                       <td
                         className={`px-3 py-2 max-w-xs truncate ${
