@@ -24,11 +24,14 @@ const DashboardHeader = ({ timeZone, timeZoneLabel }) => (
       </div>
     </div>
     <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-2 sm:gap-3 sm:items-center sm:justify-end">
+      {/* LinkedIn's own brand blue (#0A66C2) and its darker pressed state,
+          rather than the dashboard's emerald: this is the one control that
+          leaves the site, and looking like where it goes is the job of it. */}
       <a
         href="https://www.linkedin.com/in/oskari-kosonen-ba2589294/"
         target="_blank"
         rel="noreferrer"
-        className="text-xs sm:text-sm px-3 py-2 rounded-md border border-emerald-400 text-slate-950 bg-emerald-200 hover:bg-emerald-100 transition-colors font-semibold shadow-md w-full sm:w-auto text-center"
+        className="text-xs sm:text-sm px-3 py-2 rounded-md border border-[#0A66C2] hover:border-[#004182] text-white bg-[#0A66C2] hover:bg-[#004182] transition-colors font-semibold shadow-md w-full sm:w-auto text-center"
       >
         Check my LinkedIn
       </a>
