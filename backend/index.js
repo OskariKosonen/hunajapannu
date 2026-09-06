@@ -35,6 +35,16 @@ const registerSummaryRoutes = require('./routes/summary');
 
 const app = express();
 app.set('trust proxy', 1);   // trust one proxy hop (Cloudflare/nginx)
+// The forwarder posts up to FWD_BATCH_MAX (100) events at once and a single
+// event can carry a multi-kilobyte command or password, so a legitimate ingest
+// batch runs well past express.json's 100kb default. Those batches came back
+// 413 on 2026-09-06 and the forwarder parked them in its dead-letter file —
+// recoverable, but out of the live pipeline until someone replays them.
+//
+// Raised only on the authenticated write path; the public read API keeps the
+// tight default. A batch that somehow exceeds even this is still parked rather
+// than retried forever, which is the safe direction.
+app.use('/api/cowrie/', express.json({ limit: '4mb' }));
 app.use(express.json());
 
 // Apply rate limiting to all public endpoints
