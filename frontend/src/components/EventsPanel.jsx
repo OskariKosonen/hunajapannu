@@ -15,7 +15,7 @@ import { EMPTY_STATES } from "../lib/flavour";
  * 2. It has to work on a phone. This is a seven-column table of nowrap cells,
  *    and the site is shared from LinkedIn, where most clicks open in a phone
  *    browser. The table became a horizontally-scrolling strip. Narrow viewports
- *    now get cards instead, the same approach SessionsPanel already used.
+ *    now get cards instead, the same approach the session timeline uses.
  */
 
 /** connect < login < command, in increasing order of "worth reading". */

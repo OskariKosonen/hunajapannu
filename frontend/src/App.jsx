@@ -12,7 +12,6 @@ import CommandsPanel from "./components/CommandsPanel";
 import TopMalwarePanel from "./components/TopMalwarePanel";
 import OriginsPanel from "./components/OriginsPanel";
 import AsciiTopology from "./components/AsciiTopology";
-import SessionsPanel from "./components/SessionsPanel";
 import SessionDrawer from "./components/SessionDrawer";
 import ErrorBoundary from "./components/common/ErrorBoundary";
 import { useApi, useDebounced, useMediaQuery, useVisibleInterval, useRotatingWord, buildUrl } from "./hooks/useApi";
@@ -46,7 +45,6 @@ const CONFIG = {
     FILES: 50,
     ASN: 50,
     COUNTRIES: 50,
-    SESSIONS: 40,
   },
 
   // API endpoint paths
@@ -59,6 +57,8 @@ const CONFIG = {
     TOP_ASN: "/api/public/cowrie/top-asn",
     TOP_COUNTRIES: "/api/public/cowrie/top-countries",
     SUMMARY: "/api/public/cowrie/summary",
+    // Kept for the detail fetch below and for /sessions/featured; the
+    // browsable list this used to drive is gone.
     SESSIONS: "/api/public/cowrie/sessions",
     FEATURED_SESSION: "/api/public/cowrie/sessions/featured",
     PASSWORD_RANGE: "/api/public/cowrie/passwords/range",
@@ -167,7 +167,6 @@ function App() {
   const [credsSearch, setCredsSearch] = useUrlState("cred");
   const [downloadsSearch, setDownloadsSearch] = useUrlState("file");
   const [asnSearch, setAsnSearch] = useUrlState("asn");
-  const [sessionSearch, setSessionSearch] = useUrlState("q");
   const [commandFilter, setCommandFilter] = useUrlState("tag", "all");
   const [originView, setOriginView] = useUrlState("origins", "countries");
   const [openSessionId, setOpenSessionId] = useUrlState("session");
@@ -176,7 +175,6 @@ function App() {
   const debouncedCredsSearch = useDebounced(credsSearch, CONFIG.SEARCH_DEBOUNCE_MS);
   const debouncedDownloadsSearch = useDebounced(downloadsSearch, CONFIG.SEARCH_DEBOUNCE_MS);
   const debouncedAsnSearch = useDebounced(asnSearch, CONFIG.SEARCH_DEBOUNCE_MS);
-  const debouncedSessionSearch = useDebounced(sessionSearch, CONFIG.SEARCH_DEBOUNCE_MS);
 
   // One line per panel: each manages its own rows, total, loading, error and
   // request cancellation. Adding a panel no longer means adding six pieces of
@@ -191,7 +189,6 @@ function App() {
   const credsApi = useApi(buildUrl(E.CREDENTIALS, { limit: CONFIG.PAGE_SIZE.CREDS, search: debouncedCredsSearch }));
   const filesApi = useApi(buildUrl(E.FILES, { limit: CONFIG.PAGE_SIZE.FILES, search: debouncedDownloadsSearch }));
   const asnApi = useApi(buildUrl(E.TOP_ASN, { limit: CONFIG.PAGE_SIZE.ASN, search: debouncedAsnSearch }));
-  const sessionsApi = useApi(buildUrl(E.SESSIONS, { limit: CONFIG.PAGE_SIZE.SESSIONS, search: debouncedSessionSearch }));
   const eventsApi = useApi(buildUrl(E.LATEST_EVENTS, { limit: eventLimit }));
   const trendApi = useApi(E.TRENDS);
   const countriesApi = useApi(buildUrl(E.TOP_COUNTRIES, { limit: CONFIG.PAGE_SIZE.COUNTRIES }));
@@ -219,7 +216,6 @@ function App() {
   const trend = trendApi.rows;
   const topAsn = asnApi.rows;
   const topCountries = countriesApi.rows;
-  const sessions = sessionsApi.rows;
   const summaryData = summaryApi.raw;
   const mitreSignatures = mitreApi.rows;
 
@@ -235,10 +231,10 @@ function App() {
   const refreshAll = useCallback(() => {
     eventsApi.refetch(); summaryApi.refetch(); commandsApi.refetch();
     credsApi.refetch(); filesApi.refetch(); trendApi.refetch();
-    asnApi.refetch(); countriesApi.refetch(); sessionsApi.refetch();
+    asnApi.refetch(); countriesApi.refetch();
     payloadHostsApi.refetch();
   }, [eventsApi, summaryApi, commandsApi, credsApi, filesApi, trendApi, asnApi, countriesApi,
-      sessionsApi, payloadHostsApi]);
+      payloadHostsApi]);
 
   useVisibleInterval(refreshAll, CONFIG.REFRESH_INTERVAL);
 
@@ -580,21 +576,6 @@ function App() {
                 trendLoading={trendApi.loading}
                 totalTrendEvents={totalTrendEvents}
                 peakHourLabel={peakHourLabel}
-              />
-            </ErrorBoundary>
-            <ErrorBoundary name="Sessions">
-              <SessionsPanel
-              sessions={sessions}
-              sessionsTotal={sessionsApi.total}
-              sessionsError={sessionsApi.error}
-              sessionsLoading={sessionsApi.loading}
-              search={sessionSearch}
-              onSearch={setSessionSearch}
-              onOpen={openSession}
-              formatTimestamp={formatTimestamp}
-              formatDuration={formatDuration}
-              countryFlag={countryFlag}
-              isMobile={isMobile}
               />
             </ErrorBoundary>
             <ErrorBoundary name="Top commands">

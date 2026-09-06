@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import ErrorBoundary from "../components/common/ErrorBoundary";
-import SessionsPanel from "../components/SessionsPanel";
 import SessionDrawer from "../components/SessionDrawer";
 import CommandsPanel from "../components/CommandsPanel";
 import EventsPanel from "../components/EventsPanel";
@@ -27,20 +26,6 @@ const SESSION = {
   logins: 2,
 };
 
-const panelProps = {
-  sessions: [SESSION],
-  sessionsTotal: 1,
-  sessionsError: "",
-  sessionsLoading: false,
-  search: "",
-  onSearch: noop,
-  onOpen: noop,
-  formatTimestamp: fmtTs,
-  formatDuration: fmtDur,
-  countryFlag: flag,
-  isMobile: false,
-};
-
 describe("ErrorBoundary", () => {
   it("contains a crashing panel and leaves siblings rendered", () => {
     const Boom = () => { throw new Error("kaboom"); };
@@ -60,35 +45,6 @@ describe("ErrorBoundary", () => {
     render(<ErrorBoundary name="X"><p>fine</p></ErrorBoundary>);
     expect(screen.getByText("fine")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).toBeNull();
-  });
-});
-
-describe("SessionsPanel", () => {
-  it("exposes each session through a keyboard-reachable control", () => {
-    const onOpen = vi.fn();
-    render(<SessionsPanel {...panelProps} onOpen={onOpen} />);
-    // A <tr onClick> alone is mouse-only; the row must offer a real button.
-    const btn = screen.getByRole("button", { name: /view timeline for session from 1\.2\.3\.4/i });
-    fireEvent.click(btn);
-    expect(onOpen).toHaveBeenCalledWith("abc123");
-  });
-
-  it("distinguishes an empty search result from having no data at all", () => {
-    const { rerender } = render(<SessionsPanel {...panelProps} sessions={[]} search="zzz" />);
-    expect(screen.getByText(/no sessions match that search/i)).toBeInTheDocument();
-    rerender(<SessionsPanel {...panelProps} sessions={[]} search="" />);
-    expect(screen.getByText(/no sessions in the last 24 hours/i)).toBeInTheDocument();
-  });
-
-  it("shows an error without hiding the panel", () => {
-    render(<SessionsPanel {...panelProps} sessions={[]} sessionsError="boom" />);
-    expect(screen.getByText(/failed to load sessions: boom/i)).toBeInTheDocument();
-  });
-
-  it("renders the mobile layout only, not both at once", () => {
-    const { container } = render(<SessionsPanel {...panelProps} isMobile />);
-    expect(container.querySelector("table")).toBeNull();
-    expect(screen.getByRole("button", { name: /1\.2\.3\.4/ })).toBeInTheDocument();
   });
 });
 

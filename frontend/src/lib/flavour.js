@@ -54,14 +54,6 @@ export const EMPTY_STATES = {
     line: "No events yet — waiting for attackers...",
     hint: "Usually under a minute. They are very reliable.",
   },
-  sessionsSearch: {
-    line: "No sessions match that search.",
-    hint: "Try an IP, a country code, or a username.",
-  },
-  sessions: {
-    line: "No sessions in the last 24 hours.",
-    hint: "Suspiciously quiet. Enjoy it while it lasts.",
-  },
 };
 
 /**

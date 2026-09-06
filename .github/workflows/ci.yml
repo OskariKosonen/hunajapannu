@@ -178,7 +178,6 @@ jobs:
             "$PUB/top-countries?limit=5" \
             "$PUB/ip-stats" \
             "$PUB/mitre" \
-            "$PUB/sessions?limit=5" \
             "$PUB/sessions/featured" ; do
             assert "200 ${path#"$API/"}" "200" "$(status "$path")"
           done
@@ -190,7 +189,6 @@ jobs:
           assert "commands returns rows"         "9"          "$(jq_get "$PUB/commands?limit=100"   '.total')"
           assert "creds returns rows"            "5"          "$(jq_get "$PUB/creds?limit=100"      '.total')"
           assert "files returns rows"            "2"          "$(jq_get "$PUB/files?limit=100"      '.total')"
-          assert "sessions returns rows"         "4"          "$(jq_get "$PUB/sessions?limit=100"   '.total')"
           assert "latest returns rows"           "true"       "$(jq_get "$PUB/latest?limit=10"      'length > 0')"
           assert "events-per-hour has a bucket"  "true"       "$(jq_get "$PUB/events-per-hour?hours=24" 'length > 0')"
           assert "summary counts the last 24h"   "true"       "$(jq_get "$PUB/summary"              '.attacks24h > 0')"
@@ -210,7 +208,7 @@ jobs:
             "$(jq_get "$PUB/commands?limit=100&tag=NOPE" '.total')"
 
           echo "--- search escaping ---"
-          # /creds, /files, /top-asn and /sessions search in SQL with
+          # /creds, /files and /top-asn search in SQL with
           # ILIKE '%term%', so these are the endpoints that exercise the
           # metacharacter escaping. Unescaped, ILIKE '%%%' matches every row,
           # returning 200 and a full result set that looks like a working
