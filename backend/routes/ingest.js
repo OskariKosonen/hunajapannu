@@ -165,7 +165,12 @@ module.exports = function registerIngestRoutes(app) {
           geo.city || null
         );
 
-        if (ev.command && ev.command !== '') {
+        // Cap on the way into the leaderboard, not on the way into the event
+        // row: cowrie_events.command is unindexed and keeps the full text, but
+        // cowrie_unique_commands is keyed on it and a btree index row cannot
+        // hold more than 2704 bytes. See LIMITS.MAX_COMMAND_BYTES.
+        if (ev.command && ev.command !== ''
+            && Buffer.byteLength(ev.command) <= LIMITS.MAX_COMMAND_BYTES) {
           commandRows.push({ command: ev.command, timestamp: eventTimestamp });
         }
 

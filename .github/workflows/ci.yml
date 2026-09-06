@@ -368,6 +368,25 @@ jobs:
           assert "ingested credential stored" "1" \
             "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_unique_creds WHERE username = 'ci'")"
 
+          # A 4,792-byte command broke ingestion for twelve hours on
+          # 2026-09-06: cowrie_unique_commands is keyed on the command text,
+          # a btree index row stops at 2704 bytes, and the failed insert
+          # rolled back the whole batch — cowrie_events with it. The forwarder
+          # then retried the same batch every 60s forever, because a 500 is
+          # not one of the statuses post_batch parks. The event must still be
+          # stored; only the leaderboard row is allowed to be dropped.
+          big=$(python3 -c "print('A' * 5000)")
+          big_accepted=$(curl -fsS -X POST -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $INGEST_API_KEY" \
+            -d "$(jq -nc --arg c "$big" \
+              '{events:[{src_ip:"203.0.113.9",dest_port:22,session_id:"ci-big",command:$c}]}')" \
+            "$API/api/cowrie/events" | jq -r '.inserted')
+          assert "an oversized command does not 500 the batch" "1" "$big_accepted"
+          assert "the oversized event is still stored in full" "5000" \
+            "$("${PSQL[@]}" -qtA -c "SELECT length(command) FROM cowrie_events WHERE session_id = 'ci-big'")"
+          assert "the oversized command is kept out of the leaderboard" "0" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_unique_commands WHERE length(command) > 2704")"
+
           echo "--- client fingerprints and tunnel requests ---"
           # cowrie.client.version and cowrie.client.kex are two log lines for
           # one session, arriving in either order. Post them kex-first so the
