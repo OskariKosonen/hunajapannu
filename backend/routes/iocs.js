@@ -19,7 +19,7 @@ module.exports = function registerIocRoutes(app) {
       Math.max(Number.isFinite(rawHours) ? rawHours : LIMITS.DEFAULT_HOURS_LOOKBACK, 1),
       LIMITS.MAX_HOURS_LOOKBACK
     );
-    const type = ['hashes', 'urls'].includes(req.query.type) ? req.query.type : 'ips';
+    const type = ['hashes', 'urls', 'commands'].includes(req.query.type) ? req.query.type : 'ips';
     const format = ['txt', 'csv', 'json'].includes(req.query.format) ? req.query.format : 'json';
     const defang = req.query.defang === '1' || req.query.defang === 'true';
 
@@ -44,6 +44,33 @@ module.exports = function registerIocRoutes(app) {
           [since, IOC_MAX_ROWS]
         );
         rows = result.rows;
+      } else if (type === 'commands') {
+        // What the attackers actually typed. Behavioural rather than atomic —
+        // you grep for these, you do not block them — but it is the material
+        // people most often want to take away, and the leaderboard panel only
+        // ever shows a page of it.
+        //
+        // Unlike urls this *is* windowed, on last_seen: cowrie_unique_commands
+        // holds one row per distinct command with the range it was seen over,
+        // so "last used inside the window" is both meaningful and honest, and
+        // it makes the 24h/7d toggle actually do something for this type.
+        const result = await pool.query(
+          `SELECT command,
+                  COALESCE(total_events, 0) AS total_events,
+                  COALESCE(unique_ips, 0)   AS unique_ips,
+                  first_seen,
+                  last_seen
+             FROM cowrie_unique_commands
+            WHERE last_seen >= $1
+            ORDER BY COALESCE(total_events, 0) DESC
+            LIMIT $2`,
+          [since, IOC_MAX_ROWS]
+        );
+        rows = result.rows.map((r) => ({
+          ...r,
+          total_events: Number(r.total_events),
+          unique_ips: Number(r.unique_ips),
+        }));
       } else if (type === 'urls') {
         // Payload delivery URLs, pulled out of the captured commands. Not
         // windowed by `hours`: cowrie_unique_commands records when a command
@@ -99,9 +126,30 @@ module.exports = function registerIocRoutes(app) {
     }
   });
 
+  // A command is not an atomic indicator, but it routinely *contains* one — a
+  // wget of a live payload URL. Defanging those in place makes a pasted
+  // command as safe to hand around as a defanged URL list. split/join rather
+  // than a regex so a URL containing regex metacharacters cannot misfire.
+  const defangCommand = (command) => {
+    let out = String(command);
+    for (const url of new Set(extractUrls(command))) out = out.split(url).join(defangUrl(url));
+    return out;
+  };
+
   function sendIocs(res, rows, { type, format, hours, defang }) {
     const generatedAt = new Date().toISOString();
     const stamp = generatedAt.slice(0, 10);
+
+    // One place that knows how each type defangs, instead of the same decision
+    // spelled out again in each of the three format branches.
+    const defanged = (r) => {
+      if (!defang) return r;
+      if (type === 'ips') return { ...r, ip: defangIp(r.ip) };
+      if (type === 'urls') return { ...r, url: defangUrl(r.url), host: defangUrl(r.host) };
+      if (type === 'commands') return { ...r, command: defangCommand(r.command) };
+      return r;
+    };
+    const out = rows.map(defanged);
 
     if (format === 'json') {
       return res.json({
@@ -110,13 +158,7 @@ module.exports = function registerIocRoutes(app) {
         windowHours: hours,
         generatedAt,
         total: rows.length,
-        rows: !defang
-          ? rows
-          : type === 'ips'
-            ? rows.map((r) => ({ ...r, ip: defangIp(r.ip) }))
-            : type === 'urls'
-              ? rows.map((r) => ({ ...r, url: defangUrl(r.url), host: defangUrl(r.host) }))
-              : rows,
+        rows: out,
       });
     }
 
@@ -127,10 +169,14 @@ module.exports = function registerIocRoutes(app) {
     // records first/last seen rather than one row per use, and a delivery host
     // stays an indicator after the last fetch from it. Printing "last 24h" over
     // that list would be a plain lie about the data's coverage.
+    const LABELS = {
+      ips: 'attacker IPs',
+      urls: 'payload delivery URLs',
+      commands: 'attacker commands',
+      hashes: 'malware hashes',
+    };
     const header = [
-      `# hunajapannu.fi — ${
-      type === 'ips' ? 'attacker IPs' : type === 'urls' ? 'payload delivery URLs' : 'malware hashes'
-    }`,
+      `# hunajapannu.fi — ${LABELS[type]}`,
       type === 'urls'
         ? `# window: all captured commands   generated: ${generatedAt}`
         : `# window: last ${hours}h   generated: ${generatedAt}`,
@@ -142,10 +188,15 @@ module.exports = function registerIocRoutes(app) {
     if (format === 'txt') {
       const body =
         type === 'ips'
-          ? rows.map((r) => (defang ? defangIp(r.ip) : r.ip)).join('\n')
+          ? out.map((r) => r.ip).join('\n')
           : type === 'urls'
-            ? rows.map((r) => (defang ? defangUrl(r.url) : r.url)).join('\n')
-            : rows.map((r) => r.sha256).join('\n');
+            ? out.map((r) => r.url).join('\n')
+            : type === 'commands'
+              // One indicator per line is the whole contract of this format, and
+              // a captured command can legitimately contain a newline — which
+              // would silently split it into two bogus entries. Flatten first.
+              ? out.map((r) => String(r.command).replace(/\s*[\r\n]+\s*/g, ' ')).join('\n')
+              : out.map((r) => r.sha256).join('\n');
       res.type('text/plain; charset=utf-8');
       res.set('Content-Disposition', `attachment; filename="hunajapannu-${type}-${stamp}.txt"`);
       return res.send(`${header}\n${body}\n`);
@@ -167,16 +218,12 @@ module.exports = function registerIocRoutes(app) {
       ? ['ip', 'events', 'commands', 'country', 'asn', 'org', 'first_seen', 'last_seen']
       : type === 'urls'
         ? ['url', 'host', 'first_seen', 'last_seen']
-        : ['sha256', 'size_bytes', 'vt_type', 'vt_malicious', 'first_seen'];
-    const lines = rows.map((r) =>
-      columns
-        .map((c) => {
-          if (defang && c === 'ip') return esc(defangIp(r[c]));
-          if (defang && (c === 'url' || c === 'host')) return esc(defangUrl(r[c]));
-          return esc(r[c]);
-        })
-        .join(',')
-    );
+        : type === 'commands'
+          ? ['command', 'total_events', 'unique_ips', 'first_seen', 'last_seen']
+          : ['sha256', 'size_bytes', 'vt_type', 'vt_malicious', 'first_seen'];
+    // esc() already quotes embedded commas, quotes and newlines, so a command
+    // needs no flattening here the way the txt body does.
+    const lines = out.map((r) => columns.map((c) => esc(r[c])).join(','));
     res.type('text/csv; charset=utf-8');
     res.set('Content-Disposition', `attachment; filename="hunajapannu-${type}-${stamp}.csv"`);
     res.send(`${header}\n${columns.join(',')}\n${lines.join('\n')}\n`);

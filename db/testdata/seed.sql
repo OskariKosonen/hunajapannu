@@ -82,7 +82,12 @@ VALUES
   ('wget http://9.8.7.6:8080/x',  now() - interval '41 min', now() - interval '41 min', 4, 1),
   ('nmap -sS 10.0.0.0/8',         now() - interval '29 min', now() - interval '29 min', 1, 1),
   ('echo hello',                  now() - interval '14 min', now() - interval '14 min', 1, 1),
-  ('cat /etc/passwd',             now() - interval '19 min', now() - interval '19 min', 6, 1)
+  ('cat /etc/passwd',             now() - interval '19 min', now() - interval '19 min', 6, 1),
+  -- Deliberately older than 24h but inside 7d. /iocs?type=commands windows
+  -- on last_seen, and with every other row minutes old there was nothing
+  -- for that filter to exclude — it would have passed while doing nothing.
+  -- Matches no MITRE pattern, so the tag assertions are unaffected.
+  ('crontab -l',                  now() - interval '41 hours', now() - interval '40 hours', 2, 1)
 ON CONFLICT (command) DO NOTHING;
 
 -- Malware samples. Fires trg_sync_cowrie_files_agg -> cowrie_files_agg, and

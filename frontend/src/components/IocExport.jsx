@@ -82,15 +82,42 @@ const IocExport = ({ endpoint }) => {
           <p className="text-[0.6rem] uppercase tracking-[0.15em] text-emerald-500">Attacker IPs</p>
           <div className="flex flex-wrap gap-2">
             <button type="button" className={btn} onClick={() => copy("ips", {})}>
-              {copied === "ips" ? "✓ Copied" : "Copy list"}
+              {copied === "ips" ? "✓ Copied" : "Copy IPs"}
             </button>
             <button type="button" className={btn} onClick={() => copy("defanged", { defang: "1" })}>
-              {copied === "defanged" ? "✓ Copied" : "Copy defanged"}
+              {copied === "defanged" ? "✓ Copied" : "Copy defanged IPs"}
             </button>
             <a className={btn} href={url({ format: "csv" })} download>
               CSV
             </a>
             <a className={btn} href={url({ format: "txt" })} download>
+              .txt
+            </a>
+          </div>
+        </div>
+
+        {/* Behavioural rather than atomic — you grep for these, you do not
+            block them — but it is the material people most often want to take
+            away, and the leaderboard panel only ever shows a page of it.
+            Defanging rewrites any payload URL inside the command, so a wget
+            line survives being pasted into a ticket. */}
+        <div className="space-y-2">
+          <p className="text-[0.6rem] uppercase tracking-[0.15em] text-emerald-500">Attacker commands</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" className={btn} onClick={() => copy("commands", { type: "commands" })}>
+              {copied === "commands" ? "✓ Copied" : "Copy commands"}
+            </button>
+            <button
+              type="button"
+              className={btn}
+              onClick={() => copy("commands-defanged", { type: "commands", defang: "1" })}
+            >
+              {copied === "commands-defanged" ? "✓ Copied" : "Copy defanged commands"}
+            </button>
+            <a className={btn} href={url({ type: "commands", format: "csv" })} download>
+              CSV
+            </a>
+            <a className={btn} href={url({ type: "commands", format: "txt" })} download>
               .txt
             </a>
           </div>
