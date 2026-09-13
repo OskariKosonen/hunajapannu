@@ -88,7 +88,16 @@ VALUES
   -- for that filter to exclude — it would have passed while doing nothing.
   -- Matches no MITRE pattern, so the tag assertions are unaffected.
   ('crontab -l',                  now() - interval '41 hours', now() - interval '40 hours', 2, 1)
-ON CONFLICT (command) DO NOTHING;
+-- Authoritative, not DO NOTHING: since migration 011 the trigger populates
+-- this table from the events above, so a DO NOTHING here would leave CI
+-- asserting against trigger-derived counts that drift with the fixture. These
+-- invented values keep the ordering assertions deterministic. The trigger's
+-- own command path is covered by the ingest POST further down.
+ON CONFLICT (command_sha256) DO UPDATE SET
+  first_seen   = EXCLUDED.first_seen,
+  last_seen    = EXCLUDED.last_seen,
+  total_events = EXCLUDED.total_events,
+  unique_ips   = EXCLUDED.unique_ips;
 
 -- Malware samples. Fires trg_sync_cowrie_files_agg -> cowrie_files_agg, and
 -- covers migration 005: first_seen must fall back to timestamp when mtime is

@@ -139,7 +139,6 @@ module.exports = function registerIngestRoutes(app) {
       // Bulk insert for better performance
       const values = [];
       const placeholders = [];
-      const commandRows = [];
       const credsRows = [];
 
       plainEvents.forEach((ev, idx) => {
@@ -165,14 +164,6 @@ module.exports = function registerIngestRoutes(app) {
           geo.city || null
         );
 
-        // Cap on the way into the leaderboard, not on the way into the event
-        // row: cowrie_events.command is unindexed and keeps the full text, but
-        // cowrie_unique_commands is keyed on it and a btree index row cannot
-        // hold more than 2704 bytes. See LIMITS.MAX_COMMAND_BYTES.
-        if (ev.command && ev.command !== ''
-            && Buffer.byteLength(ev.command) <= LIMITS.MAX_COMMAND_BYTES) {
-          commandRows.push({ command: ev.command, timestamp: eventTimestamp });
-        }
 
         if (ev.username && ev.username !== '' && ev.password && ev.password !== ''
             && Buffer.byteLength(ev.username) + Buffer.byteLength(ev.password) <= LIMITS.MAX_CRED_BYTES) {
@@ -194,39 +185,12 @@ module.exports = function registerIngestRoutes(app) {
         );
       }
 
-      if (commandRows.length > 0) {
-        // Dedupe within the batch: ON CONFLICT DO UPDATE rejects duplicate
-        // conflict keys in a single statement (Postgres error 21000).
-        const byCommand = new Map();
-        for (const row of commandRows) {
-          const existing = byCommand.get(row.command);
-          if (existing) {
-            if (row.timestamp < existing.first) existing.first = row.timestamp;
-            if (row.timestamp > existing.last) existing.last = row.timestamp;
-          } else {
-            byCommand.set(row.command, { first: row.timestamp, last: row.timestamp });
-          }
-        }
-
-        const commandValues = [];
-        const commandPlaceholders = [];
-        let cIdx = 0;
-        for (const [command, ts] of byCommand) {
-          const offset = cIdx * 3;
-          commandPlaceholders.push(`($${offset + 1}, $${offset + 2}, $${offset + 3})`);
-          commandValues.push(command, ts.first, ts.last);
-          cIdx++;
-        }
-
-        await client.query(
-          `INSERT INTO cowrie_unique_commands (command, first_seen, last_seen)
-           VALUES ${commandPlaceholders.join(', ')}
-           ON CONFLICT (command) DO UPDATE
-           SET first_seen = LEAST(cowrie_unique_commands.first_seen, EXCLUDED.first_seen),
-               last_seen = GREATEST(cowrie_unique_commands.last_seen, EXCLUDED.last_seen)`,
-          commandValues
-        );
-      }
+      // cowrie_unique_commands is maintained by trg_sync_cowrie_event_aggs
+      // (migration 011), not from here. It used to be upserted in this
+      // transaction keyed on the command text, which capped it at the 2704-byte
+      // btree limit and silently dropped the longest commands — 44 of the 45
+      // over 2000 bytes, including 33 /dev/tcp loader lines. The trigger keys on
+      // sha256(command) instead, so length no longer decides what gets recorded.
 
       if (credsRows.length > 0) {
         // Dedupe within the batch on the (username, password) conflict key.

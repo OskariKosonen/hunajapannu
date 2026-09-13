@@ -29,19 +29,6 @@ const LIMITS = {
   // oversized combos can't be stored in cowrie_unique_creds/cowrie_cred_ips.
   // Same cap as the sync_cowrie_event_aggs trigger (migration 006).
   MAX_CRED_BYTES: 1000,
-  // The same trap, one column over. cowrie_unique_commands is keyed on the
-  // command text itself, and a btree index row cannot exceed 2704 bytes (a
-  // third of an 8KB page) whatever the column says. A 4,792-byte command on
-  // 2026-09-06 failed that insert, took the whole ingest transaction down
-  // with it — cowrie_events included — and, because post_batch only parks
-  // 400/413/422, left the forwarder retrying the same poisoned batch every
-  // 60 seconds for twelve hours. Nothing reached the database in that time.
-  //
-  // 2000 rather than the hard 2704: multi-byte UTF-8 and index overhead both
-  // eat into the limit, and a real dropper one-liner is far below either.
-  // Oversized commands are still stored whole on cowrie_events, which has no
-  // index on the column. They are only kept out of the leaderboard.
-  MAX_COMMAND_BYTES: 2000,
 };
 
 const CACHE_CONFIG = {
