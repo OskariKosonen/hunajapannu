@@ -52,6 +52,14 @@ const ARTIFACT_PREFIXES = [
   'Saved redir contents with SHA-256',
   'Saved stdin contents with SHA-256',
   'public key login attempt for',
+  // Distinct from the line above — no "login" — and 31,790 rows, 89% of what
+  // survived the previous pass. One per key fingerprint, so it is singleton by
+  // construction. Found by grouping kept rows on their first four words rather
+  // than by eyeballing the leaderboard again; that sweep is what should have
+  // been done at the start.
+  'public key attempt for',
+  'direct-tcp connection request to',
+  'Enter new UNIX password:',
   'Could not read',
   'File download',
   'Command not found',
