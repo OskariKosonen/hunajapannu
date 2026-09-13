@@ -42,6 +42,12 @@ const ARTIFACT_PREFIXES = [
   // were simply the loudest. A prefix list is inherently incomplete, which is
   // the argument for Phase 2 deriving record_class from the ingest event type
   // rather than from the text.
+  // 1,443,250 rows on its own — 85% of the table. It embeds source IP, source
+  // port and session id, so every connection mints a unique "command". This is
+  // what was inflating the unique-command headline to 1.5M, and it also put the
+  // sensor's LAN address (192.168.50.10:22) into a public endpoint.
+  'New connection:',
+  'SFTP Uploaded file',
   'Closing TTY Log:',
   'Saved redir contents with SHA-256',
   'Saved stdin contents with SHA-256',
