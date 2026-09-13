@@ -12,6 +12,7 @@ const { LIMITS, LEADERBOARD_CACHE_TTL_MS } = require('../config');
 const { parseListParams } = require('../lib/params');
 const { MITRE_SIGNATURES, MITRE_IDS, tagCommand } = require('../lib/mitre');
 const { getCachedLeaderboard, setCachedLeaderboard } = require('../cache');
+const { realCommandSql } = require('../lib/record-class');
 
 module.exports = function registerLeaderboardRoutes(app) {
   app.get('/api/public/cowrie/mitre', (_req, res) => {
@@ -38,6 +39,7 @@ module.exports = function registerLeaderboardRoutes(app) {
          COALESCE(total_events, 0) AS total,
          COALESCE(unique_ips, 0) AS unique_ips
        FROM cowrie_unique_commands
+       WHERE ${realCommandSql('command')}
        ORDER BY COALESCE(total_events, 0) DESC
        LIMIT $1`,
       [LIMITS.MAX_COMMANDS_SNAPSHOT]
