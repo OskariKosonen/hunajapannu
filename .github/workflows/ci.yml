@@ -412,8 +412,17 @@ jobs:
           assert "an oversized command does not 500 the batch" "1" "$big_accepted"
           assert "the oversized event is still stored in full" "5000" \
             "$("${PSQL[@]}" -qtA -c "SELECT length(command) FROM cowrie_events WHERE session_id = 'ci-big'")"
-          assert "the oversized command is kept out of the leaderboard" "0" \
+          # Reversed deliberately in migration 011, and the reversal is the point:
+          # this used to assert that oversized commands were kept OUT, because
+          # the table was keyed on the command text and a btree entry stops at
+          # 2704 bytes. That cap silently lost 44 of the 45 commands over 2000
+          # bytes — 33 of them /dev/tcp loader lines. The key is now
+          # sha256(command), so length no longer decides what gets recorded and
+          # the long ones must land in full. Do not "fix" this back to 0.
+          assert "an oversized command now reaches the leaderboard" "1" \
             "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_unique_commands WHERE length(command) > 2704")"
+          assert "and is stored there untruncated" "5000" \
+            "$("${PSQL[@]}" -qtA -c "SELECT max(length(command)) FROM cowrie_unique_commands")"
 
           echo "--- client fingerprints and tunnel requests ---"
           # cowrie.client.version and cowrie.client.kex are two log lines for
