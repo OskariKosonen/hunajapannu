@@ -424,6 +424,44 @@ jobs:
           assert "and is stored there untruncated" "5000" \
             "$("${PSQL[@]}" -qtA -c "SELECT max(length(command)) FROM cowrie_unique_commands")"
 
+          echo "--- command templatization on the ingest path ---"
+          # Migration 012 adds command_template, but no trigger can fill it:
+          # the normalizer is JavaScript and a plpgsql copy of the rules would
+          # drift. The ingest endpoint fills it instead, so this is the only
+          # coverage that the column is populated live rather than only by the
+          # batch backfill.
+          curl -fsS -X POST -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $INGEST_API_KEY" \
+            -d '{"events":[
+                  {"src_ip":"203.0.113.20","session_id":"ci-t1","command":"scp -t /tmp/V62vtXQH"},
+                  {"src_ip":"203.0.113.21","session_id":"ci-t2","command":"scp -t /tmp/Kp9zWm42"},
+                  {"src_ip":"203.0.113.22","session_id":"ci-t3","command":"echo root:modzmodz | chpasswd"},
+                  {"src_ip":"203.0.113.23","session_id":"ci-t4","command":"echo root:Ab3xKq9zLm2P | chpasswd"}
+                ]}' "$API/api/cowrie/events" >/dev/null
+
+          assert "ingest fills command_template" "scp -t /tmp/<RAND8>" \
+            "$("${PSQL[@]}" -qtA -c "SELECT command_template FROM cowrie_unique_commands WHERE command = 'scp -t /tmp/V62vtXQH'")"
+          # Two raw rows, one template: the collapse this phase exists for.
+          assert "two randomised drops share one template" "2|1" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) || '|' || count(DISTINCT command_template) FROM cowrie_unique_commands WHERE command LIKE 'scp -t /tmp/%'")"
+          # The raw text is the thing Phase 4 extracts indicators from. If a
+          # template ever overwrote it, every C2 address and wallet in the
+          # history would be gone and nothing would error.
+          assert "the raw command is untouched" "scp -t /tmp/V62vtXQH" \
+            "$("${PSQL[@]}" -qtA -c "SELECT command FROM cowrie_unique_commands WHERE command = 'scp -t /tmp/V62vtXQH'")"
+          # The over-merge guard, asserted end to end rather than only in the
+          # unit tests: modzmodz identifies the meow loader and must stay a
+          # literal, while a generated password beside it must tokenise. One
+          # template here instead of two would silently merge two actors.
+          assert "a hardcoded password does not collapse with a generated one" "2" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(DISTINCT command_template) FROM cowrie_unique_commands WHERE command LIKE 'echo root:%chpasswd'")"
+          assert "modzmodz survives as a literal" "1" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_unique_commands WHERE command_template = 'echo root:modzmodz | chpasswd'")"
+          # template_sha256 is what the index is on, so a stale one means the
+          # grouping key and the text it stands for disagree.
+          assert "template_sha256 matches its template everywhere" "0" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_unique_commands WHERE command_template IS NOT NULL AND template_sha256 IS DISTINCT FROM sha256(convert_to(command_template, 'UTF8'))")"
+
           echo "--- client fingerprints and tunnel requests ---"
           # cowrie.client.version and cowrie.client.kex are two log lines for
           # one session, arriving in either order. Post them kex-first so the

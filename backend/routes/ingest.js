@@ -3,9 +3,12 @@
  * file metadata. The only non-read-only routes in the API.
  */
 
+const { createHash } = require('node:crypto');
+
 const { pool } = require('../db');
 const { lookupGeo } = require('../geo');
 const { LIMITS, API_KEY } = require('../config');
+const { normalizeCommand } = require('../lib/normalize');
 
 module.exports = function registerIngestRoutes(app) {
   // ============================================================================
@@ -140,6 +143,11 @@ module.exports = function registerIngestRoutes(app) {
       const values = [];
       const placeholders = [];
       const credsRows = [];
+      // command -> template, deduped across the batch. Keyed on the command
+      // text rather than its hash so a batch of a thousand events repeating
+      // one command hashes it once, not a thousand times — commands here run
+      // to tens of kilobytes.
+      const templateRows = new Map();
 
       plainEvents.forEach((ev, idx) => {
         const geo = lookupGeo(ev.src_ip) || {};
@@ -165,6 +173,10 @@ module.exports = function registerIngestRoutes(app) {
         );
 
 
+        if (ev.command && !templateRows.has(ev.command)) {
+          templateRows.set(ev.command, normalizeCommand(ev.command));
+        }
+
         if (ev.username && ev.username !== '' && ev.password && ev.password !== ''
             && Buffer.byteLength(ev.username) + Buffer.byteLength(ev.password) <= LIMITS.MAX_CRED_BYTES) {
           credsRows.push({
@@ -185,12 +197,46 @@ module.exports = function registerIngestRoutes(app) {
         );
       }
 
-      // cowrie_unique_commands is maintained by trg_sync_cowrie_event_aggs
-      // (migration 011), not from here. It used to be upserted in this
+      // cowrie_unique_commands rows are created by trg_sync_cowrie_event_aggs
+      // (migration 011), not from here. They used to be upserted in this
       // transaction keyed on the command text, which capped it at the 2704-byte
       // btree limit and silently dropped the longest commands — 44 of the 45
       // over 2000 bytes, including 33 /dev/tcp loader lines. The trigger keys on
       // sha256(command) instead, so length no longer decides what gets recorded.
+      //
+      // The one thing the trigger cannot do is fill in command_template
+      // (migration 012): the normalizer is JavaScript, and reimplementing it in
+      // plpgsql would put the same rules in two places, where they drift and
+      // split one campaign across two templates without erroring. So the rows
+      // arrive from the trigger with a NULL template and are completed here,
+      // in the same transaction. Doing it only in the batch backfill would
+      // leave every newly seen command untemplated until someone remembered to
+      // re-run it.
+      if (templateRows.size > 0) {
+        const hashes = [];
+        const templates = [];
+        for (const [command, template] of templateRows) {
+          // Must match sha256(convert_to(command, 'UTF8')) as computed by the
+          // trigger in migration 011, or the join finds nothing.
+          hashes.push(createHash('sha256').update(command, 'utf8').digest('hex'));
+          templates.push(template);
+        }
+        // Hex text rather than an array of Buffers: bytea[] serialisation
+        // depends on driver internals, decode() does not.
+        //
+        // IS DISTINCT FROM matters more here than it looks. Batches repeat the
+        // same handful of commands endlessly, so without it nearly every row
+        // touched would be rewritten to the value it already holds — dead
+        // tuples on the busiest table in the schema, forever.
+        await client.query(
+          `UPDATE cowrie_unique_commands u
+              SET command_template = v.tpl
+             FROM unnest($1::text[], $2::text[]) AS v(h, tpl)
+            WHERE u.command_sha256 = decode(v.h, 'hex')
+              AND u.command_template IS DISTINCT FROM v.tpl`,
+          [hashes, templates]
+        );
+      }
 
       if (credsRows.length > 0) {
         // Dedupe within the batch on the (username, password) conflict key.

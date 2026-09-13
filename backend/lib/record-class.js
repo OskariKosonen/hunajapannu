@@ -59,6 +59,8 @@ const ARTIFACT_PREFIXES = [
   // been done at the start.
   'public key attempt for',
   'direct-tcp connection request to',
+  'reversedns:',
+  'Attempt to download file(s) from URL',
   'Enter new UNIX password:',
   'Could not read',
   'File download',
