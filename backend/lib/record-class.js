@@ -38,7 +38,21 @@ const ARTIFACT_PREFIXES = [
   'login attempt [',
   'CMD: ',
   'INPUT (',
+  // Found by re-checking the leaderboard after the first pass: the four above
+  // were simply the loudest. A prefix list is inherently incomplete, which is
+  // the argument for Phase 2 deriving record_class from the ingest event type
+  // rather than from the text.
+  'Closing TTY Log:',
+  'Saved redir contents with SHA-256',
+  'Saved stdin contents with SHA-256',
+  'public key login attempt for',
+  'Could not read',
+  'File download',
+  'Command not found',
 ];
+
+/** Exact strings, not prefixes: bare JSON fragments logged into the field. */
+const ARTIFACT_EXACT = ['{}', '[]', '', '?'];
 
 /**
  * SQL predicate keeping only real commands.
@@ -47,13 +61,16 @@ const ARTIFACT_PREFIXES = [
  * @returns {string} a SQL boolean expression
  */
 function realCommandSql(col = 'command') {
-  return ARTIFACT_PREFIXES.map((p) => `${col} NOT LIKE '${p.replace(/'/g, "''")}%'`).join('\n         AND ');
+  const pre = ARTIFACT_PREFIXES.map((p) => `${col} NOT LIKE '${p.replace(/'/g, "''")}%'`);
+  const exact = ARTIFACT_EXACT.map((v) => `${col} <> '${v.replace(/'/g, "''")}'`);
+  return [...pre, ...exact].join('\n         AND ');
 }
 
 /** Same test in JS, for snapshots already held in memory. */
 function isRealCommand(command) {
   if (!command) return false;
+  if (ARTIFACT_EXACT.includes(command)) return false;
   return !ARTIFACT_PREFIXES.some((p) => command.startsWith(p));
 }
 
-module.exports = { ARTIFACT_PREFIXES, realCommandSql, isRealCommand };
+module.exports = { ARTIFACT_PREFIXES, ARTIFACT_EXACT, realCommandSql, isRealCommand };
