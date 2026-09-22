@@ -48,8 +48,25 @@ jobs:
             exit 0
           fi
 
-          python3 -m venv /tmp/vt-venv
-          /tmp/vt-venv/bin/pip install --quiet --upgrade pip
+          # --clear, and no pip self-upgrade. Both matter.
+          #
+          # This ran `pip install --upgrade pip` first, which makes pip
+          # upgrade itself in place — and something interrupted that on
+          # 2026-09-16, leaving bin/pip importable but gutted:
+          #
+          #   ModuleNotFoundError: No module named 'pip._internal.cli.main'
+          #
+          # `python3 -m venv` on a directory that already exists does not
+          # re-bootstrap pip, so the broken venv survived every later run and
+          # the job failed identically ~24 times over six days, always within
+          # 35 seconds, never reaching the script. --clear rebuilds the
+          # environment each run, which makes the job self-healing rather than
+          # permanently poisoned by one bad moment.
+          #
+          # The pip upgrade itself was never needed: pip 24.0 installs both
+          # dependencies fine, and dropping it removes the only step that can
+          # corrupt the venv.
+          python3 -m venv --clear /tmp/vt-venv
           /tmp/vt-venv/bin/pip install --quiet psycopg2-binary requests
           /tmp/vt-venv/bin/python tools/vt_enrich.py
 
@@ -60,10 +77,23 @@ jobs:
         run: |
           set -uo pipefail
           [ -z "${PGPASSWORD}" ] && exit 0
-          psql -h localhost -U "${{ secrets.PGUSER || 'cowrie_user' }}" -d cowrie_db -qtA -c "
+          PSQL=(psql -h localhost -U "${{ secrets.PGUSER || 'cowrie_user' }}" -d cowrie_db -qtA)
+
+          "${PSQL[@]}" -c "
             SELECT 'samples: ' || COUNT(DISTINCT sha256)
                  || ' | enriched: ' || COUNT(DISTINCT sha256) FILTER (WHERE vt_last_fetched IS NOT NULL)
                  || ' | pending: '  || COUNT(DISTINCT sha256) FILTER (WHERE vt_last_fetched IS NULL)
               FROM cowrie_files
              WHERE sha256 ~ '^[A-Fa-f0-9]{64}\$'" || true
+
+          # The broken venv above went unnoticed for six days because a red X
+          # on a scheduled job is easy to scroll past. Staleness is the thing
+          # that actually matters, so say it out loud. A run every 6h means
+          # anything past two days has missed several attempts.
+          stale=$("${PSQL[@]}" -c "
+            SELECT COALESCE(EXTRACT(DAY FROM now() - MAX(vt_last_fetched))::int, 999)
+              FROM cowrie_files" 2>/dev/null || echo 0)
+          if [ "${stale:-0}" -ge 2 ]; then
+            echo "::warning::No VirusTotal verdict has been recorded for ${stale} days."
+          fi
           exit 0
