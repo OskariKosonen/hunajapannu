@@ -13,11 +13,22 @@
 #
 # Two things here are the lesson from that, and neither is optional:
 #
+#   Drop the record_class indexes first.  This is the big one, and it is not
+#       obvious. PostgreSQL can apply a HOT update — one that writes no index
+#       entries at all — only when no *indexed* column changes, and a column
+#       named in a partial index's WHERE predicate counts as indexed. With the
+#       two partial indexes in place, setting record_class wrote a new entry
+#       into all six indexes on this table, 713MB of them, dominated by a
+#       369MB trigram index. Measured on production: 75,000 rows cost 176MB of
+#       disk with the indexes present, and 175,000 rows cost 0MB with them
+#       dropped. They are 184kB combined and are rebuilt at the end.
+#
 #   VACUUM between chunks.  A plain VACUUM does not return space to the
 #       operating system, but it does mark dead tuples reusable — so the next
 #       chunk writes into the space the previous one freed instead of
-#       extending the file. Peak growth becomes one chunk, not the whole
-#       table. This is the difference between needing 500MB and needing 16MB.
+#       extending the file. Less critical once the updates are HOT, which is
+#       why the default is now every 10 chunks: a VACUUM here scans all six
+#       indexes and is itself expensive enough to dominate the run.
 #
 #   A disk precondition.  Checked before starting and again every chunk, so a
 #       run aborts with room to spare rather than taking the database down.
@@ -35,7 +46,8 @@
 # Environment:
 #   CHUNK=50000     rows per transaction
 #   MIN_FREE_MB=700 abort if the volume has less free space than this
-#   VACUUM_EVERY=1  vacuum after every N chunks
+#   VACUUM_EVERY=10 vacuum after every N chunks
+#   KEEP_INDEXES=1  do not drop/rebuild the record_class indexes
 
 set -euo pipefail
 
@@ -43,7 +55,7 @@ set -euo pipefail
 PSQL=("$@")
 CHUNK=${CHUNK:-50000}
 MIN_FREE_MB=${MIN_FREE_MB:-700}
-VACUUM_EVERY=${VACUUM_EVERY:-1}
+VACUUM_EVERY=${VACUUM_EVERY:-10}
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 command -v node >/dev/null || { echo "node is required (the rules are JavaScript)" >&2; exit 1; }
@@ -96,6 +108,32 @@ CASE_SQL="$(node -e "process.stdout.write(require('${REPO}/backend/lib/record-cl
 
 echo "=== Phase 2 backfill: record_class ==="
 check_disk
+
+# See the header. Dropping these is what makes the updates HOT, and HOT is
+# what makes this fit on the disk at all. Safe to drop while serving traffic:
+# during the two-step rollout the endpoints still use the text predicate, so
+# nothing reads them yet, and they are rebuilt below before that changes.
+if [ "${KEEP_INDEXES:-0}" != "1" ]; then
+  q "DROP INDEX IF EXISTS idx_cowrie_unique_commands_cmd_total;"     >/dev/null
+  q "DROP INDEX IF EXISTS idx_cowrie_unique_commands_cmd_last_seen;" >/dev/null
+  echo "  dropped the two record_class partial indexes (rebuilt at the end)"
+fi
+
+rebuild_indexes() {
+  [ "${KEEP_INDEXES:-0}" = "1" ] && return 0
+  echo "  rebuilding the partial indexes"
+  # CONCURRENTLY so a rebuild never blocks the ingest path. Both are built
+  # over the ~4k rows matching the predicate, so this is quick.
+  q "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cowrie_unique_commands_cmd_total
+       ON cowrie_unique_commands (COALESCE(total_events, 0) DESC)
+       WHERE record_class = 'command';" >/dev/null
+  q "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cowrie_unique_commands_cmd_last_seen
+       ON cowrie_unique_commands (last_seen DESC)
+       WHERE record_class = 'command';" >/dev/null
+}
+# Rebuild even if the run aborts on the disk floor, so an interrupted backfill
+# never leaves the table without the indexes the next deploy depends on.
+trap rebuild_indexes EXIT
 MAXID=$(q "SELECT COALESCE(max(id), 0) FROM cowrie_unique_commands;")
 free_note=$(free_mb)
 echo "  ids 1..${MAXID}, chunks of ${CHUNK}, ${free_note:-?}MB free (floor ${MIN_FREE_MB}MB)"
