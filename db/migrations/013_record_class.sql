@@ -123,9 +123,7 @@ CREATE UNLOGGED TABLE IF NOT EXISTS cowrie_record_class_stage (
 --                    freed space rather than extending the file, and refusing
 --                    to start if the volume is short on room.
 --
--- On a database where the backfill has not yet run, every row reads
--- 'unknown' and the endpoints return no commands. That is why this shipped
--- as two deploys: the column and the ingest-side classification first, the
--- endpoint switch only once the backfill had finished. Filtering on a
--- half-populated column returns 200 with a shorter list, and nothing
--- anywhere reports a problem.
+-- The endpoints keep using the old text predicate until that backfill has
+-- finished. Filtering on a half-populated column would silently hide most of
+-- the commands, and "silently" is the part that matters: it returns 200 with
+-- a shorter list and nothing anywhere reports a problem.
