@@ -492,8 +492,39 @@ jobs:
           # 'unknown' and therefore invisible by default.
           assert "ingest classifies what it inserts" "command" \
             "$("${PSQL[@]}" -qtA -c "SELECT record_class FROM cowrie_unique_commands WHERE command = 'scp -t /tmp/V62vtXQH'")"
-          assert "nothing is left unclassified" "0" \
+
+          # Run the backfill itself. Migration 013 deliberately leaves the
+          # existing rows 'unknown' — doing that work inside the migration is
+          # what filled the production disk and took PostgreSQL down on
+          # 2026-09-22 — so the script is the only thing that classifies
+          # history, and it had no coverage at all until now.
+          #
+          # MIN_FREE_MB=0 because psql here talks to a service container whose
+          # data directory this runner cannot see; the client's free space says
+          # nothing about the server's, and the script refuses to pretend
+          # otherwise.
+          #
+          # Reset first. The seed sets record_class explicitly, so without this
+          # the backfill would have nothing to do and would pass while doing
+          # nothing — the same shape of empty assertion as an endpoint checked
+          # against empty tables.
+          "${PSQL[@]}" -qtA -c "UPDATE cowrie_unique_commands SET record_class = 'unknown'" >/dev/null
+          MIN_FREE_MB=0 CHUNK=5 ../db/backfill/013_record_class.sh "${PSQL[@]}" > /tmp/classify.log 2>&1 || {
+            echo "  FAIL the record_class backfill errored:"; tail -20 /tmp/classify.log; fail=1;
+          }
+          assert "the backfill had real work to do" "true" \
+            "$(grep -qE '^  done\. [1-9][0-9]* rows classified' /tmp/classify.log && echo true || echo false)"
+          assert "the backfill classifies every row" "0" \
             "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_unique_commands WHERE record_class = 'unknown'")"
+          # Generated from record-class.js at run time, so this also asserts the
+          # JS and the SQL agree about the artifact row.
+          assert "and agrees with the seeded classification" "log_artifact" \
+            "$("${PSQL[@]}" -qtA -c "SELECT record_class FROM cowrie_unique_commands WHERE command = 'Remote SSH version: SSH-2.0-Go'")"
+          # Idempotent: a second run must write nothing, or every re-run would
+          # churn the table it is supposed to be gentle with.
+          MIN_FREE_MB=0 ../db/backfill/013_record_class.sh "${PSQL[@]}" 2>&1 | tee /tmp/classify2.log | tail -2
+          assert "re-running it changes nothing" "true" \
+            "$(grep -q '^  done. 0 rows classified' /tmp/classify2.log && echo true || echo false)"
 
           echo "--- client fingerprints and tunnel requests ---"
           # cowrie.client.version and cowrie.client.kex are two log lines for

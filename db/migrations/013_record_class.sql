@@ -94,80 +94,36 @@ CREATE UNLOGGED TABLE IF NOT EXISTS cowrie_record_class_stage (
 );
 
 -- ---------------------------------------------------------------------------
--- 5. Classify the existing rows, in batches
+-- 5. What this migration deliberately does NOT do
 -- ---------------------------------------------------------------------------
--- This one has to happen inside the migration rather than being left to the
--- backfill script. The endpoints filter to record_class = 'command' from the
--- moment the new code starts; if every row still read 'unknown' at that point
--- the public dashboard would show no commands at all until someone
--- remembered to run a shell script. A migration must not leave the database
--- in a state the application cannot serve.
+-- It does not classify the existing rows.
 --
--- So the rules appear twice: as the CASE below, and as the lists in
--- backend/lib/record-class.js. That is a deliberate and bounded duplication.
--- The copy below executes exactly once and then is history — which is what a
--- migration is. The live rules stay in the JavaScript, which is what the
--- ingest path uses for new rows and what generates the re-runnable
--- db/backfill/013_record_class.sh for when the classification changes. If the
--- two ever disagree, re-running the backfill is what settles it, and the
--- backfill wins.
+-- The first version of this migration did, in 50,000-row batches with a
+-- COMMIT each, on the reasoning that short transactions make a bulk UPDATE
+-- safe. That reasoning was about lock duration and it was correct as far as
+-- it went — but the dominant cost of rewriting 1.6M rows is disk, not locks,
+-- and batching does nothing about disk. Every UPDATE writes a new row
+-- version, so the table grows by its own size again regardless of how many
+-- transactions the work is spread across. On 2026-09-22 this filled the
+-- volume to 100%, PostgreSQL crashed, and the API served 503 until the
+-- cluster was restarted by hand.
 --
--- Batched with a COMMIT per chunk, via a procedure rather than a DO block —
--- DO cannot commit. A single UPDATE would touch 1.7M rows in one transaction
--- and hold them against the ingest path, which writes to this same table on
--- every batch. 50,000 rows at a time keeps each lock short enough that the
--- forwarder never notices.
-
-CREATE OR REPLACE PROCEDURE cowrie_classify_existing_records()
-LANGUAGE plpgsql AS $proc$
-DECLARE
-  lo    bigint := 0;
-  maxid bigint;
-  step  bigint := 50000;
-BEGIN
-  SELECT COALESCE(max(id), 0) INTO maxid FROM cowrie_unique_commands;
-  WHILE lo < maxid LOOP
-    UPDATE cowrie_unique_commands
-       SET record_class = CASE
-             WHEN encode(command_sha256, 'hex') IN (
-               'c0c42bf6869232095a1470c917375b34310a541bbc6d565fc8612b5168c2fe20',
-               '23f76381806a0f7225441e50442022a1710b7f4971dd8ff970407c7e074dadc2',
-               'ac0c967b43a1c7823b97cea37ef5d54622ee4ae696c1b56bcd5290b913327299',
-               'bd45ca7d32548e2927e3f41c458da25369191e69a01b8a47ce01661423a0fdfc',
-               'e8d735e884c2cdb7388d32264434e3c5e73529d51ae27a1c8275953ee9546756'
-             ) THEN 'binary_fragment'
-             WHEN command LIKE 'Enter new UNIX password:%' THEN 'prompt_echo'
-             WHEN command LIKE 'Remote SSH version:%'
-               OR command LIKE 'SSH client hassh fingerprint:%'
-               OR command LIKE 'Connection lost%'
-               OR command LIKE 'Terminal Size:%'
-               OR command LIKE 'login attempt [%'
-               OR command LIKE 'CMD: %'
-               OR command LIKE 'INPUT (%'
-               OR command LIKE 'New connection:%'
-               OR command LIKE 'SFTP Uploaded file%'
-               OR command LIKE 'Closing TTY Log:%'
-               OR command LIKE 'Saved redir contents with SHA-256%'
-               OR command LIKE 'Saved stdin contents with SHA-256%'
-               OR command LIKE 'public key login attempt for%'
-               OR command LIKE 'public key attempt for%'
-               OR command LIKE 'direct-tcp connection request to%'
-               OR command LIKE 'reversedns:%'
-               OR command LIKE 'Attempt to download file(s) from URL%'
-               OR command = '{}' OR command = '[]' OR command = '' OR command = '?'
-             THEN 'log_artifact'
-             ELSE 'command'
-           END::cowrie_record_class
-     WHERE id > lo AND id <= lo + step
-       AND record_class = 'unknown';   -- re-runnable: already-classified rows cost nothing
-    COMMIT;
-    lo := lo + step;
-  END LOOP;
-END;
-$proc$;
-
-CALL cowrie_classify_existing_records();
-
-DROP PROCEDURE IF EXISTS cowrie_classify_existing_records();
-
-ANALYZE cowrie_unique_commands;
+-- So the schema change and the data change are now separate:
+--
+--   this migration   adds the type, the column and the indexes. All of it is
+--                    catalog-only — PostgreSQL 11+ stores a column default in
+--                    the catalog instead of rewriting the table — so it costs
+--                    no disk and takes milliseconds.
+--
+--   the ingest path  classifies every row it touches from the moment the new
+--                    code starts, so the table only gets more correct.
+--
+--   the backfill     db/backfill/013_record_class.sh classifies the history,
+--                    vacuuming between chunks so the table reuses its own
+--                    freed space rather than extending the file, and refusing
+--                    to start if the volume is short on room.
+--
+-- The endpoints keep using the old text predicate until that backfill has
+-- finished. Filtering on a half-populated column would silently hide most of
+-- the commands, and "silently" is the part that matters: it returns 200 with
+-- a shorter list and nothing anywhere reports a problem.

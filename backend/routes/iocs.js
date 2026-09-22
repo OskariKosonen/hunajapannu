@@ -9,7 +9,7 @@ const { getCachedLeaderboard, setCachedLeaderboard } = require('../cache');
 // Defanging lives in lib/urls.js with the extraction it belongs to, so it can
 // be unit tested and so the URL and IP forms cannot drift apart.
 const { extractUrls, hostOf, defangIp, defangUrl } = require('../lib/urls');
-const { classFilterSql } = require('../lib/record-class');
+const { realCommandSql } = require('../lib/record-class');
 
 module.exports = function registerIocRoutes(app) {
   const IOC_MAX_ROWS = 5000;
@@ -63,7 +63,7 @@ module.exports = function registerIocRoutes(app) {
                   last_seen
              FROM cowrie_unique_commands
             WHERE last_seen >= $1
-              AND ${classFilterSql('command')}
+              AND ${realCommandSql('command')}
             ORDER BY COALESCE(total_events, 0) DESC
             LIMIT $2`,
           [since, IOC_MAX_ROWS]
@@ -85,7 +85,7 @@ module.exports = function registerIocRoutes(app) {
           // them — the honeypot's own log text, exported as threat intel.
           `SELECT command, first_seen, last_seen
              FROM cowrie_unique_commands
-            WHERE ${classFilterSql('command')}
+            WHERE ${realCommandSql('command')}
               AND (command ~* '(https?|ftp|tftp)://'
                OR command ~* '(wget|curl|tftp|fetch)\\s+(-[^ ]+ )*([0-9]{1,3}\\.){3}[0-9]{1,3}')
             LIMIT $1`,
