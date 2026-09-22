@@ -9,7 +9,7 @@ const { getCachedLeaderboard, setCachedLeaderboard } = require('../cache');
 // Defanging lives in lib/urls.js with the extraction it belongs to, so it can
 // be unit tested and so the URL and IP forms cannot drift apart.
 const { extractUrls, hostOf, defangIp, defangUrl } = require('../lib/urls');
-const { realCommandSql } = require('../lib/record-class');
+const { classFilterSql } = require('../lib/record-class');
 
 module.exports = function registerIocRoutes(app) {
   const IOC_MAX_ROWS = 5000;
@@ -63,7 +63,7 @@ module.exports = function registerIocRoutes(app) {
                   last_seen
              FROM cowrie_unique_commands
             WHERE last_seen >= $1
-              AND ${realCommandSql('command')}
+              AND ${classFilterSql('command')}
             ORDER BY COALESCE(total_events, 0) DESC
             LIMIT $2`,
           [since, IOC_MAX_ROWS]
@@ -79,10 +79,15 @@ module.exports = function registerIocRoutes(app) {
         // was first and last seen, not one row per use, and a delivery host
         // stays an indicator well after the last fetch from it.
         const result = await pool.query(
+          // Constrained to real commands as well (migration 013). Cowrie's own
+          // "Attempt to download file(s) from URL ..." log lines carry URLs and
+          // would otherwise be mined for indicators as if an attacker had typed
+          // them — the honeypot's own log text, exported as threat intel.
           `SELECT command, first_seen, last_seen
              FROM cowrie_unique_commands
-            WHERE command ~* '(https?|ftp|tftp)://'
-               OR command ~* '(wget|curl|tftp|fetch)\\s+(-[^ ]+ )*([0-9]{1,3}\\.){3}[0-9]{1,3}'
+            WHERE ${classFilterSql('command')}
+              AND (command ~* '(https?|ftp|tftp)://'
+               OR command ~* '(wget|curl|tftp|fetch)\\s+(-[^ ]+ )*([0-9]{1,3}\\.){3}[0-9]{1,3}')
             LIMIT $1`,
           [IOC_MAX_ROWS]
         );

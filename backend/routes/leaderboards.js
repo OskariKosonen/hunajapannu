@@ -12,7 +12,7 @@ const { LIMITS, LEADERBOARD_CACHE_TTL_MS } = require('../config');
 const { parseListParams } = require('../lib/params');
 const { MITRE_SIGNATURES, MITRE_IDS, tagCommand } = require('../lib/mitre');
 const { getCachedLeaderboard, setCachedLeaderboard } = require('../cache');
-const { realCommandSql } = require('../lib/record-class');
+const { classFilterSql, parseClassParam } = require('../lib/record-class');
 
 module.exports = function registerLeaderboardRoutes(app) {
   app.get('/api/public/cowrie/mitre', (_req, res) => {
@@ -25,21 +25,30 @@ module.exports = function registerLeaderboardRoutes(app) {
    * pagination and the global technique counts are all served without a query,
    * and the browser receives only the page it renders instead of every row.
    */
-  const commandsSnapshot = { rows: null, counts: null, expiresAt: 0 };
+  // Keyed by record class, because ?class=all and ?class=log_artifact are
+  // different result sets and must not share one cached snapshot.
+  const commandsSnapshots = new Map();
 
-  async function getCommandsSnapshot() {
+  async function getCommandsSnapshot(recordClass) {
     const now = Date.now();
-    if (commandsSnapshot.rows && commandsSnapshot.expiresAt > now) return commandsSnapshot;
+    const cached = commandsSnapshots.get(recordClass);
+    if (cached && cached.expiresAt > now) return cached;
 
+    // record_class replaces the 21-clause NOT LIKE predicate this used to
+    // assemble per request (migration 013). idx_cowrie_unique_commands_cmd_total
+    // is partial on record_class = 'command', so the default case reads 4,025
+    // index entries instead of scanning 1.7M rows.
     const { rows } = await pool.query(
       `SELECT
          command,
+         command_template,
+         record_class,
          first_seen,
          last_seen,
          COALESCE(total_events, 0) AS total,
          COALESCE(unique_ips, 0) AS unique_ips
        FROM cowrie_unique_commands
-       WHERE ${realCommandSql('command')}
+       WHERE ${classFilterSql(recordClass)}
        ORDER BY COALESCE(total_events, 0) DESC
        LIMIT $1`,
       [LIMITS.MAX_COMMANDS_SNAPSHOT]
@@ -52,10 +61,9 @@ module.exports = function registerLeaderboardRoutes(app) {
       return { ...row, tags };
     });
 
-    commandsSnapshot.rows = tagged;
-    commandsSnapshot.counts = counts;
-    commandsSnapshot.expiresAt = now + LEADERBOARD_CACHE_TTL_MS;
-    return commandsSnapshot;
+    const snapshot = { rows: tagged, counts, expiresAt: now + LEADERBOARD_CACHE_TTL_MS };
+    commandsSnapshots.set(recordClass, snapshot);
+    return snapshot;
   }
 
   app.get('/api/public/cowrie/commands', async (req, res) => {
@@ -64,9 +72,15 @@ module.exports = function registerLeaderboardRoutes(app) {
       maxLimit: LIMITS.MAX_COMMANDS,
     });
     const tag = typeof req.query.tag === 'string' && MITRE_IDS.has(req.query.tag) ? req.query.tag : null;
+    // Defaults to real commands. ?class=all or a named class opts in to the
+    // Cowrie log messages, which are 99.76% of the table and were what the
+    // leaderboard accidentally served for 25 minutes after the Phase 0
+    // backfill — "Remote SSH version: SSH-2.0-Go", 756,238 hits, top of the
+    // chart. Deliberate is fine; default is not.
+    const recordClass = parseClassParam(req.query.class);
 
     try {
-      const snapshot = await getCommandsSnapshot();
+      const snapshot = await getCommandsSnapshot(recordClass);
 
       let rows = snapshot.rows;
       if (tag) rows = rows.filter((r) => r.tags.includes(tag));
@@ -82,6 +96,7 @@ module.exports = function registerLeaderboardRoutes(app) {
         // available rather than what is currently selected.
         counts: snapshot.counts,
         allTotal: snapshot.rows.length,
+        recordClass,
       });
     } catch (err) {
       console.error('Error in /api/public/cowrie/commands:', err);

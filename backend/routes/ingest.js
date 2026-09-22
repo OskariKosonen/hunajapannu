@@ -9,6 +9,7 @@ const { pool } = require('../db');
 const { lookupGeo } = require('../geo');
 const { LIMITS, API_KEY } = require('../config');
 const { normalizeCommand } = require('../lib/normalize');
+const { classifyCommand } = require('../lib/record-class');
 
 module.exports = function registerIngestRoutes(app) {
   // ============================================================================
@@ -204,22 +205,28 @@ module.exports = function registerIngestRoutes(app) {
       // over 2000 bytes, including 33 /dev/tcp loader lines. The trigger keys on
       // sha256(command) instead, so length no longer decides what gets recorded.
       //
-      // The one thing the trigger cannot do is fill in command_template
-      // (migration 012): the normalizer is JavaScript, and reimplementing it in
-      // plpgsql would put the same rules in two places, where they drift and
-      // split one campaign across two templates without erroring. So the rows
-      // arrive from the trigger with a NULL template and are completed here,
-      // in the same transaction. Doing it only in the batch backfill would
-      // leave every newly seen command untemplated until someone remembered to
-      // re-run it.
+      // The two things the trigger cannot fill in are command_template
+      // (migration 012) and record_class (migration 013). Both are defined in
+      // JavaScript, and reimplementing either in plpgsql would put the same
+      // rules in two places, where they drift — a drifted normalizer splits
+      // one campaign across two templates, a drifted classifier hides real
+      // commands from every endpoint, and neither errors. So the rows arrive
+      // from the trigger with a NULL template and record_class 'unknown', and
+      // are completed here in the same transaction. Doing it only in the batch
+      // backfills would leave every newly seen command untemplated and
+      // unclassified — and 'unknown' is filtered out by default, so a new
+      // command would be invisible until someone remembered to re-run them.
       if (templateRows.size > 0) {
         const hashes = [];
         const templates = [];
+        const classes = [];
         for (const [command, template] of templateRows) {
           // Must match sha256(convert_to(command, 'UTF8')) as computed by the
           // trigger in migration 011, or the join finds nothing.
-          hashes.push(createHash('sha256').update(command, 'utf8').digest('hex'));
+          const hash = createHash('sha256').update(command, 'utf8').digest('hex');
+          hashes.push(hash);
           templates.push(template);
+          classes.push(classifyCommand(command, hash));
         }
         // Hex text rather than an array of Buffers: bytea[] serialisation
         // depends on driver internals, decode() does not.
@@ -230,11 +237,13 @@ module.exports = function registerIngestRoutes(app) {
         // tuples on the busiest table in the schema, forever.
         await client.query(
           `UPDATE cowrie_unique_commands u
-              SET command_template = v.tpl
-             FROM unnest($1::text[], $2::text[]) AS v(h, tpl)
+              SET command_template = v.tpl,
+                  record_class     = v.cls::cowrie_record_class
+             FROM unnest($1::text[], $2::text[], $3::text[]) AS v(h, tpl, cls)
             WHERE u.command_sha256 = decode(v.h, 'hex')
-              AND u.command_template IS DISTINCT FROM v.tpl`,
-          [hashes, templates]
+              AND (u.command_template IS DISTINCT FROM v.tpl
+                OR u.record_class   IS DISTINCT FROM v.cls::cowrie_record_class)`,
+          [hashes, templates, classes]
         );
       }
 

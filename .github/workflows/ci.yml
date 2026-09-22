@@ -462,6 +462,39 @@ jobs:
           assert "template_sha256 matches its template everywhere" "0" \
             "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_unique_commands WHERE command_template IS NOT NULL AND template_sha256 IS DISTINCT FROM sha256(convert_to(command_template, 'UTF8'))")"
 
+          echo "--- record_class (migration 013) ---"
+          # The seeded artifact row carries 999 events — more than any real
+          # command — so if the filter regresses it lands at the top of the
+          # leaderboard, which is exactly what happened in production for 25
+          # minutes after the Phase 0 backfill.
+          assert "the artifact row is classified, not guessed at" "log_artifact" \
+            "$("${PSQL[@]}" -qtA -c "SELECT record_class FROM cowrie_unique_commands WHERE command = 'Remote SSH version: SSH-2.0-Go'")"
+          assert "it is excluded from the commands endpoint" "0" \
+            "$(jq_get "$PUB/commands?limit=200" '[.rows[] | select(.command | startswith("Remote SSH version:"))] | length')"
+          assert "despite being the busiest row in the table" "999" \
+            "$("${PSQL[@]}" -qtA -c "SELECT max(total_events) FROM cowrie_unique_commands")"
+          assert "so the leaderboard leader is still a real command" "cat /etc/passwd" \
+            "$(jq_get "$PUB/commands?limit=1" '.rows[0].command')"
+          assert "and the summary count excludes it too" "false" \
+            "$(jq_get "$PUB/summary" '.uniqueCommands > 100')"
+          # Opting in is the point of the param: the artifacts are real
+          # evidence, they are just not commands.
+          assert "?class=all opts back in" "true" \
+            "$(jq_get "$PUB/commands?limit=200&class=all" '[.rows[] | select(.command | startswith("Remote SSH version:"))] | length > 0')"
+          assert "?class=log_artifact selects exactly that class" "true" \
+            "$(jq_get "$PUB/commands?limit=200&class=log_artifact" '[.rows[].record_class] | all(. == "log_artifact")')"
+          assert "an unknown ?class falls back to commands, not to everything" "command" \
+            "$(jq_get "$PUB/commands?limit=5&class=%27%3B+DROP+TABLE+--" '.recordClass')"
+          # The indicator export must not mine Cowrie's own log lines for URLs.
+          assert "iocs commands export excludes artifacts" "0" \
+            "$(jq_get "$PUB/iocs?type=commands&hours=24" '[.rows[] | select(.command | startswith("Remote SSH version:"))] | length')"
+          # The ingest path classifies too, or a newly seen command would be
+          # 'unknown' and therefore invisible by default.
+          assert "ingest classifies what it inserts" "command" \
+            "$("${PSQL[@]}" -qtA -c "SELECT record_class FROM cowrie_unique_commands WHERE command = 'scp -t /tmp/V62vtXQH'")"
+          assert "nothing is left unclassified" "0" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_unique_commands WHERE record_class = 'unknown'")"
+
           echo "--- client fingerprints and tunnel requests ---"
           # cowrie.client.version and cowrie.client.kex are two log lines for
           # one session, arriving in either order. Post them kex-first so the
