@@ -14,7 +14,7 @@ A [Cowrie](https://github.com/cowrie/cowrie) honeypot pretends to be a badly-sec
 |---|---|
 | 8,031,815 attacks | 28,930 unique IPs |
 | 168 countries, 3,414 networks | 223,063 credential pairs |
-| 302 malware samples | 4,025 distinct commands |
+| 302 malware samples | 4,020 distinct commands |
 
 ## Stack
 
@@ -33,7 +33,7 @@ Cowrie → forwarder.py  ──TLS──→ Express 5 + Postgres 16 → React 19
 
 **Attack replay.** A captured session plays back at its original pace, each command mapped to its [MITRE ATT&CK](https://attack.mitre.org/) technique.
 
-**Command templatization.** Attackers randomise binary names, temp files and generated passwords, so one campaign looks like thousands of unique commands. A normalizer collapses those fields: 4,025 raw commands become 2,377 templates.
+**Command templatization.** Attackers randomise binary names, temp files and generated passwords, so one campaign looks like thousands of unique commands. A normalizer collapses those fields: 4,020 raw commands become 2,372 templates.
 
 What it refuses to collapse matters more. `modzmodz` is a hardcoded password identifying one specific loader, so tokenising it would merge two actors into one row with nothing to flag it. Every substitution is gated on a randomness test, and the first credential field always survives.
 
@@ -93,4 +93,4 @@ cd frontend && npm ci && npm run dev
 
 ---
 
-Built by [Oskari Kosonen](https://www.linkedin.com/in/oskari-kosonen-ba2589294/). *hunajapannu* is Finnish for honeypot.
+Built by [Oskari Kosonen](https://www.linkedin.com/in/oskari-kosonen-ba2589294/). MIT licensed. *hunajapannu* is Finnish for honeypot.

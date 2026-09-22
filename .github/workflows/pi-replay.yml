@@ -12,14 +12,23 @@ jobs:
   replay:
     runs-on: [self-hosted, linux]
     env:
-      PI_HOST: ${{ vars.PI_HOST || 'REDACTED' }}
-      PI_PORT: "22222"
+      PI_HOST: ${{ vars.PI_HOST }}
+      PI_PORT: ${{ vars.PI_PORT }}
       PI_USER: admin
 
     steps:
       - name: Replay parked batches
         run: |
           set -euo pipefail
+          # PI_HOST and PI_PORT are repo variables, not literals. The Pi sits on
+          # a residential line, so its address is the author's home IP and the
+          # admin SSH port is non-standard; publishing either would hand anyone
+          # reading this repo a precise target. Settings -> Secrets and
+          # variables -> Actions -> Variables.
+          if [ -z "${PI_HOST:-}" ] || [ -z "${PI_PORT:-}" ]; then
+            echo "::error::PI_HOST and PI_PORT repo variables are not set."
+            exit 1
+          fi
           ssh -p "$PI_PORT" -o BatchMode=yes -o ConnectTimeout=10 \
             -o StrictHostKeyChecking=accept-new "$PI_USER@$PI_HOST" '
               set -uo pipefail

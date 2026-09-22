@@ -21,8 +21,8 @@ jobs:
     env:
       # The Pi sits on a dynamic residential IP; keep it in a repo variable so
       # an address change is a settings update, not a commit.
-      PI_HOST: ${{ vars.PI_HOST || 'REDACTED' }}
-      PI_PORT: "22222"
+      PI_HOST: ${{ vars.PI_HOST }}
+      PI_PORT: ${{ vars.PI_PORT }}
       PI_USER: admin
       REPO_DIR: /home/admin/hunajapannu
       WEB_ROOT: /var/www/hunajapannu.fi/html
@@ -117,6 +117,15 @@ jobs:
       - name: Deploy forwarder to Pi
         run: |
           set -euo pipefail
+          # PI_HOST and PI_PORT are repo variables, not literals. The Pi sits on
+          # a residential line, so its address is the author's home IP and the
+          # admin SSH port is non-standard; publishing either would hand anyone
+          # reading this repo a precise target. Settings -> Secrets and
+          # variables -> Actions -> Variables.
+          if [ -z "${PI_HOST:-}" ] || [ -z "${PI_PORT:-}" ]; then
+            echo "::warning::PI_HOST/PI_PORT repo variables are not set; skipping the forwarder deploy."
+            exit 0
+          fi
           # The Pi is on a residential connection and can be offline or on a
           # new IP; that must not block backend/frontend deploys. Skip with a
           # visible warning instead of failing the whole run.
