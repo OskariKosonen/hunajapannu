@@ -6,9 +6,28 @@ name: CI
 # site rather than leave the previous version in place.
 
 on:
-  # No push trigger: Deploy calls this via workflow_call on pushes to main, so
-  # a push trigger here would run the whole thing twice.
-  pull_request:
+  # Branch pushes, not pull_request, and that distinction is a security
+  # control rather than a preference.
+  #
+  # This repository registers a self-hosted runner, and that runner is the
+  # production VPS: the database, the API, the Pi's SSH key, and an account
+  # with sudo. For a pull_request event GitHub runs the workflow file from the
+  # *fork's* head commit, so anyone could fork, rewrite this file's runs-on to
+  # [self-hosted, linux] with any step they liked, open a PR, and have it
+  # queued against that machine. Fork PRs receive no secrets, which does not
+  # help: arbitrary code as that user can read the backend's environment file
+  # and reach Postgres over the local socket regardless.
+  #
+  # A push event can only come from someone with write access to this repo. A
+  # fork's own pushes run in the fork, which has no runner registered. So with
+  # no pull_request trigger anywhere, no workflow here is reachable by an
+  # outside party at all — a property of the configuration rather than of
+  # somebody remembering not to click Approve.
+  #
+  # main is excluded because Deploy calls this via workflow_call on pushes
+  # there, and a push trigger would run everything twice.
+  push:
+    branches-ignore: [main]
   workflow_call:
 
 jobs:
