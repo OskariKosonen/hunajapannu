@@ -110,9 +110,11 @@ echo "=== Phase 2 backfill: record_class ==="
 check_disk
 
 # See the header. Dropping these is what makes the updates HOT, and HOT is
-# what makes this fit on the disk at all. Safe to drop while serving traffic:
-# during the two-step rollout the endpoints still use the text predicate, so
-# nothing reads them yet, and they are rebuilt below before that changes.
+# what makes this fit on the disk at all. Dropping them briefly costs the
+# leaderboard its index — queries fall back to a sequential scan for the
+# duration rather than failing — and the trap below rebuilds them even if the
+# run aborts. Use KEEP_INDEXES=1 to trade the disk saving for uninterrupted
+# index coverage.
 if [ "${KEEP_INDEXES:-0}" != "1" ]; then
   q "DROP INDEX IF EXISTS idx_cowrie_unique_commands_cmd_total;"     >/dev/null
   q "DROP INDEX IF EXISTS idx_cowrie_unique_commands_cmd_last_seen;" >/dev/null

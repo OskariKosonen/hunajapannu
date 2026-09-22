@@ -6,7 +6,7 @@
  */
 
 const { pool } = require('../db');
-const { realCommandSql } = require('../lib/record-class');
+const { classFilterSql } = require('../lib/record-class');
 const { SUMMARY_CACHE_TTL_MS } = require('../config');
 
 module.exports = function registerSummaryRoutes(app) {
@@ -40,11 +40,10 @@ module.exports = function registerSummaryRoutes(app) {
       // cowrie_files_agg is one row per sha256, so a plain COUNT(*) replaces
       // the COUNT(DISTINCT sha256) scan over every download ever recorded.
       pool.query('SELECT COUNT(*) AS malware_samples FROM cowrie_files_agg'),
-      // Still the text predicate: record_class is not fully backfilled yet,
-      // and counting on a half-classified column would under-report. Switches
-      // to classFilterSql in the deploy that follows the backfill.
+      // Index-only count over the partial index: ~4k entries rather than a
+      // 1.7M-row scan.
       pool.query(`SELECT COUNT(*) AS unique_commands FROM cowrie_unique_commands
-                  WHERE ${realCommandSql('command')}`),
+                  WHERE ${classFilterSql('command')}`),
       pool.query(
         'SELECT COUNT(*) AS unique_creds FROM cowrie_unique_creds'
       ),

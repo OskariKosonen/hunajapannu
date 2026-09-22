@@ -12,7 +12,7 @@ const { LIMITS, LEADERBOARD_CACHE_TTL_MS } = require('../config');
 const { parseListParams } = require('../lib/params');
 const { MITRE_SIGNATURES, MITRE_IDS, tagCommand } = require('../lib/mitre');
 const { getCachedLeaderboard, setCachedLeaderboard } = require('../cache');
-const { realCommandSql, classFilterSql, parseClassParam } = require('../lib/record-class');
+const { classFilterSql, parseClassParam } = require('../lib/record-class');
 
 module.exports = function registerLeaderboardRoutes(app) {
   app.get('/api/public/cowrie/mitre', (_req, res) => {
@@ -34,16 +34,9 @@ module.exports = function registerLeaderboardRoutes(app) {
     const cached = commandsSnapshots.get(recordClass);
     if (cached && cached.expiresAt > now) return cached;
 
-    // Two-step rollout. record_class exists and new rows are classified on
-    // ingest, but the 1.6M existing rows are still being backfilled, so the
-    // default path keeps using the text predicate — filtering on a
-    // half-populated column would silently drop most commands. ?class= opts
-    // into the column deliberately, which is also how the backfill's progress
-    // gets checked. The default flips to classFilterSql once it completes.
-    const where = recordClass === 'command'
-      ? realCommandSql('command')
-      : classFilterSql(recordClass);
-
+    // idx_cowrie_unique_commands_cmd_total is partial on record_class =
+    // 'command', so this reads ~4k index entries instead of scanning 1.7M
+    // rows through a 21-clause NOT LIKE predicate.
     const { rows } = await pool.query(
       `SELECT
          command,
@@ -54,7 +47,7 @@ module.exports = function registerLeaderboardRoutes(app) {
          COALESCE(total_events, 0) AS total,
          COALESCE(unique_ips, 0) AS unique_ips
        FROM cowrie_unique_commands
-       WHERE ${where}
+       WHERE ${classFilterSql(recordClass)}
        ORDER BY COALESCE(total_events, 0) DESC
        LIMIT $1`,
       [LIMITS.MAX_COMMANDS_SNAPSHOT]

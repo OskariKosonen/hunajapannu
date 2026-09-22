@@ -140,33 +140,3 @@ test('parseClassParam only ever yields a value the filter accepts', () => {
     assert.ok(parsed === 'all' || RECORD_CLASSES.includes(parsed), `bad parse of ${raw}`);
   }
 });
-
-// ---------------------------------------------------------------------------
-// The two-step rollout runs both predicates at once
-// ---------------------------------------------------------------------------
-
-test('realCommandSql and classifyCommand agree about what a command is', () => {
-  // While record_class is being backfilled, the endpoints use the text
-  // predicate and the ingest path uses the classifier. If they disagreed, the
-  // switchover would silently change what the public API returns.
-  const { realCommandSql } = require('../lib/record-class');
-  const sql = realCommandSql('command');
-
-  // Everything the classifier calls an artifact must appear as an exclusion.
-  for (const p of LOG_ARTIFACT_PREFIXES) {
-    assert.ok(sql.includes(`NOT LIKE '${p.replace(/'/g, "''")}%'`), `text predicate misses: ${p}`);
-  }
-  // Including the prompt echo, which is its own class but is equally not a
-  // command — the earlier version of this predicate listed it by hand, and
-  // splitting the lists is exactly how the two would drift apart.
-  assert.ok(sql.includes("NOT LIKE 'Enter new UNIX password:%'"));
-  assert.ok(sql.includes("<> '{}'") && sql.includes("<> '[]'"));
-});
-
-test('the text predicate is built from the same lists, not a second copy', () => {
-  const { realCommandSql, LOG_ARTIFACT_PREFIXES: prefixes } = require('../lib/record-class');
-  const clauses = realCommandSql('command').split(' AND ').length;
-  // prefixes + prompt echo + the exact values. A hand-maintained duplicate
-  // would drift from this count the first time either list changed.
-  assert.strictEqual(clauses, prefixes.length + 1 + 4);
-});

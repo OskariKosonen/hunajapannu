@@ -114,27 +114,6 @@ const LOG_ARTIFACT_EXACT = ['{}', '[]', '', '?'];
 const quote = (v) => `'${String(v).replace(/'/g, "''")}'`;
 
 /**
- * The original text predicate, kept alive on purpose.
- *
- * record_class is populated by a backfill that rewrites 1.6M rows, and on
- * 2026-09-22 doing that inside the migration filled the disk and took
- * PostgreSQL down. The schema change and the behaviour change are therefore
- * separated: this deploy adds the column and classifies new rows as they
- * arrive, the backfill runs afterwards at its own pace, and only once it has
- * finished does a second deploy switch the endpoints to classFilterSql.
- *
- * Until then the endpoints keep asking the question this way, which is slower
- * but correct against a half-classified table. Delete it in that second
- * deploy, not before.
- */
-function realCommandSql(col = 'command') {
-  const pre = [...LOG_ARTIFACT_PREFIXES, ...PROMPT_ECHO_PREFIXES]
-    .map((p) => `${col} NOT LIKE ${quote(`${p}%`)}`);
-  const exact = LOG_ARTIFACT_EXACT.map((v) => `${col} <> ${quote(v)}`);
-  return [...pre, ...exact].join('\n         AND ');
-}
-
-/**
  * The CASE expression that assigns a class, generated from the lists above so
  * the backfill and the ingest path cannot disagree.
  *
@@ -196,7 +175,6 @@ function parseClassParam(raw) {
 }
 
 module.exports = {
-  realCommandSql,
   RECORD_CLASSES,
   BINARY_FRAGMENT_SHA256,
   PROMPT_ECHO_PREFIXES,

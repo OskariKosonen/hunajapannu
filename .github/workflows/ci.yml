@@ -478,7 +478,8 @@ jobs:
           assert "and the summary count excludes it too" "false" \
             "$(jq_get "$PUB/summary" '.uniqueCommands > 100')"
           # Opting in is the point of the param: the artifacts are real
-          # evidence, they are just not commands.
+          # evidence, they are just not commands. Everything below reads the
+          # record_class column now — the text predicate it replaced is gone.
           assert "?class=all opts back in" "true" \
             "$(jq_get "$PUB/commands?limit=200&class=all" '[.rows[] | select(.command | startswith("Remote SSH version:"))] | length > 0')"
           assert "?class=log_artifact selects exactly that class" "true" \
