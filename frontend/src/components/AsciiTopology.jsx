@@ -1,6 +1,6 @@
 import { memo } from "react";
 import ScrollShadow from "./common/ScrollShadow";
-import topologySvg from "../assets/topology3.svg";
+import topologySvg from "../assets/topology.svg";
 
 const AsciiTopology = () => (
   <section className="relative overflow-hidden border border-emerald-700/50 rounded-xl bg-slate-950/70 shadow-[0_10px_35px_rgba(0,0,0,0.45)] backdrop-blur-sm w-full sm:max-w-4xl lg:max-w-5xl xl:max-w-6xl sm:mx-auto">
@@ -13,11 +13,13 @@ const AsciiTopology = () => (
 
     <div className="relative p-3 sm:p-4">
       <ScrollShadow className="w-full min-w-0" topScrollbar>
+        {/* Landscape, 1280x400. The previous diagram was 584x1040 portrait,
+            so it sat in a third of this panel's width with the rest empty. */}
         <div className="flex justify-center w-full min-w-0">
           <img
             src={topologySvg}
             alt="Network topology diagram"
-            className="max-w-full h-auto max-h-[80vh] sm:max-h-[720px] object-contain bg-slate-950/80 border border-emerald-800/70 rounded-lg p-3 sm:p-4 shadow-inner"
+            className="w-full max-w-full h-auto object-contain bg-slate-950/80 border border-emerald-800/70 rounded-lg p-3 sm:p-4 shadow-inner"
           />
         </div>
       </ScrollShadow>

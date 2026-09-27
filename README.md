@@ -2,16 +2,14 @@
 
 An SSH honeypot on a Raspberry Pi at home, and the platform that keeps it running.
 
-**[hunajapannu.fi](https://hunajapannu.fi)** · live and unattended since 24 November 2025 · **306 days**, 8.07M recorded attacks
+**[hunajapannu.fi](https://hunajapannu.fi)** · live and unattended since 24 November 2025 · **306 days** and counting
 
 ![Dashboard](docs/dashboard.png)
 
 A [Cowrie](https://github.com/cowrie/cowrie) honeypot pretends to be a badly-secured Linux server. Botnets log in, run their scripts and drop malware. Everything is captured, enriched and published through a public API.
 
-| | | | |
-|---|---|---|---|
-| 8,065,527 attacks | 29,333 unique IPs | 169 countries | 3,457 networks |
-| 308 malware samples | 223,282 credential pairs | 4,041 distinct commands | ~11k events/day |
+**8,065,527** attacks · **29,333** unique IPs · **169** countries · **3,457** networks  
+**308** malware samples · **223,282** credential pairs · **4,041** distinct commands · **~11k** events/day
 
 ## How it runs
 

@@ -1,61 +1,78 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="456" height="1040" class="svgbob"><style>.svgbob line, .svgbob path, .svgbob circle, .svgbob rect, .svgbob polygon {
-    stroke: #34d399;
-    stroke-width: 2;
-    stroke-opacity: 1;
-    fill-opacity: 1;
-    stroke-linecap: round;
-    stroke-linejoin: miter;
-}
-.svgbob text {
-    white-space: pre;
-    fill: #a7f3d0;
-    font-family: Iosevka Fixed, monospace;
-    font-size: 14px;
-}
-.svgbob rect.backdrop {
-    stroke: none;
-    fill: transparent;
-}
-.svgbob .broken {
-    stroke-dasharray: 8;
-}
-.svgbob .filled {
-    fill: #34d399;
-}
-.svgbob .bg_filled {
-    fill: transparent;
-    stroke-width: 1;
-}
-.svgbob .nofill {
-    fill: transparent;
-}
-.svgbob .end_marked_arrow {
-    marker-end: url(#arrow);
-}
-.svgbob .start_marked_arrow {
-    marker-start: url(#arrow);
-}
-.svgbob .end_marked_diamond {
-    marker-end: url(#diamond);
-}
-.svgbob .start_marked_diamond {
-    marker-start: url(#diamond);
-}
-.svgbob .end_marked_circle {
-    marker-end: url(#circle);
-}
-.svgbob .start_marked_circle {
-    marker-start: url(#circle);
-}
-.svgbob .end_marked_open_circle {
-    marker-end: url(#open_circle);
-}
-.svgbob .start_marked_open_circle {
-    marker-start: url(#open_circle);
-}
-.svgbob .end_marked_big_open_circle {
-    marker-end: url(#big_open_circle);
-}
-.svgbob .start_marked_big_open_circle {
-    marker-start: url(#big_open_circle);
-}<!--separator--></style><defs><marker id="arrow" viewBox="-2 -2 8 8" refX="4" refY="2" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><polygon points="0,0 0,4 4,2 0,0"></polygon></marker><marker id="diamond" viewBox="-2 -2 8 8" refX="4" refY="2" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><polygon points="0,2 2,0 4,2 2,4 0,2"></polygon></marker><marker id="circle" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><circle cx="4" cy="4" r="2" class="filled"></circle></marker><marker id="open_circle" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><circle cx="4" cy="4" r="2" class="bg_filled"></circle></marker><marker id="big_open_circle" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><circle cx="4" cy="4" r="3" class="bg_filled"></circle></marker></defs><rect class="backdrop" x="0" y="0" width="456" height="1040"></rect><rect x="108" y="72" width="200" height="32" class="solid nofill" rx="0"></rect><text x="178" y="92" >INTERNET</text><rect x="108" y="552" width="200" height="32" class="solid nofill" rx="0"></rect><text x="178" y="572" >INTERNET</text><rect x="52" y="840" width="160" height="96" class="solid nofill" rx="0"></rect><text x="66" y="860" >Reverse</text><text x="66" y="876" >Nginx</text><line x1="64" y1="888" x2="72" y2="888" class="solid"></line><text x="82" y="892" >Listens</text><text x="146" y="892" >80</text><line x1="168" y1="880" x2="160" y2="896" class="solid"></line><text x="170" y="892" >443</text><line x1="64" y1="904" x2="72" y2="904" class="solid"></line><text x="82" y="908" >Serves</text><text x="138" y="908" >React</text><text x="186" y="908" >UI</text><text x="82" y="924" >static</text><text x="138" y="924" >files</text><text x="130" y="860" >Proxy</text><rect x="252" y="984" width="192" height="32" class="solid nofill" rx="0"></rect><text x="266" y="1004" >PostgreSQL</text><text x="354" y="1004" >database</text><text x="122" y="12" >[</text><text x="138" y="12" >ATTACKER</text><text x="210" y="12" >SSH</text><line x1="204" y1="16" x2="204" y2="64" class="solid"></line><line x1="204" y1="112" x2="204" y2="132" class="solid"></line><polygon points="200,132 208,132 204,144" class="filled"></polygon><text x="154" y="172" >Home</text><text x="194" y="172" >Router</text><line x1="256" y1="160" x2="248" y2="176" class="solid"></line><text x="266" y="172" >NAT</text><line x1="152" y1="184" x2="160" y2="184" class="solid"></line><text x="170" y="188" >Forwards</text><text x="170" y="204" >WAN:22</text><polygon points="216,244 224,244 220,256" class="filled"></polygon><text x="162" y="284" >Raspberry</text><text x="242" y="284" >Pi</text><text x="162" y="300" >Cowrie</text><text x="218" y="300" >SSH</text><text x="162" y="316" >Honeypot</text><line x1="152" y1="328" x2="160" y2="328" class="solid"></line><text x="170" y="332" >Listens</text><text x="234" y="332" >22</text><line x1="152" y1="344" x2="160" y2="344" class="solid"></line><text x="170" y="348" >Writes</text><text x="226" y="348" >JSON</text><text x="170" y="364" >cowrie.json</text><polygon points="216,436 224,436 220,448" class="filled"></polygon><text x="242" y="12" >FLOW</text><text x="282" y="12" >]</text><text x="146" y="44" >TCP</text><text x="178" y="44" >22</text><path d="M 224,32 A 16,16 0,0,0 224,48" class="nofill"></path><text x="234" y="44" >SSH</text><path d="M 264,32 A 16,16 0,0,1 264,48" class="nofill"></path><text x="234" y="412" >Local</text><text x="282" y="412" >data</text><text x="322" y="412" >shipper</text><path d="M 240,416 A 16,16 0,0,0 240,432" class="nofill"></path><text x="250" y="428" >systemd</text><path d="M 312,416 A 16,16 0,0,1 312,432" class="nofill"></path><text x="162" y="476" >HTTPS</text><text x="162" y="492" >+</text><text x="178" y="492" >API</text><text x="210" y="476" >POST</text><path d="M 256,464 A 16,16 0,0,0 256,480" class="nofill"></path><text x="258" y="476" >443</text><path d="M 280,464 A 16,16 0,0,1 280,480" class="nofill"></path><text x="210" y="492" >key</text><text x="242" y="492" >auth</text><line x1="220" y1="512" x2="220" y2="532" class="solid"></line><polygon points="216,532 224,532 220,544" class="filled"></polygon><line x1="220" y1="592" x2="220" y2="612" class="solid"></line><polygon points="216,612 224,612 220,624" class="filled"></polygon><text x="146" y="652" >Cloudflare</text><path d="M 240,640 A 16,16 0,0,0 240,656" class="nofill"></path><text x="250" y="652" >DNS</text><path d="M 280,640 A 16,16 0,0,1 280,656" class="nofill"></path><line x1="144" y1="664" x2="152" y2="664" class="solid"></line><text x="162" y="668" >hunajapannu.fi</text><polygon points="224,708 232,708 228,720" class="filled"></polygon><text x="218" y="748" >VPS</text><text x="146" y="764" >Linux,</text><text x="202" y="764" >Nginx,</text><text x="258" y="764" >Node,</text><text x="306" y="764" >DB</text><text x="266" y="860" >Backend</text><text x="330" y="860" >API</text><path d="M 368,848 A 16,16 0,0,0 368,864" class="nofill"></path><text x="370" y="860" >Node.js</text><path d="M 424,848 A 16,16 0,0,1 424,864" class="nofill"></path><line x1="272" y1="864" x2="264" y2="880" class="solid"></line><text x="274" y="876" >api</text><line x1="304" y1="864" x2="296" y2="880" class="solid"></line><text x="306" y="876" >cowrie</text><line x1="360" y1="864" x2="352" y2="880" class="solid"></line><text x="362" y="876" >events</text><path d="M 280,880 A 16,16 0,0,0 280,896" class="nofill"></path><text x="282" y="892" >ingest</text><text x="338" y="892" >from</text><text x="378" y="892" >Pi</text><path d="M 392,880 A 16,16 0,0,1 392,896" class="nofill"></path><line x1="272" y1="896" x2="264" y2="912" class="solid"></line><text x="274" y="908" >api</text><line x1="304" y1="896" x2="296" y2="912" class="solid"></line><text x="306" y="908" >public</text><line x1="360" y1="896" x2="352" y2="912" class="solid"></line><text x="362" y="908" >cowrie</text><line x1="416" y1="896" x2="408" y2="912" class="solid"></line><text x="418" y="908" >...</text><path d="M 280,912 A 16,16 0,0,0 280,928" class="nofill"></path><text x="282" y="924" >used</text><text x="322" y="924" >by</text><text x="346" y="924" >dashboard)</text><text x="354" y="956" >SQL</text><path d="M 392,944 A 16,16 0,0,0 392,960" class="nofill"></path><text x="394" y="956" >local</text><path d="M 432,944 A 16,16 0,0,1 432,960" class="nofill"></path><polygon points="328,964 336,964 332,976" class="filled"></polygon><g><line x1="140" y1="152" x2="300" y2="152" class="solid"></line><line x1="140" y1="152" x2="140" y2="216" class="solid"></line><line x1="300" y1="152" x2="300" y2="216" class="solid"></line><line x1="140" y1="216" x2="300" y2="216" class="solid"></line><line x1="220" y1="216" x2="220" y2="244" class="solid"></line></g><g><text x="226" y="204">→</text><text x="242" y="204">Pi:22</text></g><g><line x1="140" y1="264" x2="300" y2="264" class="solid"></line><line x1="140" y1="264" x2="140" y2="376" class="solid"></line><line x1="300" y1="264" x2="300" y2="376" class="solid"></line><line x1="140" y1="376" x2="300" y2="376" class="solid"></line><line x1="220" y1="376" x2="220" y2="436" class="solid"></line></g><g><line x1="132" y1="632" x2="332" y2="632" class="solid"></line><line x1="132" y1="632" x2="132" y2="680" class="solid"></line><line x1="332" y1="632" x2="332" y2="680" class="solid"></line><line x1="132" y1="680" x2="332" y2="680" class="solid"></line><line x1="228" y1="680" x2="228" y2="708" class="solid"></line></g><g><line x1="132" y1="728" x2="332" y2="728" class="solid"></line><line x1="132" y1="728" x2="132" y2="776" class="solid"></line><line x1="332" y1="728" x2="332" y2="776" class="solid"></line><line x1="132" y1="776" x2="332" y2="776" class="solid"></line><line x1="228" y1="776" x2="228" y2="808" class="solid"></line><line x1="132" y1="808" x2="332" y2="808" class="solid"></line><line x1="132" y1="808" x2="132" y2="832" class="solid"></line><line x1="332" y1="808" x2="332" y2="832" class="solid"></line></g><g><line x1="252" y1="840" x2="444" y2="840" class="solid"></line><line x1="252" y1="840" x2="252" y2="936" class="solid"></line><line x1="444" y1="840" x2="444" y2="936" class="solid"></line><line x1="252" y1="936" x2="444" y2="936" class="solid"></line><line x1="332" y1="936" x2="332" y2="964" class="solid"></line></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 400" width="1280" height="400" role="img" aria-label="Attack pipeline: botnets reach a Cowrie honeypot on a Raspberry Pi in Finland, a forwarder ships events over HTTPS to an Express API on a VPS, which stores them in PostgreSQL and serves a public dashboard through nginx.">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#34d399"/>
+    </marker>
+    <style>
+      .zone  { fill:none; stroke:#065f46; stroke-width:1.5; stroke-dasharray:5 5; }
+      .zlbl  { fill:#34d399; font:600 11px ui-monospace,"SFMono-Regular",Menlo,monospace; letter-spacing:.14em; }
+      .node  { fill:#020617; stroke:#34d399; stroke-width:1.75; }
+      .accent{ fill:#022c22; stroke:#6ee7b7; stroke-width:2; }
+      .name  { fill:#d1fae5; font:600 14px ui-monospace,"SFMono-Regular",Menlo,monospace; }
+      .sub   { fill:#6ee7b7; font:11.5px ui-monospace,"SFMono-Regular",Menlo,monospace; }
+      .flow  { stroke:#34d399; stroke-width:2; fill:none; marker-end:url(#a); }
+      .elbl  { fill:#a7f3d0; font:11px ui-monospace,"SFMono-Regular",Menlo,monospace; }
+      .emut  { fill:#34d399; font:10px ui-monospace,"SFMono-Regular",Menlo,monospace; opacity:.85; }
+    </style>
+  </defs>
+
+  <!-- zones -->
+  <rect class="zone" x="240" y="44" width="496" height="150" rx="10"/>
+  <text class="zlbl" x="252" y="36">HOME · FINLAND · RESIDENTIAL BROADBAND</text>
+
+  <rect class="zone" x="792" y="44" width="222" height="286" rx="10"/>
+  <text class="zlbl" x="804" y="36">VPS</text>
+
+  <!-- ingest row -->
+  <rect class="node" x="24"  y="84" width="160" height="70" rx="8"/>
+  <text class="name" x="104" y="114" text-anchor="middle">Botnets</text>
+  <text class="sub"  x="104" y="133" text-anchor="middle">29,333 IPs</text>
+
+  <rect class="accent" x="254" y="76" width="212" height="86" rx="8"/>
+  <text class="name" x="360" y="106" text-anchor="middle">Raspberry Pi</text>
+  <text class="sub"  x="360" y="125" text-anchor="middle">Cowrie honeypot</text>
+  <text class="sub"  x="360" y="143" text-anchor="middle">:22 · :2222</text>
+
+  <rect class="node" x="536" y="76" width="190" height="86" rx="8"/>
+  <text class="name" x="631" y="106" text-anchor="middle">forwarder.py</text>
+  <text class="sub"  x="631" y="125" text-anchor="middle">systemd, hardened</text>
+  <text class="sub"  x="631" y="143" text-anchor="middle">at-least-once</text>
+
+  <rect class="accent" x="806" y="76" width="194" height="86" rx="8"/>
+  <text class="name" x="903" y="106" text-anchor="middle">Express 5</text>
+  <text class="sub"  x="903" y="125" text-anchor="middle">ingest + public API</text>
+  <text class="sub"  x="903" y="143" text-anchor="middle">:3001 · pm2</text>
+
+  <rect class="node" x="806" y="236" width="194" height="72" rx="8"/>
+  <text class="name" x="903" y="266" text-anchor="middle">PostgreSQL 16</text>
+  <text class="sub"  x="903" y="285" text-anchor="middle">8.07M events</text>
+
+  <rect class="node" x="1070" y="76" width="186" height="86" rx="8"/>
+  <text class="name" x="1163" y="106" text-anchor="middle">nginx</text>
+  <text class="sub"  x="1163" y="125" text-anchor="middle">TLS :443</text>
+  <text class="sub"  x="1163" y="143" text-anchor="middle">React dashboard</text>
+
+  <!-- flows -->
+  <path class="flow" d="M184,119 H246"/>
+  <text class="elbl" x="211" y="104" text-anchor="middle">SSH</text>
+
+  <path class="flow" d="M466,119 H528"/>
+  <text class="elbl" x="497" y="104" text-anchor="middle">tail</text>
+
+  <path class="flow" d="M726,119 H798"/>
+  <text class="elbl" x="764" y="104" text-anchor="middle">POST</text>
+
+  <path class="flow" d="M1000,119 H1062"/>
+
+  <!-- api <-> db -->
+  <path class="flow" d="M885,162 V228"/>
+  <path class="flow" d="M921,228 V166"/>
+  <text class="emut" x="903" y="322" text-anchor="middle">triggers maintain the aggregates</text>
+
+  <text class="emut" x="360" y="182" text-anchor="middle">writes cowrie.json</text>
+  <text class="emut" x="631" y="182" text-anchor="middle">offset saved only on HTTP 200</text>
+
+  <!-- footnote -->
+  <text class="emut" x="24" y="362">Backend downtime delays events rather than dropping them. Batches the API permanently rejects are parked on the Pi</text>
+  <text class="emut" x="24" y="378">and replayed by a separate unit, so one bad payload cannot stall the pipeline.</text>
+</svg>
