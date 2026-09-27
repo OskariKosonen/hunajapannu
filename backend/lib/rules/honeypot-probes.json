@@ -1,0 +1,130 @@
+{
+  "$comment": [
+    "Rules for recognising when an attacker is checking whether the box is",
+    "real. Data, not code: adding a rule is an edit to this file and a deploy,",
+    "with no JavaScript change.",
+    "",
+    "Every pattern below was derived from the captured corpus and the counts",
+    "are what it actually matched when the rule was written. They are recorded",
+    "so a later reader can tell a rule that stopped matching from a rule that",
+    "never matched.",
+    "",
+    "`weight` is deliberate. Reading /proc/cpuinfo is both routine recon and a",
+    "core-count check, so it cannot be treated as proof of anything; looking",
+    "for a hypervisor by name has no innocent reading. A score keeps the",
+    "ambiguity visible instead of forcing a yes/no on evidence that does not",
+    "support one.",
+    "",
+    "Patterns are matched case-insensitively with word boundaries where the",
+    "token is a word. An early draft matched 'kvm' as a bare substring and hit",
+    "the password 3HKvmnWk."
+  ],
+  "version": 1,
+  "threshold": 3,
+  "rules": [
+    {
+      "id": "explicit-honeypot-string",
+      "pattern": "(?<![a-z0-9])(honeypot|honeynet|kippo|cowrie|nepenthes|dionaea)(?![a-z0-9])",
+      "weight": 5,
+      "category": "sandbox",
+      "why": "Names the thing directly. Alphanumeric boundaries rather than \\b, because \\b treats underscore as a word character and would miss test_honeypot_check, which is a real captured command.",
+      "matched_when_written": 1
+    },
+    {
+      "id": "hypervisor-by-name",
+      "pattern": "(?<![a-z0-9])(vmware|virtualbox|vbox|qemu|kvm|xen|hyper-?v|parallels)(?![a-z0-9])",
+      "weight": 4,
+      "category": "virtualisation",
+      "why": "Looking for a specific hypervisor. Alphanumeric boundaries: an unbounded 'kvm' matched the password 3HKvmnWk, and \\b would still miss a match adjacent to an underscore.",
+      "matched_when_written": 0
+    },
+    {
+      "id": "virt-detection-tool",
+      "pattern": "\\b(virt-what|systemd-detect-virt|dmidecode|lscpu)\\b",
+      "weight": 4,
+      "category": "virtualisation",
+      "why": "Tools whose only purpose is identifying the platform.",
+      "matched_when_written": 0
+    },
+    {
+      "id": "dmi-identity",
+      "pattern": "/sys/class/dmi/id|product_(name|uuid|serial)|board_vendor",
+      "weight": 4,
+      "category": "virtualisation",
+      "why": "Firmware identity strings give the hypervisor away.",
+      "matched_when_written": 0
+    },
+    {
+      "id": "shell-capability-probe",
+      "pattern": "\\bwhich\\s+(curl|wget|python3?|perl|gcc|busybox)\\b",
+      "weight": 2,
+      "category": "capability",
+      "why": "Establishing what the shell can actually do before committing a payload. A real box is assumed to have these; a fake one often claims to.",
+      "matched_when_written": 4
+    },
+    {
+      "id": "writability-probe",
+      "pattern": "\\[\\s*-w\\s|\\btest\\s+-w\\b|\\btouch\\s+/(tmp|bin|etc|root)\\b",
+      "weight": 2,
+      "category": "capability",
+      "why": "Testing whether a directory is genuinely writable. Emulated shells commonly report success and write nothing.",
+      "matched_when_written": 14
+    },
+    {
+      "id": "echo-roundtrip",
+      "pattern": "\\becho\\s+[\"']?[A-Za-z0-9_]{6,}[\"']?\\s*$",
+      "weight": 2,
+      "category": "capability",
+      "why": "Echoing a nonce and checking it comes back is the cheapest test that a shell is real.",
+      "matched_when_written": 1
+    },
+    {
+      "id": "cpu-inspection",
+      "pattern": "/proc/cpuinfo|\\bnproc\\b",
+      "weight": 1,
+      "category": "fingerprint",
+      "why": "Both ordinary recon and a core-count check. Weight 1: suggestive only, never decisive on its own.",
+      "matched_when_written": 34
+    },
+    {
+      "id": "kernel-inspection",
+      "pattern": "/proc/version|\\buname\\s+-[a-z]*[avr]",
+      "weight": 1,
+      "category": "fingerprint",
+      "why": "Same ambiguity as cpuinfo. Present in almost every botnet's opening sequence.",
+      "matched_when_written": 42
+    },
+    {
+      "id": "uptime-inspection",
+      "pattern": "/proc/uptime|(^|[;&|]\\s*)uptime\\b",
+      "weight": 1,
+      "category": "fingerprint",
+      "why": "A freshly booted box with minutes of uptime is a plausible sandbox tell.",
+      "matched_when_written": 27
+    },
+    {
+      "id": "memory-inspection",
+      "pattern": "/proc/meminfo|\\bfree\\s+-[mgh]\\b",
+      "weight": 1,
+      "category": "fingerprint",
+      "why": "Small RAM suggests a sandbox. Also ordinary recon.",
+      "matched_when_written": 15
+    },
+    {
+      "id": "process-inspection",
+      "pattern": "\\bps\\s+(aux|-ef|ax)\\b|/proc/self/status|\\bpstree\\b",
+      "weight": 1,
+      "category": "fingerprint",
+      "why": "Looking for analysis tooling, or for an implausibly empty process table.",
+      "matched_when_written": 16
+    },
+    {
+      "id": "filesystem-inspection",
+      "pattern": "/proc/mounts|/etc/mtab|\\blsblk\\b|\\bdf\\s+-[a-z]*h",
+      "weight": 1,
+      "category": "fingerprint",
+      "why": "An overlay or tmpfs root is a container or a sandbox.",
+      "matched_when_written": 16
+    }
+  ]
+}

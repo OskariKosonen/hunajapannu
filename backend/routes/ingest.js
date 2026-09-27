@@ -12,6 +12,7 @@ const { normalizeCommand } = require('../lib/normalize');
 const { classifyCommand } = require('../lib/record-class');
 const { extractIocs } = require('../lib/iocs');
 const { extractPeers } = require('../lib/peers');
+const { scoreCommand } = require('../lib/honeypot-probe');
 
 module.exports = function registerIngestRoutes(app) {
   // ============================================================================
@@ -222,6 +223,11 @@ module.exports = function registerIngestRoutes(app) {
         const hashes = [];
         const templates = [];
         const classes = [];
+        // Scored on the same pass (migration 016). One more column on an
+        // UPDATE that already runs costs nothing, and it keeps a newly seen
+        // probe visible immediately rather than at the next backfill.
+        const scores = [];
+        const ruleSets = [];
         for (const [command, template] of templateRows) {
           // Must match sha256(convert_to(command, 'UTF8')) as computed by the
           // trigger in migration 011, or the join finds nothing.
@@ -229,6 +235,9 @@ module.exports = function registerIngestRoutes(app) {
           hashes.push(hash);
           templates.push(template);
           classes.push(classifyCommand(command, hash));
+          const probe = scoreCommand(command);
+          scores.push(String(probe.score));
+          ruleSets.push(`{${probe.matched.join(',')}}`);
         }
         // Hex text rather than an array of Buffers: bytea[] serialisation
         // depends on driver internals, decode() does not.
@@ -240,12 +249,17 @@ module.exports = function registerIngestRoutes(app) {
         await client.query(
           `UPDATE cowrie_unique_commands u
               SET command_template = v.tpl,
-                  record_class     = v.cls::cowrie_record_class
-             FROM unnest($1::text[], $2::text[], $3::text[]) AS v(h, tpl, cls)
+                  record_class     = v.cls::cowrie_record_class,
+                  probe_score      = v.score::int,
+                  probe_rules      = v.rules::text[]
+             FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[])
+               AS v(h, tpl, cls, score, rules)
             WHERE u.command_sha256 = decode(v.h, 'hex')
               AND (u.command_template IS DISTINCT FROM v.tpl
-                OR u.record_class   IS DISTINCT FROM v.cls::cowrie_record_class)`,
-          [hashes, templates, classes]
+                OR u.record_class   IS DISTINCT FROM v.cls::cowrie_record_class
+                OR u.probe_score    IS DISTINCT FROM v.score::int
+                OR u.probe_rules    IS DISTINCT FROM v.rules::text[])`,
+          [hashes, templates, classes, scores, ruleSets]
         );
 
         // Indicators, extracted from the same batch. Doing this only in the
