@@ -696,16 +696,16 @@ jobs:
                 ]}' "$API/api/cowrie/events" >/dev/null
 
           assert "a deliberate virtualisation check scores" "true" \
-            "$("${PSQL[@]}" -qtA -c "SELECT probe_score >= 3 FROM cowrie_unique_commands WHERE command LIKE 'systemd-detect-virt%'")"
+            "$("${PSQL[@]}" -qtA -c "SELECT CASE WHEN probe_score >= 3 THEN 'true' ELSE 'false' END FROM cowrie_unique_commands WHERE command LIKE 'systemd-detect-virt%'")"
           assert "and records which rules fired" "true" \
-            "$("${PSQL[@]}" -qtA -c "SELECT 'virt-detection-tool' = ANY(probe_rules) FROM cowrie_unique_commands WHERE command LIKE 'systemd-detect-virt%'")"
+            "$("${PSQL[@]}" -qtA -c "SELECT CASE WHEN 'virt-detection-tool' = ANY(probe_rules) THEN 'true' ELSE 'false' END FROM cowrie_unique_commands WHERE command LIKE 'systemd-detect-virt%'")"
           # "kvm" inside the password 3HKvmnWk is not a hypervisor check. The
           # rule uses alphanumeric boundaries specifically because of this row.
           assert "a hypervisor name inside a password does not score" "0" \
             "$("${PSQL[@]}" -qtA -c "SELECT probe_score FROM cowrie_unique_commands WHERE command = 'openssl passwd -1 3HKvmnWk'")"
           # Ordinary recon must not be accused, or the signal means nothing.
           assert "plain recon stays below the threshold" "true" \
-            "$("${PSQL[@]}" -qtA -c "SELECT COALESCE(max(probe_score), 0) < 3 FROM cowrie_unique_commands WHERE command = 'uname -a'")"
+            "$("${PSQL[@]}" -qtA -c "SELECT CASE WHEN COALESCE(max(probe_score), 0) < 3 THEN 'true' ELSE 'false' END FROM cowrie_unique_commands WHERE command = 'uname -a'")"
 
           echo "--- client fingerprints and tunnel requests ---"
           # cowrie.client.version and cowrie.client.kex are two log lines for
