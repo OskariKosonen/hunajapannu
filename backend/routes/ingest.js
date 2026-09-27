@@ -11,6 +11,7 @@ const { LIMITS, API_KEY } = require('../config');
 const { normalizeCommand } = require('../lib/normalize');
 const { classifyCommand } = require('../lib/record-class');
 const { extractIocs } = require('../lib/iocs');
+const { extractPeers } = require('../lib/peers');
 
 module.exports = function registerIngestRoutes(app) {
   // ============================================================================
@@ -316,6 +317,82 @@ module.exports = function registerIngestRoutes(app) {
               pairs.map((r) => r.type),
               pairs.map((r) => r.value),
             ]
+          );
+        }
+
+        // Panchan bootstrap peers (migration 015). Same reasoning as the
+        // indicators above: a mesh node first seen today should appear today,
+        // not whenever someone next runs a backfill.
+        const peerByIp = new Map();
+        const peerPairs = [];
+        const launches = [];
+        for (const [command] of templateRows) {
+          const { isSpreader, peers } = extractPeers(command);
+          if (!isSpreader) continue;
+          const hash = createHash('sha256').update(command, 'utf8').digest('hex');
+          // Launches with no peers are recorded too. 46 of 163 pass none and
+          // fall back to the binary's embedded list; keeping only the
+          // populated ones would overstate how often a fresh set is shipped.
+          launches.push({ hash, count: peers.length });
+          for (const ip of peers) {
+            if (!peerByIp.has(ip)) peerByIp.set(ip, lookupGeo(ip) || {});
+            peerPairs.push({ hash, ip });
+          }
+        }
+
+        if (peerByIp.size > 0) {
+          const ips = [...peerByIp.keys()];
+          await client.query(
+            `INSERT INTO cowrie_botnet_peers
+                    (peer_ip, first_seen, last_seen, country_iso, asn, org, city, list_count)
+             SELECT v.ip::inet, now(), now(), v.cc, NULLIF(v.asn, '')::int, v.org, v.city, 0
+               FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[])
+                 AS v(ip, cc, asn, org, city)
+             ON CONFLICT (peer_ip) DO UPDATE SET
+               last_seen   = GREATEST(cowrie_botnet_peers.last_seen, EXCLUDED.last_seen),
+               country_iso = COALESCE(EXCLUDED.country_iso, cowrie_botnet_peers.country_iso),
+               asn         = COALESCE(EXCLUDED.asn, cowrie_botnet_peers.asn),
+               org         = COALESCE(EXCLUDED.org, cowrie_botnet_peers.org),
+               city        = COALESCE(EXCLUDED.city, cowrie_botnet_peers.city)`,
+            [
+              ips,
+              ips.map((ip) => peerByIp.get(ip).country_iso || null),
+              ips.map((ip) => (peerByIp.get(ip).asn != null ? String(peerByIp.get(ip).asn) : '')),
+              ips.map((ip) => peerByIp.get(ip).org || null),
+              ips.map((ip) => peerByIp.get(ip).city || null),
+            ]
+          );
+
+          // Separate statement, for the reason the indicator path is two: a
+          // data-modifying CTE cannot see rows its own INSERT just created.
+          await client.query(
+            `WITH paired AS (
+               INSERT INTO cowrie_peer_commands (peer_id, command_id)
+               SELECT p.id, u.id
+                 FROM unnest($1::text[], $2::text[]) AS v(h, ip)
+                 JOIN cowrie_unique_commands u ON u.command_sha256 = decode(v.h, 'hex')
+                 JOIN cowrie_botnet_peers p ON p.peer_ip = v.ip::inet
+               ON CONFLICT DO NOTHING
+               RETURNING peer_id
+             )
+             UPDATE cowrie_botnet_peers p
+                SET list_count = p.list_count + n.added
+               FROM (SELECT peer_id, count(*) AS added FROM paired GROUP BY peer_id) n
+              WHERE p.id = n.peer_id`,
+            [peerPairs.map((r) => r.hash), peerPairs.map((r) => r.ip)]
+          );
+        }
+
+        if (launches.length > 0) {
+          await client.query(
+            `INSERT INTO cowrie_peer_lists (command_id, peer_count, first_seen, last_seen)
+             SELECT u.id, v.n::int, now(), now()
+               FROM unnest($1::text[], $2::text[]) AS v(h, n)
+               JOIN cowrie_unique_commands u ON u.command_sha256 = decode(v.h, 'hex')
+             ON CONFLICT (command_id) DO UPDATE SET
+               peer_count = EXCLUDED.peer_count,
+               last_seen  = GREATEST(cowrie_peer_lists.last_seen, EXCLUDED.last_seen)`,
+            [launches.map((l) => l.hash), launches.map((l) => String(l.count))]
           );
         }
       }

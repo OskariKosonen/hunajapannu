@@ -659,6 +659,34 @@ jobs:
           assert "private addresses are not indicators" "0" \
             "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_iocs WHERE value LIKE '192.168.%' OR value LIKE '127.%' OR value LIKE '10.%'")"
 
+          echo "--- botnet peer extraction on the ingest path (migration 015) ---"
+          # A Panchan launch: the hidden numeric directory, the binary, and a
+          # peer list as argv. Includes a private address, which must be
+          # dropped, and a second launch with no peers at all — 46 of the 163
+          # real ones pass none and fall back to the embedded list.
+          curl -fsS -X POST -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $INGEST_API_KEY" \
+            -d '{"events":[
+                  {"src_ip":"203.0.113.40","session_id":"ci-p1","command":"chmod +x ./.4293177954799656937/sshd;nohup ./.4293177954799656937/sshd 8.8.8.8 1.1.1.1 192.168.1.5 &"},
+                  {"src_ip":"203.0.113.41","session_id":"ci-p2","command":"chmod +x ./.8466732433940540315/sshd;nohup ./.8466732433940540315/sshd  &"}
+                ]}' "$API/api/cowrie/events" >/dev/null
+
+          assert "routable peers are recorded" "2" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_botnet_peers")"
+          assert "private addresses are not peers" "0" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_botnet_peers WHERE peer_ip << '192.168.0.0/16'::inet")"
+          assert "both launches are recorded" "2" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_peer_lists")"
+          # The empty launch is data, not a parse failure: the ratio of empty
+          # to populated says how often a fresh bootstrap set is shipped.
+          assert "including the one with no peers" "1" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_peer_lists WHERE peer_count = 0")"
+          assert "list_count matches the pair table" "0" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_botnet_peers p LEFT JOIN (SELECT peer_id, count(*) n FROM cowrie_peer_commands GROUP BY 1) c ON c.peer_id = p.id WHERE p.list_count IS DISTINCT FROM COALESCE(c.n, 0)")"
+          # An ordinary download command must not be mistaken for a launch.
+          assert "non-spreader commands yield no peers" "0" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_botnet_peers WHERE peer_ip = '1.2.3.4'::inet")"
+
           echo "--- client fingerprints and tunnel requests ---"
           # cowrie.client.version and cowrie.client.kex are two log lines for
           # one session, arriving in either order. Post them kex-first so the
