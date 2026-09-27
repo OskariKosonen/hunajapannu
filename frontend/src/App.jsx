@@ -133,7 +133,7 @@ function App() {
     () => BOOT_MESSAGES[Math.floor(Math.random() * BOOT_MESSAGES.length)] || null
   );
 
-  // Rotating status word on the boot screen, Claude-Code style. Only ticks
+  // Rotating status word on the boot screen. Only ticks
   // while the boot screen is actually up.
   const bootWord = useRotatingWord(LOADING_WORDS, { active: true, intervalMs: 900 });
 

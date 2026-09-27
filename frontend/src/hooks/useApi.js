@@ -161,8 +161,8 @@ export function useVisibleInterval(callback, intervalMs) {
 }
 
 /**
- * Cycles through a list of words, in the spirit of Claude Code's rotating
- * loading verbs. Starts on a random entry so two panels loading at once do
+ * Cycles through a list of words as a loading indicator. Starts on a random
+ * entry so two panels loading at once do
  * not chant in unison, and stops entirely when the caller is not loading —
  * an idle timer firing every 1.4s forever is not free.
  */

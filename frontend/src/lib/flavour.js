@@ -9,7 +9,7 @@
  */
 
 /**
- * Rotating status words, in the spirit of Claude Code's loading verbs.
+ * Rotating status words for loading states.
  *
  * "hunajapannu" is Finnish for honey pot, so the list leans on both halves:
  * things a honeypot does to attackers, and things you do to honey.
