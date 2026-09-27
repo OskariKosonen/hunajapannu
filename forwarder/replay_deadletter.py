@@ -11,7 +11,12 @@ re-running is safe; the file is only removed once everything lands.
 Delivery is at-least-once, same as the forwarder — the backend has no
 content dedupe, so only replay batches that never got through.
 """
-import json, os, sys, time, urllib.request, urllib.error
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
 
 STATE_DIR = os.path.dirname(os.environ.get("FWD_STATE", "/var/lib/cowrie-forwarder/state.json"))
 DL_PATH   = os.environ.get("FWD_DEADLETTER", os.path.join(STATE_DIR, "deadletter.jsonl"))
@@ -58,7 +63,8 @@ def main():
             sys.stderr.write(f"batch {i}: unparseable, keeping\n"); still_failed.append(ln); continue
         key, rows = rec.get("key"), rec.get("rows") or []
         if key not in URLS or not rows:
-            sys.stderr.write(f"batch {i}: bad record (key={key!r}), keeping\n"); still_failed.append(ln); continue
+            sys.stderr.write(
+                f"batch {i}: bad record (key={key!r}), keeping\n"); still_failed.append(ln); continue
         if post(URLS[key], key, rows):
             sent_batches += 1; sent_rows += len(rows)
         else:

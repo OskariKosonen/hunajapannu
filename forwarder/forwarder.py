@@ -4,7 +4,13 @@ API schema, batches, and POSTs over HTTPS with a bearer token. The byte offset
 is persisted only after a successful POST, so backend downtime never drops
 events (keep log-rotation retention longer than your worst-case outage).
 Delivery is at-least-once. Zero third-party deps."""
-import datetime, json, os, sys, time, urllib.request, urllib.error
+import datetime
+import json
+import os
+import sys
+import time
+import urllib.error
+import urllib.request
 
 LOG_PATH   = os.environ.get("COWRIE_LOG", "/home/cowrie/var/log/cowrie/cowrie.json")
 STATE_PATH = os.environ.get("FWD_STATE", "/var/lib/cowrie-forwarder/state.json")
@@ -176,7 +182,7 @@ def drain_rotated(path, offset):
     2026-08-12..14 went missing while the forwarder sat blocked on a POST."""
     events, files = [], []
     try:
-        with open(path, "r") as f:
+        with open(path) as f:
             f.seek(offset)
             for line in f:
                 if not line.endswith("\n"): break
@@ -207,7 +213,7 @@ def run():
                 if old: drain_rotated(old, state["offset"])
             state = {"inode": st.st_ino, "offset": 0}
             save_state(state)
-        with open(LOG_PATH, "r") as f:
+        with open(LOG_PATH) as f:
             f.seek(state["offset"])
             while True:
                 line = f.readline()

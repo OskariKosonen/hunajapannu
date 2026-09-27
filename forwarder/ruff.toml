@@ -1,0 +1,23 @@
+# Lint config for the forwarder.
+#
+# The forwarder has no third-party dependencies at runtime and that is a
+# deliberate property — it runs unattended on a Raspberry Pi where a broken
+# dependency tree means silent data loss. ruff is a lint-time tool only; it
+# never ships to the Pi.
+line-length = 110
+
+[lint]
+# pycodestyle, pyflakes, isort, bugbear, comprehensions, pyupgrade.
+# Bugbear is the one earning its place here: it catches mutable default
+# arguments and except-clauses that swallow more than intended, which is
+# exactly the failure mode that hides data loss in a log shipper.
+select = ["E", "F", "I", "B", "C4", "UP"]
+
+# Deliberate style in this file, not oversights:
+#   E701  several one-line `try: ... except: ...` guards read better compact
+#   E702  the same, for `a; b` on one line. 33 sites, all deliberate, none of
+#         them a correctness question. Reformatting a log shipper to satisfy a
+#         style rule is churn with a non-zero chance of introducing a bug.
+#   E401  `import datetime, json, os, ...` on one line, once per file
+#   E402  forwarder is imported after os.environ is seeded, which is required
+ignore = ["E701", "E702", "E401", "E402"]

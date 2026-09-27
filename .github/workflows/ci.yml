@@ -87,6 +87,11 @@ jobs:
           python-version: "3.11"
       - name: Syntax check
         run: python3 -m py_compile forwarder.py replay_deadletter.py
+      - name: Lint
+        # ruff is a lint-time tool only. The forwarder itself stays
+        # dependency-free, which is deliberate: it runs unattended on a Pi
+        # where a broken dependency tree means silent data loss.
+        run: pipx run ruff check .
       - name: Unit tests
         run: python3 -m unittest discover -p 'test_*.py' -v
 
@@ -106,6 +111,8 @@ jobs:
       - run: npm ci
       - name: Syntax check
         run: node --check index.js
+      - name: Lint
+        run: npm run lint
       - name: Unit tests
         # Pure logic that fails *silently* in production: a wrong MITRE regex
         # mislabels attacks, broken LIKE-escaping turns a search into a full

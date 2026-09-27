@@ -5,7 +5,6 @@
 
 const { pool } = require('../db');
 const { LIMITS } = require('../config');
-const { getCachedLeaderboard, setCachedLeaderboard } = require('../cache');
 
 module.exports = function registerActivityRoutes(app) {
   // ============================================================================

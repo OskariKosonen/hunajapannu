@@ -57,7 +57,10 @@ jobs:
           git reset --hard origin/main
           echo "Deploying:          $(git rev-parse HEAD)"
 
-          cd backend && npm ci && cd ..
+          # --omit=dev: eslint and friends are lint-time only and the VPS
+          # volume has under 2GB free. Nothing in devDependencies is imported
+          # at runtime.
+          cd backend && npm ci --omit=dev && cd ..
 
           echo "Applying migrations"
           # Runs each migration once, records it in schema_migrations, and
@@ -73,7 +76,7 @@ jobs:
           if ! ./db/apply-migrations.sh sudo -u postgres psql -d cowrie_db; then
             echo "::error::Migration failed; restoring the working tree to $PREV_SHA. The running API was not restarted and is unaffected."
             git reset --hard "$PREV_SHA"
-            (cd backend && npm ci)
+            (cd backend && npm ci --omit=dev)
             exit 1
           fi
 
@@ -105,7 +108,7 @@ jobs:
           # failed deploy into a lost database.
           echo "--- rolling back ---"
           git reset --hard "$PREV_SHA"
-          (cd backend && npm ci)
+          (cd backend && npm ci --omit=dev)
           pm2 restart cowrie-api
 
           for i in $(seq 1 60); do

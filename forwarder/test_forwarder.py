@@ -232,7 +232,8 @@ class PostBatchTests(unittest.TestCase):
         # cannot help, so park it and move on.
         for code in (400, 413, 422):
             with self.subTest(code=code):
-                with mock.patch.object(forwarder.urllib.request, "urlopen", side_effect=http_error(code)) as urlopen:
+                with mock.patch.object(forwarder.urllib.request, "urlopen",
+                                       side_effect=http_error(code)) as urlopen:
                     forwarder.post_batch("https://x/events", "events", [{"a": code}])
                 self.assertEqual(urlopen.call_count, 1, "a permanent rejection must not be retried")
         parked = self.deadletter_lines()
@@ -273,8 +274,11 @@ class PostBatchTests(unittest.TestCase):
         # Cloudflare's Browser Integrity Check 403s "Python-urllib/x.y" and
         # silently cut ingestion off on 2026-08-11. The header is load-bearing.
         captured = []
-        with mock.patch.object(forwarder.urllib.request, "urlopen",
-                               side_effect=lambda req, **kw: captured.append(req) or FakeResponse(200)):
+        def capture(req, **_kw):
+            captured.append(req)
+            return FakeResponse(200)
+
+        with mock.patch.object(forwarder.urllib.request, "urlopen", side_effect=capture):
             forwarder.post_batch("https://x/events", "events", [{"a": 1}])
         req = captured[0]
         self.assertEqual(req.get_header("Authorization"), f"Bearer {forwarder.TOKEN}")
@@ -294,8 +298,8 @@ class DeadLetterTests(unittest.TestCase):
         forwarder.dead_letter("events", [{"a": 1}], 400)
         forwarder.dead_letter("files", [{"b": 2}], 413)
         with open(os.path.join(self.tmp.name, "deadletter.jsonl")) as f:
-            lines = [json.loads(l) for l in f]
-        self.assertEqual([l["key"] for l in lines], ["events", "files"])
+            lines = [json.loads(line) for line in f]
+        self.assertEqual([x["key"] for x in lines], ["events", "files"])
         self.assertEqual(lines[1]["rows"], [{"b": 2}])
 
     def test_an_unwritable_dead_letter_file_does_not_kill_the_forwarder(self):

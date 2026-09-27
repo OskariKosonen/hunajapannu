@@ -60,7 +60,9 @@ module.exports = function registerLeaderboardRoutes(app) {
       return { ...row, tags };
     });
 
-    const snapshot = { rows: tagged, counts, expiresAt: now + LEADERBOARD_CACHE_TTL_MS };
+    // Dated from now, not from the `now` read before the query, for the
+    // same reason as the summary cache.
+    const snapshot = { rows: tagged, counts, expiresAt: Date.now() + LEADERBOARD_CACHE_TTL_MS };
     commandsSnapshots.set(recordClass, snapshot);
     return snapshot;
   }

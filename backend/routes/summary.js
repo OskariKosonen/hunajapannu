@@ -10,17 +10,34 @@ const { classFilterSql } = require('../lib/record-class');
 const { SUMMARY_CACHE_TTL_MS } = require('../config');
 
 module.exports = function registerSummaryRoutes(app) {
-  const summaryCache = {
-    data: null,
-    expiresAt: 0,
-  };
+  let summaryCache = { data: null, expiresAt: 0 };
+  // Single-flight. Without it, every request arriving while the cache is cold
+  // starts its own copy of the seven queries below, so the moment the entry
+  // expires the database gets a burst of identical work instead of one query.
+  // Callers that arrive mid-flight wait on the same promise.
+  let inFlight = null;
 
-  async function getSummaryStats() {
-    const now = Date.now();
-    if (summaryCache.data && summaryCache.expiresAt > now) {
-      return summaryCache.data;
+  function getSummaryStats() {
+    if (summaryCache.data && summaryCache.expiresAt > Date.now()) {
+      return Promise.resolve(summaryCache.data);
     }
+    if (inFlight) return inFlight;
 
+    inFlight = computeSummary()
+      .then((data) => {
+        // Dated from completion, not from when the request arrived. These
+        // queries take a second or two, and dating the entry from before them
+        // shortened every TTL by however long the database happened to take.
+        summaryCache = { data, expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS };
+        return data;
+      })
+      .finally(() => { inFlight = null; });
+
+    return inFlight;
+  }
+
+  async function computeSummary() {
+    const now = Date.now();
     const twentyFourHoursAgo = new Date(now - 24 * 60 * 60 * 1000);
 
     // pool.query (not a single checked-out client) so the five queries actually
@@ -88,8 +105,6 @@ module.exports = function registerSummaryRoutes(app) {
       firstEventAt: firstEventAgg.rows[0]?.first_event || null,
     };
 
-    summaryCache.data = summary;
-    summaryCache.expiresAt = now + SUMMARY_CACHE_TTL_MS;
     return summary;
   }
 
