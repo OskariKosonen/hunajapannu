@@ -11,19 +11,23 @@ jobs:
   diagnose:
     runs-on: [self-hosted, linux]
     env:
-      PI_HOST: ${{ vars.PI_HOST }}
-      PI_PORT: ${{ vars.PI_PORT }}
+      PI_HOST: ${{ secrets.PI_HOST }}
+      PI_PORT: ${{ secrets.PI_PORT }}
       PI_USER: admin
 
     steps:
       - name: Inspect Pi
         run: |
           set -euo pipefail
-          # PI_HOST and PI_PORT are repo variables, not literals. The Pi sits on
-          # a residential line, so its address is the author's home IP and the
-          # admin SSH port is non-standard; publishing either would hand anyone
-          # reading this repo a precise target. Settings -> Secrets and
-          # variables -> Actions -> Variables.
+          # PI_HOST and PI_PORT are secrets, not variables and not literals. The Pi
+          # sits on a residential line, so its address is the author's home IP
+          # and the admin SSH port is non-standard; publishing either would hand
+          # anyone reading this repo a precise target.
+          #
+          # Secrets rather than variables specifically because Actions logs are
+          # public on a public repository. GitHub masks a secret as *** wherever
+          # it appears in output; a variable is printed verbatim. One careless
+          # echo is the difference, and the value is a home address.
           if [ -z "${PI_HOST:-}" ] || [ -z "${PI_PORT:-}" ]; then
             echo "::error::PI_HOST and PI_PORT repo variables are not set."
             exit 1
