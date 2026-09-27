@@ -13,6 +13,20 @@ that is the production VPS.
 | [`pi-replay.yml`](pi-replay.yml) | manual | self-hosted | Pushes dead-lettered batches back through the ingest API |
 | [`db-inspect.yml`](db-inspect.yml) | manual | self-hosted | Counts and aggregates only. No row values, no dumps |
 
+## Conventions
+
+Every workflow declares a least-privilege `GITHUB_TOKEN` (`contents: read`,
+except the watchdog, which needs `issues: write` to file its alert), and every
+job sets `timeout-minutes`. The timeout matters more than it looks: one
+self-hosted runner serves five of these workflows, so a job that hangs — an
+ssh to a Pi that has gone away, a psql that never returns — would otherwise
+hold the runner for GitHub's six-hour default and queue every deploy behind
+it. The jobs that share that runner also share concurrency groups.
+
+`ci.yml` lints these files on every run, with shellcheck over each `run:`
+block, so the CI definition does not rot while it is busy checking everything
+else.
+
 ## Why no `pull_request` trigger
 
 The self-hosted runner is the production VPS: database, API, and an account

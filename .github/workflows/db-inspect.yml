@@ -16,9 +16,21 @@ name: DB inspect
 on:
   workflow_dispatch:
 
+permissions:
+  # Read-only token: nothing here writes to the repository.
+  contents: read
+
+concurrency:
+  # One self-hosted runner serves every job here, so overlapping runs queue
+  # behind each other anyway. Naming the group makes that explicit and stops
+  # a second run starting work the first is midway through.
+  group: db-inspect
+  cancel-in-progress: false
+
 jobs:
   inspect:
     runs-on: [self-hosted, linux]
+    timeout-minutes: 10
     steps:
       - name: Column census
         run: |

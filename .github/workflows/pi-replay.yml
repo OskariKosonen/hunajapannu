@@ -8,9 +8,21 @@ name: Pi replay dead-letter
 on:
   workflow_dispatch:
 
+permissions:
+  # Read-only token: nothing here writes to the repository.
+  contents: read
+
+concurrency:
+  # One self-hosted runner serves every job here, so overlapping runs queue
+  # behind each other anyway. Naming the group makes that explicit and stops
+  # a second run starting work the first is midway through.
+  group: pi-access
+  cancel-in-progress: false
+
 jobs:
   replay:
     runs-on: [self-hosted, linux]
+    timeout-minutes: 15
     env:
       PI_HOST: ${{ secrets.PI_HOST }}
       PI_PORT: ${{ secrets.PI_PORT }}
@@ -20,17 +32,11 @@ jobs:
       - name: Replay parked batches
         run: |
           set -euo pipefail
-          # PI_HOST and PI_PORT are secrets, not variables and not literals. The Pi
-          # sits on a residential line, so its address is the author's home IP
-          # and the admin SSH port is non-standard; publishing either would hand
-          # anyone reading this repo a precise target.
-          #
-          # Secrets rather than variables specifically because Actions logs are
-          # public on a public repository. GitHub masks a secret as *** wherever
-          # it appears in output; a variable is printed verbatim. One careless
-          # echo is the difference, and the value is a home address.
+          # Secrets, not variables: GitHub masks a secret as *** in these logs,
+          # which are public, and the Pi's address is a home address. Rationale
+          # in .github/workflows/README.md.
           if [ -z "${PI_HOST:-}" ] || [ -z "${PI_PORT:-}" ]; then
-            echo "::error::PI_HOST and PI_PORT repo variables are not set."
+            echo "::error::The PI_HOST and PI_PORT secrets are not set."
             exit 1
           fi
           ssh -p "$PI_PORT" -o BatchMode=yes -o ConnectTimeout=10 \
@@ -43,8 +49,16 @@ jobs:
               # "systemctl restart cowrie-forwarder" is a privilege the runner
               # already has (unlike "start" of the standalone oneshot unit).
               sudo systemctl restart cowrie-forwarder
-              echo "waiting for drain..."
-              sleep 45
+
+              # Poll instead of sleeping a fixed 45s. Drain time scales with
+              # the backlog, so any single number is either too long for a
+              # small one or too short for a large one, and too short means
+              # the run reports success while batches are still parked.
+              echo "waiting for the dead-letter file to drain (up to 120s)..."
+              for _ in $(seq 1 24); do
+                [ -s /var/lib/cowrie-forwarder/deadletter.jsonl ] || break
+                sleep 5
+              done
 
               echo "--- replay output ---"
               journalctl -u cowrie-forwarder -n 60 --no-pager 2>&1 | sed "s/^/  /"

@@ -9,6 +9,10 @@ concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+permissions:
+  # Read-only token: nothing here writes to the repository.
+  contents: read
+
 jobs:
   # Lint, build and a real boot-against-Postgres smoke test, on hosted
   # runners, before anything touches the Pi.
@@ -18,9 +22,11 @@ jobs:
   deploy:
     needs: ci
     runs-on: [self-hosted, linux]
+    timeout-minutes: 30
     env:
-      # The Pi sits on a dynamic residential IP; keep it in a repo variable so
-      # an address change is a settings update, not a commit.
+      # The Pi sits on a dynamic residential IP. Keeping it in a secret means
+      # an address change is a settings update rather than a commit, and keeps
+      # it out of these logs.
       PI_HOST: ${{ secrets.PI_HOST }}
       PI_PORT: ${{ secrets.PI_PORT }}
       PI_USER: admin
@@ -28,6 +34,12 @@ jobs:
       WEB_ROOT: /var/www/hunajapannu.fi/html
 
     steps:
+      # Note the working-directory on every step below: the deploy operates on
+      # REPO_DIR, a long-lived clone on the VPS that pm2 runs from. This
+      # checkout populates the runner's own workspace, which nothing here uses.
+      # It is kept because removing a checkout from a self-hosted job changes
+      # what the runner cleans up between runs; do not assume the tree it
+      # creates is the one being deployed.
       - name: Checkout
         uses: actions/checkout@v5
 
@@ -117,17 +129,11 @@ jobs:
       - name: Deploy forwarder to Pi
         run: |
           set -euo pipefail
-          # PI_HOST and PI_PORT are secrets, not variables and not literals. The Pi
-          # sits on a residential line, so its address is the author's home IP
-          # and the admin SSH port is non-standard; publishing either would hand
-          # anyone reading this repo a precise target.
-          #
-          # Secrets rather than variables specifically because Actions logs are
-          # public on a public repository. GitHub masks a secret as *** wherever
-          # it appears in output; a variable is printed verbatim. One careless
-          # echo is the difference, and the value is a home address.
+          # Secrets, not variables: GitHub masks a secret as *** in these logs,
+          # which are public, and the Pi's address is a home address. Rationale
+          # in .github/workflows/README.md.
           if [ -z "${PI_HOST:-}" ] || [ -z "${PI_PORT:-}" ]; then
-            echo "::warning::PI_HOST/PI_PORT repo variables are not set; skipping the forwarder deploy."
+            echo "::warning::The PI_HOST/PI_PORT secrets are not set; skipping the forwarder deploy."
             exit 0
           fi
           # The Pi is on a residential connection and can be offline or on a
@@ -139,7 +145,7 @@ jobs:
             # public repository, and the Pi is on residential broadband, so its
             # address is the author's home IP. The variable is where you look it
             # up; the log does not need to repeat it.
-            echo "::warning::The Pi is unreachable; skipped the forwarder deploy. Check the PI_HOST and PI_PORT repo variables, then re-run."
+            echo "::warning::The Pi is unreachable; skipped the forwarder deploy. Check the PI_HOST and PI_PORT secrets, then re-run."
             exit 0
           fi
           ssh -p "$PI_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
