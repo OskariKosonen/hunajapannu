@@ -47,7 +47,14 @@ module.exports = function registerBotnetRoutes(app) {
                   (SELECT count(*) FROM cowrie_peer_lists)                          AS lists,
                   (SELECT count(*) FROM cowrie_peer_lists WHERE peer_count = 0)     AS empty_lists,
                   (SELECT min(first_seen) FROM cowrie_botnet_peers)                 AS first_seen,
-                  (SELECT max(last_seen) FROM cowrie_botnet_peers)                  AS last_seen`
+                  (SELECT max(last_seen) FROM cowrie_botnet_peers)                  AS last_seen,
+                  -- The shape of the data is the finding, and a table of rows
+                  -- cannot show it: most peers are seen once and a small core
+                  -- has been handed out for most of a year.
+                  (SELECT count(*) FROM cowrie_botnet_peers WHERE list_count = 1)          AS seen_once,
+                  (SELECT count(*) FROM cowrie_botnet_peers WHERE list_count BETWEEN 2 AND 4)  AS seen_few,
+                  (SELECT count(*) FROM cowrie_botnet_peers WHERE list_count BETWEEN 5 AND 14) AS seen_some,
+                  (SELECT count(*) FROM cowrie_botnet_peers WHERE list_count >= 15)        AS seen_core`
         ),
       ]);
 
@@ -63,6 +70,12 @@ module.exports = function registerBotnetRoutes(app) {
         emptyLists: Number(s.empty_lists || 0),
         firstSeen: s.first_seen || null,
         lastSeen: s.last_seen || null,
+        distribution: {
+          once: Number(s.seen_once || 0),
+          few: Number(s.seen_few || 0),
+          some: Number(s.seen_some || 0),
+          core: Number(s.seen_core || 0),
+        },
       };
       setCachedLeaderboard(cacheKey, payload);
       res.json(payload);

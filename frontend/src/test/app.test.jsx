@@ -221,7 +221,7 @@ describe("App", () => {
       render(<App />);
       expect(await screen.findByText(/1,930 peers/)).toBeInTheDocument();
       // The 46 launches that shipped no peers are only visible here.
-      expect(screen.getByText(/163 lists \(46 empty\)/)).toBeInTheDocument();
+      expect(screen.getByText(/163 lists captured \(46 empty\)/)).toBeInTheDocument();
     });
 
     it("shows a probe score alongside the rules that produced it", async () => {
@@ -229,9 +229,10 @@ describe("App", () => {
       expect(await screen.findByText("systemd-detect-virt; dmidecode")).toBeInTheDocument();
       // Scoped by title: a bare "8" also appears in other panels on the page.
       expect(screen.getByTitle("Accumulated rule weight")).toHaveTextContent("8");
-      // Naming the rules is what lets a reader judge the score rather than
-      // trust it.
-      expect(screen.getByText("virt-detection-tool")).toBeInTheDocument();
+      // The row says what kind of check it was, and the full rule list stays
+      // reachable on hover rather than printed as eight chips per row.
+      expect(screen.getByText("hypervisor check")).toBeInTheDocument();
+      expect(screen.getByTitle("virt-detection-tool, dmi-identity")).toBeInTheDocument();
     });
   });
 });
