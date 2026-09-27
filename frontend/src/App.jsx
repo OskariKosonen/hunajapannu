@@ -12,6 +12,8 @@ import CommandsPanel from "./components/CommandsPanel";
 import TopMalwarePanel from "./components/TopMalwarePanel";
 import OriginsPanel from "./components/OriginsPanel";
 import AsciiTopology from "./components/AsciiTopology";
+import BotnetPeersPanel from "./components/BotnetPeersPanel";
+import ProbePanel from "./components/ProbePanel";
 import SessionDrawer from "./components/SessionDrawer";
 import ErrorBoundary from "./components/common/ErrorBoundary";
 import { useApi, useDebounced, useMediaQuery, useVisibleInterval, useRotatingWord, buildUrl } from "./hooks/useApi";
@@ -61,6 +63,8 @@ const CONFIG = {
     // browsable list this used to drive is gone.
     SESSIONS: "/api/public/cowrie/sessions",
     FEATURED_SESSION: "/api/public/cowrie/sessions/featured",
+    PEERS: "/api/public/cowrie/peers",
+    PROBES: "/api/public/cowrie/probes",
     PASSWORD_RANGE: "/api/public/cowrie/passwords/range",
     IOCS: "/api/public/cowrie/iocs",
     PAYLOAD_HOSTS: "/api/public/cowrie/payload-hosts",
@@ -200,6 +204,10 @@ function App() {
   // on a quiet week, which the panel treats as "nothing to show".
   const featuredApi = useApi(E.FEATURED_SESSION);
   const payloadHostsApi = useApi(buildUrl(E.PAYLOAD_HOSTS, { limit: 25 }));
+  // Both read pre-aggregated tables of a few thousand rows, so a generous
+  // limit costs nothing and the panels scroll rather than paginate.
+  const peersApi = useApi(buildUrl(E.PEERS, { limit: 100 }));
+  const probesApi = useApi(buildUrl(E.PROBES, { limit: 50 }));
 
   const sessionDetailApi = useApi(
     openSessionId ? `${E.SESSIONS}/${encodeURIComponent(openSessionId)}` : null,
@@ -679,6 +687,24 @@ function App() {
               <IocExport endpoint={E.IOCS} />
             </ErrorBoundary>
           </div>
+        </div>
+
+        {/* Phases 3 and 5. Paired in one row because they are two views of
+            the same thing: what the botnet is, and what it checks before it
+            commits. */}
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-5 sm:gap-6 items-stretch">
+          <ErrorBoundary name="Botnet peers">
+            <BotnetPeersPanel
+              data={peersApi.raw}
+              loading={peersApi.loading}
+              error={peersApi.error}
+              countryFlag={countryFlag}
+              formatDate={formatDate}
+            />
+          </ErrorBoundary>
+          <ErrorBoundary name="Honeypot probes">
+            <ProbePanel data={probesApi.raw} loading={probesApi.loading} error={probesApi.error} />
+          </ErrorBoundary>
         </div>
 
         <ErrorBoundary name="Topology">

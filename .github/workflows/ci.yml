@@ -242,7 +242,9 @@ jobs:
             "$PUB/top-countries?limit=5" \
             "$PUB/ip-stats" \
             "$PUB/mitre" \
-            "$PUB/sessions/featured" ; do
+            "$PUB/sessions/featured" \
+            "$PUB/peers" \
+            "$PUB/probes" ; do
             assert "200 ${path#"$API/"}" "200" "$(status "$path")"
           done
 
@@ -706,6 +708,24 @@ jobs:
           # Ordinary recon must not be accused, or the signal means nothing.
           assert "plain recon stays below the threshold" "true" \
             "$("${PSQL[@]}" -qtA -c "SELECT CASE WHEN COALESCE(max(probe_score), 0) < 3 THEN 'true' ELSE 'false' END FROM cowrie_unique_commands WHERE command = 'uname -a'")"
+
+          echo "--- peers and probes endpoints (phase 6) ---"
+          # Both read tables the backfills populate, and CI runs those, so
+          # these assert the wiring rather than the extraction.
+          assert "peers reports its denominators" "true" \
+            "$(jq_get "$PUB/peers" '(.total | type) == "number" and (.lists | type) == "number" and (.emptyLists | type) == "number"')"
+          assert "peers ranks by recurrence"      "true" \
+            "$(jq_get "$PUB/peers?limit=5" '[.rows[].list_count] == ([.rows[].list_count] | sort | reverse)')"
+          assert "probes reports the threshold it applied" "3" \
+            "$(jq_get "$PUB/probes" '.threshold')"
+          assert "probes only returns rows at or above it" "true" \
+            "$(jq_get "$PUB/probes" '[.rows[] | select(.probe_score < .threshold)] | length == 0')"
+          assert "each probe names the rules that fired" "true" \
+            "$(jq_get "$PUB/probes" '[.rows[] | select((.probe_rules | length) == 0)] | length == 0')"
+          # min_score is what makes the threshold retunable without a
+          # re-backfill, so it has to actually filter.
+          assert "min_score narrows the list" "true" \
+            "$(jq_get "$PUB/probes?min_score=99" '.rows | length == 0')"
 
           echo "--- client fingerprints and tunnel requests ---"
           # cowrie.client.version and cowrie.client.kex are two log lines for

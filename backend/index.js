@@ -28,6 +28,7 @@ const registerIocRoutes = require('./routes/iocs');
 const registerSessionRoutes = require('./routes/sessions');
 const registerInfrastructureRoutes = require('./routes/infrastructure');
 const registerSummaryRoutes = require('./routes/summary');
+const registerBotnetRoutes = require('./routes/botnet');
 
 // ============================================================================
 // Application Setup
@@ -76,6 +77,7 @@ registerIocRoutes(app);
 registerSessionRoutes(app);
 registerInfrastructureRoutes(app);
 registerSummaryRoutes(app);
+registerBotnetRoutes(app);
 
 // ============================================================================
 // Graceful Shutdown

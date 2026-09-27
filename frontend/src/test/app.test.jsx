@@ -16,6 +16,24 @@ const SESSION = {
 };
 
 function payloadFor(url) {
+  if (url.includes("/peers")) {
+    return {
+      rows: [{ peer_ip: "158.51.96.38", list_count: 41, country_iso: "US", asn: 3356,
+               org: "NETINF-TRANSIT-AS", city: null,
+               first_seen: "2025-11-27T00:00:00Z", last_seen: "2026-09-26T00:00:00Z" }],
+      total: 1930, lists: 163, emptyLists: 46,
+      firstSeen: "2025-11-27T00:00:00Z", lastSeen: "2026-09-26T00:00:00Z",
+    };
+  }
+  if (url.includes("/probes")) {
+    return {
+      threshold: 3, minScore: 3, total: 1,
+      rows: [{ command: "systemd-detect-virt; dmidecode", probe_score: 8,
+               probe_rules: ["virt-detection-tool", "dmi-identity"],
+               total: 4, unique_ips: 2,
+               first_seen: "2026-01-01T00:00:00Z", last_seen: "2026-09-01T00:00:00Z" }],
+    };
+  }
   if (url.includes("/mitre")) return [{ id: "T1105", name: "Ingress Tool Transfer (T1105)", description: "d" }];
   if (url.includes("/sessions/")) {
     return {
@@ -187,6 +205,33 @@ describe("App", () => {
       const footer = document.querySelector("footer");
       expect(footer).not.toBeNull();
       expect(document.querySelector("main").contains(footer)).toBe(false);
+    });
+  });
+
+  describe("phase 3 and 5 panels", () => {
+    it("shows the persistent peers with their recurrence", async () => {
+      render(<App />);
+      // The count is the whole point of the panel: a peer in 41 separate
+      // bootstrap lists is infrastructure, not a one-off sighting.
+      expect(await screen.findByText("158.51.96.38", { exact: false })).toBeInTheDocument();
+      expect(screen.getByText("41")).toBeInTheDocument();
+    });
+
+    it("shows the denominators, so a count can be judged", async () => {
+      render(<App />);
+      expect(await screen.findByText(/1,930 peers/)).toBeInTheDocument();
+      // The 46 launches that shipped no peers are only visible here.
+      expect(screen.getByText(/163 lists \(46 empty\)/)).toBeInTheDocument();
+    });
+
+    it("shows a probe score alongside the rules that produced it", async () => {
+      render(<App />);
+      expect(await screen.findByText("systemd-detect-virt; dmidecode")).toBeInTheDocument();
+      // Scoped by title: a bare "8" also appears in other panels on the page.
+      expect(screen.getByTitle("Accumulated rule weight")).toHaveTextContent("8");
+      // Naming the rules is what lets a reader judge the score rather than
+      // trust it.
+      expect(screen.getByText("virt-detection-tool")).toBeInTheDocument();
     });
   });
 });
