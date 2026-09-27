@@ -11,6 +11,24 @@ const { getCachedLeaderboard, setCachedLeaderboard } = require('../cache');
 const { extractUrls, hostOf, defangIp, defangUrl } = require('../lib/urls');
 const { classFilterSql } = require('../lib/record-class');
 
+// Public type name -> how it is served.
+//
+// 'ips', 'hashes' and 'commands' are aggregates over other tables and stay as
+// they are. Everything else is a row in cowrie_iocs (migration 014), which is
+// why 'urls' changed: it used to re-run a regex over every stored command on
+// each request and rebuild the same list, which meant the endpoint could not
+// report when a URL was first seen, only when the command carrying it was.
+const IOC_BACKED = {
+  urls:        'url',
+  c2:          'c2_endpoint',
+  keys:        'ssh_key',
+  wallets:     'xmr_wallet',
+  configs:     'config_blob',
+  resolvers:   'nameserver',
+  credentials: 'dropped_credential',
+};
+const TYPES = { ips: 1, hashes: 1, commands: 1, ...IOC_BACKED };
+
 module.exports = function registerIocRoutes(app) {
   const IOC_MAX_ROWS = 5000;
 
@@ -20,7 +38,7 @@ module.exports = function registerIocRoutes(app) {
       Math.max(Number.isFinite(rawHours) ? rawHours : LIMITS.DEFAULT_HOURS_LOOKBACK, 1),
       LIMITS.MAX_HOURS_LOOKBACK
     );
-    const type = ['hashes', 'urls', 'commands'].includes(req.query.type) ? req.query.type : 'ips';
+    const type = Object.prototype.hasOwnProperty.call(TYPES, req.query.type) ? req.query.type : 'ips';
     const format = ['txt', 'csv', 'json'].includes(req.query.format) ? req.query.format : 'json';
     const defang = req.query.defang === '1' || req.query.defang === 'true';
 
@@ -73,33 +91,33 @@ module.exports = function registerIocRoutes(app) {
           total_events: Number(r.total_events),
           unique_ips: Number(r.unique_ips),
         }));
-      } else if (type === 'urls') {
-        // Payload delivery URLs, pulled out of the captured commands. Not
-        // windowed by `hours`: cowrie_unique_commands records when a command
-        // was first and last seen, not one row per use, and a delivery host
-        // stays an indicator well after the last fetch from it.
+      } else if (IOC_BACKED[type]) {
+        // Straight from cowrie_iocs. Deliberately not windowed by `hours`,
+        // for the reason the URL list never was: the table records when an
+        // indicator was first and last seen rather than one row per use, and
+        // a delivery host or C2 address stays an indicator long after the
+        // last fetch from it. The txt/csv header says so rather than claiming
+        // a window it does not apply.
         const result = await pool.query(
-          // Constrained to real commands as well (migration 013). Cowrie's own
-          // "Attempt to download file(s) from URL ..." log lines carry URLs and
-          // would otherwise be mined for indicators as if an attacker had typed
-          // them — the honeypot's own log text, exported as threat intel.
-          `SELECT command, first_seen, last_seen
-             FROM cowrie_unique_commands
-            WHERE ${classFilterSql('command')}
-              AND (command ~* '(https?|ftp|tftp)://'
-               OR command ~* '(wget|curl|tftp|fetch)\\s+(-[^ ]+ )*([0-9]{1,3}\\.){3}[0-9]{1,3}')
-            LIMIT $1`,
-          [IOC_MAX_ROWS]
+          `SELECT value, meta, occurrence_count, first_seen, last_seen
+             FROM cowrie_iocs
+            WHERE ioc_type = $1::cowrie_ioc_type
+            ORDER BY occurrence_count DESC, last_seen DESC
+            LIMIT $2`,
+          [IOC_BACKED[type], IOC_MAX_ROWS]
         );
-        const seen = new Map();
-        for (const r of result.rows) {
-          for (const url of extractUrls(r.command)) {
-            if (!seen.has(url)) {
-              seen.set(url, { url, host: hostOf(url), first_seen: r.first_seen, last_seen: r.last_seen });
-            }
-          }
-        }
-        rows = [...seen.values()];
+        rows = result.rows.map((r) => ({
+          // 'urls' keeps the field names it has always published. This is a
+          // public feed with no versioning, so renaming url -> value would
+          // break anyone consuming it for the sake of internal tidiness.
+          ...(type === 'urls'
+            ? { url: r.value, host: hostOf(r.value) }
+            : { value: r.value }),
+          ...(r.meta && Object.keys(r.meta).length ? { meta: r.meta } : {}),
+          occurrences: Number(r.occurrence_count),
+          first_seen: r.first_seen,
+          last_seen: r.last_seen,
+        }));
       } else {
         // Bounded by idx_events_timestamp; a day is a few thousand rows.
         const result = await pool.query(
@@ -154,6 +172,10 @@ module.exports = function registerIocRoutes(app) {
       if (type === 'ips') return { ...r, ip: defangIp(r.ip) };
       if (type === 'urls') return { ...r, url: defangUrl(r.url), host: defangUrl(r.host) };
       if (type === 'commands') return { ...r, command: defangCommand(r.command) };
+      // c2 endpoints and hijacked resolvers are addresses; defanging them is
+      // the same courtesy as for an IP. Keys, wallets, blobs and credentials
+      // are not clickable, so there is nothing to neuter.
+      if (type === 'c2' || type === 'resolvers') return { ...r, value: defangIp(r.value) };
       return r;
     };
     const out = rows.map(defanged);
@@ -181,10 +203,18 @@ module.exports = function registerIocRoutes(app) {
       urls: 'payload delivery URLs',
       commands: 'attacker commands',
       hashes: 'malware hashes',
+      c2: 'C2 endpoints (address:port)',
+      keys: 'attacker SSH public keys',
+      wallets: 'Monero wallet addresses',
+      configs: 'malware config blobs',
+      resolvers: 'hijacked DNS resolvers',
+      credentials: 'passwords the malware sets',
     };
     const header = [
       `# hunajapannu.fi — ${LABELS[type]}`,
-      type === 'urls'
+      // Only the windowed types may claim a window. Printing "last 24h" over
+      // a list that is not windowed is a plain lie about its coverage.
+      IOC_BACKED[type]
         ? `# window: all captured commands   generated: ${generatedAt}`
         : `# window: last ${hours}h   generated: ${generatedAt}`,
       `# source: SSH/Telnet honeypot, Finland (Telia consumer broadband)`,
@@ -198,6 +228,8 @@ module.exports = function registerIocRoutes(app) {
           ? out.map((r) => r.ip).join('\n')
           : type === 'urls'
             ? out.map((r) => r.url).join('\n')
+            : IOC_BACKED[type]
+              ? out.map((r) => String(r.value).replace(/\s*[\r\n]+\s*/g, ' ')).join('\n')
             : type === 'commands'
               // One indicator per line is the whole contract of this format, and
               // a captured command can legitimately contain a newline — which
@@ -224,7 +256,9 @@ module.exports = function registerIocRoutes(app) {
     const columns = type === 'ips'
       ? ['ip', 'events', 'commands', 'country', 'asn', 'org', 'first_seen', 'last_seen']
       : type === 'urls'
-        ? ['url', 'host', 'first_seen', 'last_seen']
+        ? ['url', 'host', 'occurrences', 'first_seen', 'last_seen']
+        : IOC_BACKED[type]
+          ? ['value', 'occurrences', 'first_seen', 'last_seen']
         : type === 'commands'
           ? ['command', 'total_events', 'unique_ips', 'first_seen', 'last_seen']
           : ['sha256', 'size_bytes', 'vt_type', 'vt_malicious', 'first_seen'];

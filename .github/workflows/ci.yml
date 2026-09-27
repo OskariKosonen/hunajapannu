@@ -205,6 +205,20 @@ jobs:
           assert "files_agg first_seen never null" "0" \
             "$("${PSQL[@]}" -qtA -c 'SELECT count(*) FROM cowrie_files_agg WHERE first_seen IS NULL')"
 
+          # /iocs now serves indicators from cowrie_iocs rather than
+          # re-extracting them per request, so the table has to be populated
+          # before the endpoint assertions mean anything. Running the real
+          # backfill rather than seeding the table by hand keeps the fixtures
+          # coupled to the extractor: if extraction breaks, these go empty.
+          #
+          # MIN_FREE_MB=0 because psql talks to a service container whose data
+          # directory this runner cannot see, and the script refuses to guess.
+          MIN_FREE_MB=0 CHUNK=100 ../db/backfill/014_iocs.sh "${PSQL[@]}" > /tmp/iocs.log 2>&1 || {
+            echo "  FAIL the ioc backfill errored:"; tail -20 /tmp/iocs.log; fail=1;
+          }
+          assert "the ioc backfill extracted the seeded urls" "3" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_iocs WHERE ioc_type = 'url'")"
+
           echo "--- starting API ---"
           node index.js & pid=$!
           trap 'kill $pid 2>/dev/null || true' EXIT
@@ -351,7 +365,7 @@ jobs:
           assert "txt export of urls is pasteable" "true" \
             "$(curl -fsS "$PUB/iocs?type=urls&format=txt" | grep -q '^http://1.2.3.4/bins.sh$' && echo true || echo false)"
           assert "csv export names its columns" "true" \
-            "$(curl -fsS "$PUB/iocs?type=urls&format=csv" | grep -q '^url,host,first_seen,last_seen$' && echo true || echo false)"
+            "$(curl -fsS "$PUB/iocs?type=urls&format=csv" | grep -q '^url,host,occurrences,first_seen,last_seen$' && echo true || echo false)"
           # An address defangs last-dot-only whether or not it carries a port.
           # Shipped broken: the port sat inside the host capture, the address
           # test failed on it, and the name branch bracketed every dot — so one
@@ -372,6 +386,31 @@ jobs:
             "$(curl -fsS "$PUB/iocs?type=urls&format=txt" | grep -q '^# window: all captured commands' && echo true || echo false)"
           assert "the ip export still states its window" "true" \
             "$(curl -fsS "$PUB/iocs?hours=24&format=txt" | grep -q '^# window: last 24h' && echo true || echo false)"
+
+          echo "--- the new table-backed indicator types ---"
+          # These serve straight from cowrie_iocs. The seeded corpus yields a
+          # C2 endpoint from the URL that carries a port.
+          assert "200 iocs?type=c2"          "200" "$(status "$PUB/iocs?type=c2")"
+          assert "200 iocs?type=keys"        "200" "$(status "$PUB/iocs?type=keys")"
+          assert "200 iocs?type=wallets"     "200" "$(status "$PUB/iocs?type=wallets")"
+          assert "the c2 endpoint is served" "9.8.7.6:8080" \
+            "$(jq_get "$PUB/iocs?type=c2" '.rows[0].value')"
+          assert "with its port in meta"     "8080" \
+            "$(jq_get "$PUB/iocs?type=c2" '.rows[0].meta.port')"
+          assert "and an occurrence count"   "1" \
+            "$(jq_get "$PUB/iocs?type=c2" '.rows[0].occurrences')"
+          # An address is an address: defanging applies the same way it does
+          # for the ips and urls lists.
+          assert "c2 endpoints defang"       "9.8.7[.]6:8080" \
+            "$(jq_get "$PUB/iocs?type=c2&defang=1" '.rows[0].value')"
+          assert "csv names the columns"     "true" \
+            "$(curl -fsS "$PUB/iocs?type=c2&format=csv" | grep -q '^value,occurrences,first_seen,last_seen$' && echo true || echo false)"
+          # A type nobody asked for must not silently become something else.
+          assert "an unknown type falls back to ips" "true" \
+            "$(jq_get "$PUB/iocs?type=nonsense" '.type == "ips"')"
+          # These lists are not windowed, so they must not claim to be.
+          assert "table-backed lists state their coverage" "true" \
+            "$(curl -fsS "$PUB/iocs?type=c2&format=txt" | grep -q '^# window: all captured commands' && echo true || echo false)"
 
           echo "--- attacker commands as exportable indicators ---"
           assert "200 iocs?type=commands" "200" "$(status "$PUB/iocs?type=commands")"
