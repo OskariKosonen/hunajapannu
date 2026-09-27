@@ -10,6 +10,7 @@ const { lookupGeo } = require('../geo');
 const { LIMITS, API_KEY } = require('../config');
 const { normalizeCommand } = require('../lib/normalize');
 const { classifyCommand } = require('../lib/record-class');
+const { extractIocs } = require('../lib/iocs');
 
 module.exports = function registerIngestRoutes(app) {
   // ============================================================================
@@ -245,6 +246,78 @@ module.exports = function registerIngestRoutes(app) {
                 OR u.record_class   IS DISTINCT FROM v.cls::cowrie_record_class)`,
           [hashes, templates, classes]
         );
+
+        // Indicators, extracted from the same batch. Doing this only in the
+        // backfill would mean a newly seen C2 address is absent from the
+        // public feed until someone remembers to run a script, which for a
+        // live indicator feed is the whole value gone.
+        //
+        // Extracted from the raw command, never the template: templatization
+        // replaces exactly the fields that are indicators.
+        //
+        // Deduplicated across the batch on (type, value). Two commands in one
+        // batch can carry the same C2 address, and feeding both to
+        // INSERT ... ON CONFLICT DO UPDATE raises "cannot affect row a second
+        // time" — a hard error on the write path, which is the last place
+        // this project wants one.
+        const byIoc = new Map();
+        const pairs = [];
+        for (const [command] of templateRows) {
+          const hash = createHash('sha256').update(command, 'utf8').digest('hex');
+          for (const ioc of extractIocs(command)) {
+            const key = `${ioc.type}\u0000${ioc.value}`;
+            if (!byIoc.has(key)) byIoc.set(key, { type: ioc.type, value: ioc.value, meta: ioc.meta || {} });
+            pairs.push({ hash, type: ioc.type, value: ioc.value });
+          }
+        }
+
+        if (byIoc.size > 0) {
+          const rows = [...byIoc.values()];
+          // Two statements, not one CTE. Every branch of a data-modifying CTE
+          // sees the same snapshot, so an UPDATE in the same statement cannot
+          // see rows its own INSERT just created — the first version of this
+          // left every newly seen indicator on occurrence_count 0 and looked
+          // like it worked.
+          await client.query(
+            `INSERT INTO cowrie_iocs (ioc_type, value, meta, first_seen, last_seen, occurrence_count)
+             SELECT v.t::cowrie_ioc_type, v.val, v.meta::jsonb, now(), now(), 0
+               FROM unnest($1::text[], $2::text[], $3::text[]) AS v(t, val, meta)
+             ON CONFLICT (ioc_type, value_sha256) DO UPDATE SET
+               last_seen = GREATEST(cowrie_iocs.last_seen, EXCLUDED.last_seen)`,
+            [
+              rows.map((r) => r.type),
+              rows.map((r) => r.value),
+              rows.map((r) => JSON.stringify(r.meta)),
+            ]
+          );
+
+          // Now the indicators exist, so this statement can see them. The
+          // count rises only when the (indicator, command) pair is new, which
+          // is what makes it "distinct commands" rather than "sightings" —
+          // the same device migration 011 uses for unique_ips.
+          await client.query(
+            `WITH paired AS (
+               INSERT INTO cowrie_ioc_commands (ioc_id, command_id)
+               SELECT i.id, u.id
+                 FROM unnest($1::text[], $2::text[], $3::text[]) AS v(h, t, val)
+                 JOIN cowrie_unique_commands u ON u.command_sha256 = decode(v.h, 'hex')
+                 JOIN cowrie_iocs i
+                   ON i.ioc_type = v.t::cowrie_ioc_type
+                  AND i.value_sha256 = sha256(convert_to(v.val, 'UTF8'))
+               ON CONFLICT DO NOTHING
+               RETURNING ioc_id
+             )
+             UPDATE cowrie_iocs c
+                SET occurrence_count = c.occurrence_count + n.added
+               FROM (SELECT ioc_id, count(*) AS added FROM paired GROUP BY ioc_id) n
+              WHERE c.id = n.ioc_id`,
+            [
+              pairs.map((r) => r.hash),
+              pairs.map((r) => r.type),
+              pairs.map((r) => r.value),
+            ]
+          );
+        }
       }
 
       if (credsRows.length > 0) {
