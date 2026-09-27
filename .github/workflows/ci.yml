@@ -314,13 +314,25 @@ jobs:
           assert "a cache hit matches the miss that filled it" "true" \
             "$([ "$first" = "$second" ] && echo true || echo false)"
 
+          # burst <prefix> <url-template>  — ten concurrent GETs, one file each.
+          #
+          # Waits on the curl PIDs specifically, never a bare `wait`: the API
+          # server is a background child of this shell (see `node index.js &`
+          # above) and never exits, so a bare wait hangs until the job timeout.
+          # `|| true` because a failed curl should show up as the assertion
+          # below failing, not as set -e killing the run with no diagnosis.
+          burst() {
+            local prefix=$1 url=$2 pids=() i
+            for i in $(seq 1 10); do
+              curl -fsS --max-time 30 "${url//__I__/$i}" -o "/tmp/$prefix-$i.json" &
+              pids+=($!)
+            done
+            wait "${pids[@]}" || true
+          }
+
           # Ten at once, each on its own cold key: every one must come back with
           # a body, not just the one that happened to fill the cache.
-          for i in $(seq 1 10); do
-            curl -fsS "$PUB/top-asn?limit=5&search=concurrent-$RANDOM-x" \
-              -o "/tmp/burst-$i.json" &
-          done
-          wait
+          burst burst "$PUB/top-asn?limit=5&search=concurrent-__I__-x"
           burst_ok=true
           for i in $(seq 1 10); do
             [ -s "/tmp/burst-$i.json" ] || burst_ok=false
@@ -329,10 +341,7 @@ jobs:
 
           # Same key this time. It is cold on first use, so the single-flight is
           # what serves the other nine, and all ten must agree.
-          for i in $(seq 1 10); do
-            curl -fsS "$PUB/creds?limit=5" -o "/tmp/flight-$i.json" &
-          done
-          wait
+          burst flight "$PUB/creds?limit=5"
           flight_ok=true
           for i in $(seq 2 10); do
             cmp -s /tmp/flight-1.json "/tmp/flight-$i.json" || flight_ok=false
