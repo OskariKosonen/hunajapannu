@@ -13,7 +13,7 @@
 const { pool } = require('../db');
 const { LIMITS } = require('../config');
 const { tagCommand } = require('../lib/mitre');
-const { getCachedLeaderboard, setCachedLeaderboard } = require('../cache');
+const { cached } = require('../cache');
 
 module.exports = function registerSessionRoutes(app) {
   /**
@@ -90,39 +90,42 @@ module.exports = function registerSessionRoutes(app) {
     );
 
     const cacheKey = `featured:${hours}`;
-    const cached = getCachedLeaderboard(cacheKey);
-    if (cached) return res.json(cached);
 
     try {
-      const since = new Date(Date.now() - hours * 60 * 60 * 1000);
-      // Bounded by idx_events_timestamp: a week is tens of thousands of rows,
-      // not the 7.7M-row scan that used to starve the pool.
-      // Rank by DISTINCT commands, not by how many command rows exist.
-      // Ranking by raw count picks whichever session is most duplicated: the
-      // first version of this chose a session with 48 events that were twelve
-      // exact copies of four commands, which replays as the same four lines
-      // over and over. Distinct commands is what "did the most" actually means.
-      const { rows } = await pool.query(
-        `SELECT session_id
-         FROM cowrie_events
-         WHERE timestamp >= $1 AND session_id IS NOT NULL
-         GROUP BY session_id
-         HAVING COUNT(DISTINCT NULLIF(command, '')) > 0
-         ORDER BY COUNT(DISTINCT NULLIF(command, '')) DESC,
-                  COUNT(*) DESC
-         LIMIT 1`,
-        [since]
-      );
+      const payload = await cached(cacheKey, async () => {
+        const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+        // Bounded by idx_events_timestamp: a week is tens of thousands of rows,
+        // not the 7.7M-row scan that used to starve the pool.
+        // Rank by DISTINCT commands, not by how many command rows exist.
+        // Ranking by raw count picks whichever session is most duplicated: the
+        // first version of this chose a session with 48 events that were twelve
+        // exact copies of four commands, which replays as the same four lines
+        // over and over. Distinct commands is what "did the most" actually means.
+        const { rows } = await pool.query(
+          `SELECT session_id
+           FROM cowrie_events
+           WHERE timestamp >= $1 AND session_id IS NOT NULL
+           GROUP BY session_id
+           HAVING COUNT(DISTINCT NULLIF(command, '')) > 0
+           ORDER BY COUNT(DISTINCT NULLIF(command, '')) DESC,
+                    COUNT(*) DESC
+           LIMIT 1`,
+          [since]
+        );
 
-      if (rows.length === 0) {
-        // A quiet week is not an error; the client hides the panel.
+        // Null rather than a 404 from in here: this runs inside the cache
+        // producer, so returning a response object would both cache it and
+        // send the reply twice. Returning null caches nothing, which is what
+        // we want — a quiet week should be re-checked, not remembered for a
+        // minute.
+        if (rows.length === 0) return null;
+        return loadSessionTimeline(rows[0].session_id);
+      });
+
+      // A quiet week is not an error; the client hides the panel.
+      if (!payload) {
         return res.status(404).json({ error: 'No session with commands in this window' });
       }
-
-      const payload = await loadSessionTimeline(rows[0].session_id);
-      if (!payload) return res.status(404).json({ error: 'Session not found' });
-
-      setCachedLeaderboard(cacheKey, payload);
       res.json(payload);
     } catch (err) {
       console.error('Error in /api/public/cowrie/sessions/featured:', err);

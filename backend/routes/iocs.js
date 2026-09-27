@@ -5,7 +5,7 @@
 
 const { pool } = require('../db');
 const { LIMITS } = require('../config');
-const { getCachedLeaderboard, setCachedLeaderboard } = require('../cache');
+const { cached } = require('../cache');
 // Defanging lives in lib/urls.js with the extraction it belongs to, so it can
 // be unit tested and so the URL and IP forms cannot drift apart.
 const { extractUrls, hostOf, defangIp, defangUrl } = require('../lib/urls');
@@ -43,107 +43,107 @@ module.exports = function registerIocRoutes(app) {
     const defang = req.query.defang === '1' || req.query.defang === 'true';
 
     const cacheKey = `iocs:${hours}:${type}:${format}:${defang}`;
-    const cached = getCachedLeaderboard(cacheKey);
-    if (cached) return sendIocs(res, cached, { type, format, hours, defang });
 
     try {
-      const since = new Date(Date.now() - hours * 60 * 60 * 1000);
-      let rows;
+      const rows = await cached(cacheKey, async () => {
+        const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+        let collected;
 
-      if (type === 'hashes') {
-        // Malware seen in the window, newest first.
-        // cowrie_files_agg records first_seen only — one row per sha256, and a
-        // sample's interest is when it first appeared here, not when it recurred.
-        const result = await pool.query(
-          `SELECT sha256, size_bytes, first_seen, vt_type, vt_malicious
-           FROM cowrie_files_agg
-           WHERE first_seen >= $1
-           ORDER BY first_seen DESC
-           LIMIT $2`,
-          [since, IOC_MAX_ROWS]
-        );
-        rows = result.rows;
-      } else if (type === 'commands') {
-        // What the attackers actually typed. Behavioural rather than atomic —
-        // you grep for these, you do not block them — but it is the material
-        // people most often want to take away, and the leaderboard panel only
-        // ever shows a page of it.
-        //
-        // Unlike urls this *is* windowed, on last_seen: cowrie_unique_commands
-        // holds one row per distinct command with the range it was seen over,
-        // so "last used inside the window" is both meaningful and honest, and
-        // it makes the 24h/7d toggle actually do something for this type.
-        const result = await pool.query(
-          `SELECT command,
-                  COALESCE(total_events, 0) AS total_events,
-                  COALESCE(unique_ips, 0)   AS unique_ips,
-                  first_seen,
-                  last_seen
-             FROM cowrie_unique_commands
-            WHERE last_seen >= $1
-              AND ${classFilterSql('command')}
-            ORDER BY COALESCE(total_events, 0) DESC
-            LIMIT $2`,
-          [since, IOC_MAX_ROWS]
-        );
-        rows = result.rows.map((r) => ({
-          ...r,
-          total_events: Number(r.total_events),
-          unique_ips: Number(r.unique_ips),
-        }));
-      } else if (IOC_BACKED[type]) {
-        // Straight from cowrie_iocs. Deliberately not windowed by `hours`,
-        // for the reason the URL list never was: the table records when an
-        // indicator was first and last seen rather than one row per use, and
-        // a delivery host or C2 address stays an indicator long after the
-        // last fetch from it. The txt/csv header says so rather than claiming
-        // a window it does not apply.
-        const result = await pool.query(
-          `SELECT value, meta, occurrence_count, first_seen, last_seen
-             FROM cowrie_iocs
-            WHERE ioc_type = $1::cowrie_ioc_type
-            ORDER BY occurrence_count DESC, last_seen DESC
-            LIMIT $2`,
-          [IOC_BACKED[type], IOC_MAX_ROWS]
-        );
-        rows = result.rows.map((r) => ({
-          // 'urls' keeps the field names it has always published. This is a
-          // public feed with no versioning, so renaming url -> value would
-          // break anyone consuming it for the sake of internal tidiness.
-          ...(type === 'urls'
-            ? { url: r.value, host: hostOf(r.value) }
-            : { value: r.value }),
-          ...(r.meta && Object.keys(r.meta).length ? { meta: r.meta } : {}),
-          occurrences: Number(r.occurrence_count),
-          first_seen: r.first_seen,
-          last_seen: r.last_seen,
-        }));
-      } else {
-        // Bounded by idx_events_timestamp; a day is a few thousand rows.
-        const result = await pool.query(
-          `SELECT host(src_ip)                                                   AS ip,
-                  COUNT(*)                                                       AS events,
-                  COUNT(*) FILTER (WHERE command IS NOT NULL AND command <> '')  AS commands,
-                  MIN(country_iso)                                               AS country,
-                  MIN(asn)                                                       AS asn,
-                  MIN(org)                                                       AS org,
-                  MIN(timestamp)                                                 AS first_seen,
-                  MAX(timestamp)                                                 AS last_seen
-           FROM cowrie_events
-           WHERE timestamp >= $1
-           GROUP BY src_ip
-           ORDER BY events DESC
-           LIMIT $2`,
-          [since, IOC_MAX_ROWS]
-        );
-        rows = result.rows.map((r) => ({
-          ...r,
-          events: Number(r.events),
-          commands: Number(r.commands),
-        }));
-      }
+        if (type === 'hashes') {
+          // Malware seen in the window, newest first.
+          // cowrie_files_agg records first_seen only — one row per sha256, and a
+          // sample's interest is when it first appeared here, not when it recurred.
+          const result = await pool.query(
+            `SELECT sha256, size_bytes, first_seen, vt_type, vt_malicious
+             FROM cowrie_files_agg
+             WHERE first_seen >= $1
+             ORDER BY first_seen DESC
+             LIMIT $2`,
+            [since, IOC_MAX_ROWS]
+          );
+          collected = result.rows;
+        } else if (type === 'commands') {
+          // What the attackers actually typed. Behavioural rather than atomic —
+          // you grep for these, you do not block them — but it is the material
+          // people most often want to take away, and the leaderboard panel only
+          // ever shows a page of it.
+          //
+          // Unlike urls this *is* windowed, on last_seen: cowrie_unique_commands
+          // holds one row per distinct command with the range it was seen over,
+          // so "last used inside the window" is both meaningful and honest, and
+          // it makes the 24h/7d toggle actually do something for this type.
+          const result = await pool.query(
+            `SELECT command,
+                    COALESCE(total_events, 0) AS total_events,
+                    COALESCE(unique_ips, 0)   AS unique_ips,
+                    first_seen,
+                    last_seen
+               FROM cowrie_unique_commands
+              WHERE last_seen >= $1
+                AND ${classFilterSql('command')}
+              ORDER BY COALESCE(total_events, 0) DESC
+              LIMIT $2`,
+            [since, IOC_MAX_ROWS]
+          );
+          collected = result.rows.map((r) => ({
+            ...r,
+            total_events: Number(r.total_events),
+            unique_ips: Number(r.unique_ips),
+          }));
+        } else if (IOC_BACKED[type]) {
+          // Straight from cowrie_iocs. Deliberately not windowed by `hours`,
+          // for the reason the URL list never was: the table records when an
+          // indicator was first and last seen rather than one row per use, and
+          // a delivery host or C2 address stays an indicator long after the
+          // last fetch from it. The txt/csv header says so rather than claiming
+          // a window it does not apply.
+          const result = await pool.query(
+            `SELECT value, meta, occurrence_count, first_seen, last_seen
+               FROM cowrie_iocs
+              WHERE ioc_type = $1::cowrie_ioc_type
+              ORDER BY occurrence_count DESC, last_seen DESC
+              LIMIT $2`,
+            [IOC_BACKED[type], IOC_MAX_ROWS]
+          );
+          collected = result.rows.map((r) => ({
+            // 'urls' keeps the field names it has always published. This is a
+            // public feed with no versioning, so renaming url -> value would
+            // break anyone consuming it for the sake of internal tidiness.
+            ...(type === 'urls'
+              ? { url: r.value, host: hostOf(r.value) }
+              : { value: r.value }),
+            ...(r.meta && Object.keys(r.meta).length ? { meta: r.meta } : {}),
+            occurrences: Number(r.occurrence_count),
+            first_seen: r.first_seen,
+            last_seen: r.last_seen,
+          }));
+        } else {
+          // Bounded by idx_events_timestamp; a day is a few thousand rows.
+          const result = await pool.query(
+            `SELECT host(src_ip)                                                   AS ip,
+                    COUNT(*)                                                       AS events,
+                    COUNT(*) FILTER (WHERE command IS NOT NULL AND command <> '')  AS commands,
+                    MIN(country_iso)                                               AS country,
+                    MIN(asn)                                                       AS asn,
+                    MIN(org)                                                       AS org,
+                    MIN(timestamp)                                                 AS first_seen,
+                    MAX(timestamp)                                                 AS last_seen
+             FROM cowrie_events
+             WHERE timestamp >= $1
+             GROUP BY src_ip
+             ORDER BY events DESC
+             LIMIT $2`,
+            [since, IOC_MAX_ROWS]
+          );
+          collected = result.rows.map((r) => ({
+            ...r,
+            events: Number(r.events),
+            commands: Number(r.commands),
+          }));
+        }
 
-      setCachedLeaderboard(cacheKey, rows);
+        return collected;
+      });
       sendIocs(res, rows, { type, format, hours, defang });
     } catch (err) {
       console.error('Error in /api/public/cowrie/iocs:', err);

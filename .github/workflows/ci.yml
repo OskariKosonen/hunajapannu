@@ -303,6 +303,42 @@ jobs:
           assert "its timeline has events" "true" "$(jq_get "$PUB/sessions/s001" '.events | length > 0')"
           assert "missing session 404s" "404" "$(status "$PUB/sessions/does-not-exist")"
 
+          echo "--- response caching ---"
+          # Every read endpoint shares one cache with a single-flight in front
+          # of it (backend/cache.js). Two things can go wrong that still return
+          # HTTP 200: a cache hit that serves a different body from the miss
+          # that filled it, and a burst of concurrent requests that either
+          # deadlock on the shared promise or serve one of them nothing.
+          first=$(curl -fsS "$PUB/commands?limit=5&search=wget")
+          second=$(curl -fsS "$PUB/commands?limit=5&search=wget")
+          assert "a cache hit matches the miss that filled it" "true" \
+            "$([ "$first" = "$second" ] && echo true || echo false)"
+
+          # Ten at once, each on its own cold key: every one must come back with
+          # a body, not just the one that happened to fill the cache.
+          for i in $(seq 1 10); do
+            curl -fsS "$PUB/top-asn?limit=5&search=concurrent-$RANDOM-x" \
+              -o "/tmp/burst-$i.json" &
+          done
+          wait
+          burst_ok=true
+          for i in $(seq 1 10); do
+            [ -s "/tmp/burst-$i.json" ] || burst_ok=false
+          done
+          assert "ten concurrent requests all got a response" "true" "$burst_ok"
+
+          # Same key this time. It is cold on first use, so the single-flight is
+          # what serves the other nine, and all ten must agree.
+          for i in $(seq 1 10); do
+            curl -fsS "$PUB/creds?limit=5" -o "/tmp/flight-$i.json" &
+          done
+          wait
+          flight_ok=true
+          for i in $(seq 2 10); do
+            cmp -s /tmp/flight-1.json "/tmp/flight-$i.json" || flight_ok=false
+          done
+          assert "concurrent callers on one key agree" "true" "$flight_ok"
+
           echo "--- IOC export ---"
           assert "200 iocs (json)" "200" "$(status "$PUB/iocs?hours=24")"
           assert "200 iocs (txt)"  "200" "$(status "$PUB/iocs?hours=24&format=txt")"

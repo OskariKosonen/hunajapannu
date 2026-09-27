@@ -8,10 +8,10 @@
  */
 
 const { pool } = require('../db');
-const { LIMITS, LEADERBOARD_CACHE_TTL_MS } = require('../config');
+const { LIMITS } = require('../config');
 const { parseListParams } = require('../lib/params');
 const { MITRE_SIGNATURES, MITRE_IDS, tagCommand } = require('../lib/mitre');
-const { getCachedLeaderboard, setCachedLeaderboard } = require('../cache');
+const { cached } = require('../cache');
 const { classFilterSql, parseClassParam } = require('../lib/record-class');
 
 module.exports = function registerLeaderboardRoutes(app) {
@@ -27,13 +27,10 @@ module.exports = function registerLeaderboardRoutes(app) {
    */
   // Keyed by record class, because ?class=all and ?class=log_artifact are
   // different result sets and must not share one cached snapshot.
-  const commandsSnapshots = new Map();
+  const getCommandsSnapshot = (recordClass) =>
+    cached(`commands:${recordClass}`, () => buildCommandsSnapshot(recordClass));
 
-  async function getCommandsSnapshot(recordClass) {
-    const now = Date.now();
-    const cached = commandsSnapshots.get(recordClass);
-    if (cached && cached.expiresAt > now) return cached;
-
+  async function buildCommandsSnapshot(recordClass) {
     // idx_cowrie_unique_commands_cmd_total is partial on record_class =
     // 'command', so this reads ~4k index entries instead of scanning 1.7M
     // rows through a 21-clause NOT LIKE predicate.
@@ -60,11 +57,7 @@ module.exports = function registerLeaderboardRoutes(app) {
       return { ...row, tags };
     });
 
-    // Dated from now, not from the `now` read before the query, for the
-    // same reason as the summary cache.
-    const snapshot = { rows: tagged, counts, expiresAt: Date.now() + LEADERBOARD_CACHE_TTL_MS };
-    commandsSnapshots.set(recordClass, snapshot);
-    return snapshot;
+    return { rows: tagged, counts };
   }
 
   app.get('/api/public/cowrie/commands', async (req, res) => {
@@ -134,39 +127,36 @@ module.exports = function registerLeaderboardRoutes(app) {
     });
 
     const cacheKey = `creds:${limit}:${offset}:${search}`;
-    const cached = getCachedLeaderboard(cacheKey);
-    if (cached) {
-      return res.json(cached);
-    }
 
     try {
-      // cowrie_unique_creds carries trigger-maintained counters (see
-      // db/migrations/006_add_leaderboard_aggs.sql), so this is a small-table
-      // sort instead of a GROUP BY over every event ever recorded. Substring
-      // search is served by the trigram indexes from migration 007.
-      const where = like ? `WHERE username ILIKE $1 ESCAPE '\\' OR password ILIKE $1 ESCAPE '\\'` : '';
-      const params = like ? [like] : [];
+      const payload = await cached(cacheKey, async () => {
+        // cowrie_unique_creds carries trigger-maintained counters (see
+        // db/migrations/006_add_leaderboard_aggs.sql), so this is a small-table
+        // sort instead of a GROUP BY over every event ever recorded. Substring
+        // search is served by the trigram indexes from migration 007.
+        const where = like ? `WHERE username ILIKE $1 ESCAPE '\\' OR password ILIKE $1 ESCAPE '\\'` : '';
+        const params = like ? [like] : [];
 
-      const [list, count] = await Promise.all([
-        pool.query(
-          `SELECT
-             username,
-             password,
-             first_seen,
-             last_seen,
-             COALESCE(total_events, 0) AS total,
-             COALESCE(unique_ips, 0) AS unique_ips
-           FROM cowrie_unique_creds
-           ${where}
-           ORDER BY COALESCE(total_events, 0) DESC
-           LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-          [...params, limit, offset]
-        ),
-        pool.query(`SELECT COUNT(*) AS total FROM cowrie_unique_creds ${where}`, params),
-      ]);
+        const [list, count] = await Promise.all([
+          pool.query(
+            `SELECT
+               username,
+               password,
+               first_seen,
+               last_seen,
+               COALESCE(total_events, 0) AS total,
+               COALESCE(unique_ips, 0) AS unique_ips
+             FROM cowrie_unique_creds
+             ${where}
+             ORDER BY COALESCE(total_events, 0) DESC
+             LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+            [...params, limit, offset]
+          ),
+          pool.query(`SELECT COUNT(*) AS total FROM cowrie_unique_creds ${where}`, params),
+        ]);
 
-      const payload = { rows: list.rows, total: Number(count.rows[0]?.total || 0) };
-      setCachedLeaderboard(cacheKey, payload);
+        return { rows: list.rows, total: Number(count.rows[0]?.total || 0) };
+      });
       res.json(payload);
     } catch (err) {
       console.error('Error in /api/public/cowrie/creds:', err);
@@ -220,52 +210,49 @@ module.exports = function registerLeaderboardRoutes(app) {
     });
 
     const cacheKey = `files:${limit}:${offset}:${search}`;
-    const cached = getCachedLeaderboard(cacheKey);
-    if (cached) {
-      return res.json(cached);
-    }
 
     try {
-      // cowrie_files_agg is a pre-aggregated, trigger-maintained mirror of
-      // cowrie_files (see db/migrations/004_add_cowrie_files_agg.sql), so this
-      // is an indexed LIMIT instead of a GROUP BY/DISTINCT ON over every
-      // download ever recorded. Search covers the hash and the VirusTotal file
-      // type/magic, which is what you actually have to hand when hunting.
-      const where = like
-        ? `WHERE sha256 ILIKE $1 ESCAPE '\\' OR vt_type ILIKE $1 ESCAPE '\\' OR vt_magic ILIKE $1 ESCAPE '\\'`
-        : '';
-      const params = like ? [like] : [];
+      const payload = await cached(cacheKey, async () => {
+        // cowrie_files_agg is a pre-aggregated, trigger-maintained mirror of
+        // cowrie_files (see db/migrations/004_add_cowrie_files_agg.sql), so this
+        // is an indexed LIMIT instead of a GROUP BY/DISTINCT ON over every
+        // download ever recorded. Search covers the hash and the VirusTotal file
+        // type/magic, which is what you actually have to hand when hunting.
+        const where = like
+          ? `WHERE sha256 ILIKE $1 ESCAPE '\\' OR vt_type ILIKE $1 ESCAPE '\\' OR vt_magic ILIKE $1 ESCAPE '\\'`
+          : '';
+        const params = like ? [like] : [];
 
-      const [list, count] = await Promise.all([
-        pool.query(
-          `SELECT
-             sha256,
-             size_bytes,
-             first_seen,
-             vt_last_fetched,
-             vt_found,
-             vt_malicious,
-             vt_suspicious,
-             vt_harmless,
-             vt_undetected,
-             vt_timeout,
-             vt_reputation,
-             vt_type,
-             vt_magic,
-             vt_first_submission_date,
-             vt_last_analysis_date,
-             vt_tags
-           FROM cowrie_files_agg
-           ${where}
-           ORDER BY first_seen DESC NULLS LAST
-           LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-          [...params, limit, offset]
-        ),
-        pool.query(`SELECT COUNT(*) AS total FROM cowrie_files_agg ${where}`, params),
-      ]);
+        const [list, count] = await Promise.all([
+          pool.query(
+            `SELECT
+               sha256,
+               size_bytes,
+               first_seen,
+               vt_last_fetched,
+               vt_found,
+               vt_malicious,
+               vt_suspicious,
+               vt_harmless,
+               vt_undetected,
+               vt_timeout,
+               vt_reputation,
+               vt_type,
+               vt_magic,
+               vt_first_submission_date,
+               vt_last_analysis_date,
+               vt_tags
+             FROM cowrie_files_agg
+             ${where}
+             ORDER BY first_seen DESC NULLS LAST
+             LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+            [...params, limit, offset]
+          ),
+          pool.query(`SELECT COUNT(*) AS total FROM cowrie_files_agg ${where}`, params),
+        ]);
 
-      const payload = { rows: list.rows, total: Number(count.rows[0]?.total || 0) };
-      setCachedLeaderboard(cacheKey, payload);
+        return { rows: list.rows, total: Number(count.rows[0]?.total || 0) };
+      });
       res.json(payload);
     } catch (err) {
       console.error('Error in /api/public/cowrie/files:', err);
@@ -302,37 +289,34 @@ module.exports = function registerLeaderboardRoutes(app) {
     });
 
     const cacheKey = `top-asn:${limit}:${offset}:${search}`;
-    const cached = getCachedLeaderboard(cacheKey);
-    if (cached) {
-      return res.json(cached);
-    }
 
     try {
-      // cowrie_asn_agg is a trigger-maintained aggregate (see
-      // db/migrations/006_add_leaderboard_aggs.sql); the previous GROUP BY over
-      // all of cowrie_events took 60s+ and starved the connection pool.
-      // Search matches the network name or the AS number itself.
-      const where = like ? `WHERE org ILIKE $1 ESCAPE '\\' OR asn::text ILIKE $1 ESCAPE '\\'` : '';
-      const params = like ? [like] : [];
+      const payload = await cached(cacheKey, async () => {
+        // cowrie_asn_agg is a trigger-maintained aggregate (see
+        // db/migrations/006_add_leaderboard_aggs.sql); the previous GROUP BY over
+        // all of cowrie_events took 60s+ and starved the connection pool.
+        // Search matches the network name or the AS number itself.
+        const where = like ? `WHERE org ILIKE $1 ESCAPE '\\' OR asn::text ILIKE $1 ESCAPE '\\'` : '';
+        const params = like ? [like] : [];
 
-      const [list, count] = await Promise.all([
-        pool.query(
-          `SELECT
-             asn,
-             org,
-             total,
-             unique_ips
-           FROM cowrie_asn_agg
-           ${where}
-           ORDER BY total DESC
-           LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-          [...params, limit, offset]
-        ),
-        pool.query(`SELECT COUNT(*) AS total FROM cowrie_asn_agg ${where}`, params),
-      ]);
+        const [list, count] = await Promise.all([
+          pool.query(
+            `SELECT
+               asn,
+               org,
+               total,
+               unique_ips
+             FROM cowrie_asn_agg
+             ${where}
+             ORDER BY total DESC
+             LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+            [...params, limit, offset]
+          ),
+          pool.query(`SELECT COUNT(*) AS total FROM cowrie_asn_agg ${where}`, params),
+        ]);
 
-      const payload = { rows: list.rows, total: Number(count.rows[0]?.total || 0) };
-      setCachedLeaderboard(cacheKey, payload);
+        return { rows: list.rows, total: Number(count.rows[0]?.total || 0) };
+      });
       res.json(payload);
     } catch (err) {
       console.error('Error in /api/public/cowrie/top-asn:', err);
@@ -385,27 +369,25 @@ module.exports = function registerLeaderboardRoutes(app) {
     );
 
     const cacheKey = `top-countries:${limit}`;
-    const cached = getCachedLeaderboard(cacheKey);
-    if (cached) {
-      return res.json(cached);
-    }
 
     try {
-      // cowrie_country_agg is a trigger-maintained aggregate (see
-      // db/migrations/006_add_leaderboard_aggs.sql); the previous GROUP BY over
-      // all of cowrie_events took 60s+ and starved the connection pool.
-      const { rows } = await pool.query(
-        `SELECT
-           country_iso,
-           total,
-           unique_ips
-         FROM cowrie_country_agg
-         ORDER BY total DESC
-         LIMIT $1`,
-        [limit]
-      );
+      const rows = await cached(cacheKey, async () => {
+        // cowrie_country_agg is a trigger-maintained aggregate (see
+        // db/migrations/006_add_leaderboard_aggs.sql); the previous GROUP BY over
+        // all of cowrie_events took 60s+ and starved the connection pool.
+        const { rows } = await pool.query(
+          `SELECT
+             country_iso,
+             total,
+             unique_ips
+           FROM cowrie_country_agg
+           ORDER BY total DESC
+           LIMIT $1`,
+          [limit]
+        );
 
-      setCachedLeaderboard(cacheKey, rows);
+        return rows;
+      });
       res.json(rows);
     } catch (err) {
       console.error('Error in /api/public/cowrie/top-countries:', err);

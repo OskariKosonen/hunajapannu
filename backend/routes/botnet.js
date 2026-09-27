@@ -9,7 +9,7 @@
  */
 
 const { pool } = require('../db');
-const { getCachedLeaderboard, setCachedLeaderboard } = require('../cache');
+const { cached } = require('../cache');
 const { THRESHOLD } = require('../lib/honeypot-probe');
 
 module.exports = function registerBotnetRoutes(app) {
@@ -26,58 +26,57 @@ module.exports = function registerBotnetRoutes(app) {
     const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 50, 1), 500);
 
     const cacheKey = `peers:${limit}`;
-    const cached = getCachedLeaderboard(cacheKey);
-    if (cached) return res.json(cached);
 
     try {
-      const [peers, summary] = await Promise.all([
-        pool.query(
-          `SELECT host(peer_ip) AS peer_ip, list_count, country_iso, asn, org, city,
-                  first_seen, last_seen
-             FROM cowrie_botnet_peers
-            ORDER BY list_count DESC, last_seen DESC
-            LIMIT $1`,
-          [limit]
-        ),
-        // The denominators. Without them a reader cannot tell whether "41
-        // lists" is remarkable, and the empty-list count is the only place the
-        // 46 launches that shipped no peers are visible at all.
-        pool.query(
-          `SELECT (SELECT count(*) FROM cowrie_botnet_peers)                        AS peers,
-                  (SELECT count(*) FROM cowrie_peer_lists)                          AS lists,
-                  (SELECT count(*) FROM cowrie_peer_lists WHERE peer_count = 0)     AS empty_lists,
-                  (SELECT min(first_seen) FROM cowrie_botnet_peers)                 AS first_seen,
-                  (SELECT max(last_seen) FROM cowrie_botnet_peers)                  AS last_seen,
-                  -- The shape of the data is the finding, and a table of rows
-                  -- cannot show it: most peers are seen once and a small core
-                  -- has been handed out for most of a year.
-                  (SELECT count(*) FROM cowrie_botnet_peers WHERE list_count = 1)          AS seen_once,
-                  (SELECT count(*) FROM cowrie_botnet_peers WHERE list_count BETWEEN 2 AND 4)  AS seen_few,
-                  (SELECT count(*) FROM cowrie_botnet_peers WHERE list_count BETWEEN 5 AND 14) AS seen_some,
-                  (SELECT count(*) FROM cowrie_botnet_peers WHERE list_count >= 15)        AS seen_core`
-        ),
-      ]);
+      const payload = await cached(cacheKey, async () => {
+        const [peers, summary] = await Promise.all([
+          pool.query(
+            `SELECT host(peer_ip) AS peer_ip, list_count, country_iso, asn, org, city,
+                    first_seen, last_seen
+               FROM cowrie_botnet_peers
+              ORDER BY list_count DESC, last_seen DESC
+              LIMIT $1`,
+            [limit]
+          ),
+          // The denominators. Without them a reader cannot tell whether "41
+          // lists" is remarkable, and the empty-list count is the only place the
+          // 46 launches that shipped no peers are visible at all.
+          pool.query(
+            `SELECT (SELECT count(*) FROM cowrie_botnet_peers)                        AS peers,
+                    (SELECT count(*) FROM cowrie_peer_lists)                          AS lists,
+                    (SELECT count(*) FROM cowrie_peer_lists WHERE peer_count = 0)     AS empty_lists,
+                    (SELECT min(first_seen) FROM cowrie_botnet_peers)                 AS first_seen,
+                    (SELECT max(last_seen) FROM cowrie_botnet_peers)                  AS last_seen,
+                    -- The shape of the data is the finding, and a table of rows
+                    -- cannot show it: most peers are seen once and a small core
+                    -- has been handed out for most of a year.
+                    (SELECT count(*) FROM cowrie_botnet_peers WHERE list_count = 1)          AS seen_once,
+                    (SELECT count(*) FROM cowrie_botnet_peers WHERE list_count BETWEEN 2 AND 4)  AS seen_few,
+                    (SELECT count(*) FROM cowrie_botnet_peers WHERE list_count BETWEEN 5 AND 14) AS seen_some,
+                    (SELECT count(*) FROM cowrie_botnet_peers WHERE list_count >= 15)        AS seen_core`
+          ),
+        ]);
 
-      const s = summary.rows[0] || {};
-      const payload = {
-        rows: peers.rows.map((r) => ({
-          ...r,
-          list_count: Number(r.list_count),
-          asn: r.asn == null ? null : Number(r.asn),
-        })),
-        total: Number(s.peers || 0),
-        lists: Number(s.lists || 0),
-        emptyLists: Number(s.empty_lists || 0),
-        firstSeen: s.first_seen || null,
-        lastSeen: s.last_seen || null,
-        distribution: {
-          once: Number(s.seen_once || 0),
-          few: Number(s.seen_few || 0),
-          some: Number(s.seen_some || 0),
-          core: Number(s.seen_core || 0),
-        },
-      };
-      setCachedLeaderboard(cacheKey, payload);
+        const s = summary.rows[0] || {};
+        return {
+          rows: peers.rows.map((r) => ({
+            ...r,
+            list_count: Number(r.list_count),
+            asn: r.asn == null ? null : Number(r.asn),
+          })),
+          total: Number(s.peers || 0),
+          lists: Number(s.lists || 0),
+          emptyLists: Number(s.empty_lists || 0),
+          firstSeen: s.first_seen || null,
+          lastSeen: s.last_seen || null,
+          distribution: {
+            once: Number(s.seen_once || 0),
+            few: Number(s.seen_few || 0),
+            some: Number(s.seen_some || 0),
+            core: Number(s.seen_core || 0),
+          },
+        };
+      });
       res.json(payload);
     } catch (err) {
       console.error('Error in /api/public/cowrie/peers:', err);
@@ -101,33 +100,32 @@ module.exports = function registerBotnetRoutes(app) {
     const minScore = Math.min(Math.max(Number.isFinite(rawMin) ? rawMin : THRESHOLD, 1), 100);
 
     const cacheKey = `probes:${limit}:${minScore}`;
-    const cached = getCachedLeaderboard(cacheKey);
-    if (cached) return res.json(cached);
 
     try {
-      const { rows } = await pool.query(
-        `SELECT command, probe_score, probe_rules,
-                COALESCE(total_events, 0) AS total, COALESCE(unique_ips, 0) AS unique_ips,
-                first_seen, last_seen
-           FROM cowrie_unique_commands
-          WHERE record_class = 'command' AND probe_score >= $1
-          ORDER BY probe_score DESC, COALESCE(total_events, 0) DESC
-          LIMIT $2`,
-        [minScore, limit]
-      );
+      const payload = await cached(cacheKey, async () => {
+        const { rows } = await pool.query(
+          `SELECT command, probe_score, probe_rules,
+                  COALESCE(total_events, 0) AS total, COALESCE(unique_ips, 0) AS unique_ips,
+                  first_seen, last_seen
+             FROM cowrie_unique_commands
+            WHERE record_class = 'command' AND probe_score >= $1
+            ORDER BY probe_score DESC, COALESCE(total_events, 0) DESC
+            LIMIT $2`,
+          [minScore, limit]
+        );
 
-      const payload = {
-        threshold: THRESHOLD,
-        minScore,
-        rows: rows.map((r) => ({
-          ...r,
-          probe_score: Number(r.probe_score),
-          total: Number(r.total),
-          unique_ips: Number(r.unique_ips),
-        })),
-        total: rows.length,
-      };
-      setCachedLeaderboard(cacheKey, payload);
+        return {
+          threshold: THRESHOLD,
+          minScore,
+          rows: rows.map((r) => ({
+            ...r,
+            probe_score: Number(r.probe_score),
+            total: Number(r.total),
+            unique_ips: Number(r.unique_ips),
+          })),
+          total: rows.length,
+        };
+      });
       res.json(payload);
     } catch (err) {
       console.error('Error in /api/public/cowrie/probes:', err);
