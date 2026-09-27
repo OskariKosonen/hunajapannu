@@ -151,4 +151,42 @@ describe("App", () => {
     // The rest of the dashboard is unaffected.
     expect(screen.getAllByText(/wget http:\/\/a\/b\.sh/).length).toBeGreaterThan(0);
   });
+
+  /**
+   * Structure a screen reader navigates by. The dashboard is a long single
+   * page of a dozen panels, so headings and landmarks are the only way to
+   * move around it without tabbing through every row of the live feed.
+   */
+  describe("document structure", () => {
+    it("exposes one main landmark and a skip link that targets it", async () => {
+      render(<App />);
+      await waitFor(() => expect(screen.getByText("hunajapannu.fi")).toBeInTheDocument());
+
+      const main = document.querySelector("main");
+      expect(main).not.toBeNull();
+      expect(document.querySelectorAll("main").length).toBe(1);
+
+      const skip = screen.getByRole("link", { name: /skip to content/i });
+      expect(skip.getAttribute("href")).toBe(`#${main.id}`);
+    });
+
+    it("gives every panel a real heading, not a styled span", async () => {
+      render(<App />);
+      await waitFor(() => expect(screen.getByText("hunajapannu.fi")).toBeInTheDocument());
+
+      // The panel titles were pill-shaped spans, which look like headings and
+      // are invisible to heading navigation. Any number here is arbitrary; the
+      // point is that it is not two.
+      const headings = screen.getAllByRole("heading", { level: 2 });
+      expect(headings.length).toBeGreaterThanOrEqual(6);
+    });
+
+    it("keeps the footer outside the main landmark", async () => {
+      render(<App />);
+      await waitFor(() => expect(screen.getByText("hunajapannu.fi")).toBeInTheDocument());
+      const footer = document.querySelector("footer");
+      expect(footer).not.toBeNull();
+      expect(document.querySelector("main").contains(footer)).toBe(false);
+    });
+  });
 });

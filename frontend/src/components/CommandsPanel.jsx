@@ -47,9 +47,9 @@ const CommandsPanel = ({
 }) => (
   <section className="relative overflow-hidden border border-emerald-700/50 rounded-xl bg-slate-950/70 shadow-[0_10px_35px_rgba(0,0,0,0.45)] backdrop-blur-sm min-w-0 sm:overflow-visible overflow-x-auto custom-scrollbar">
     <div className="flex items-center justify-between px-4 py-2.5 bg-slate-950/70 border-b border-emerald-800/60 gap-2">
-      <span className="text-[0.68rem] uppercase tracking-[0.18em] px-2 py-1 rounded-full border border-emerald-600/60 text-emerald-200 bg-emerald-500/5 whitespace-nowrap">
+      <h2 className="text-[0.68rem] uppercase tracking-[0.18em] px-2 py-1 rounded-full border border-emerald-600/60 text-emerald-200 bg-emerald-500/5 whitespace-nowrap">
         Top Commands
-      </span>
+      </h2>
     </div>
 
     <div className="p-4 sm:p-5 text-[0.72rem] sm:text-[0.78rem] leading-tight space-y-3 w-full min-w-0">

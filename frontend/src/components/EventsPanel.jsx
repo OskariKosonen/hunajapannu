@@ -37,9 +37,9 @@ const EventsPanel = ({ events, eventLimit, formatTimestamp, renderGeoPill, isMob
   return (
     <section className="relative flex flex-col h-full overflow-hidden border border-emerald-700/50 rounded-xl bg-slate-950/70 shadow-[0_10px_35px_rgba(0,0,0,0.45)] backdrop-blur-sm min-w-0">
       <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-slate-950/70 border-b border-emerald-800/60 shrink-0">
-        <span className="text-[0.68rem] uppercase tracking-[0.18em] px-2 py-1 rounded-full border border-emerald-600/60 text-emerald-200 bg-emerald-500/5 whitespace-nowrap">
+        <h2 className="text-[0.68rem] uppercase tracking-[0.18em] px-2 py-1 rounded-full border border-emerald-600/60 text-emerald-200 bg-emerald-500/5 whitespace-nowrap">
           Live Events
-        </span>
+        </h2>
       </div>
 
       <div className="flex flex-col flex-1 min-h-0 p-4 sm:p-5 w-full space-y-2">

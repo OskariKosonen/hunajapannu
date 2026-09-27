@@ -454,10 +454,13 @@ function App() {
         <div className="loading-grid absolute inset-0 opacity-60" />
         <div className="relative z-10 w-full max-w-2xl space-y-6 border border-green-500/40 bg-slate-950/70 backdrop-blur-sm rounded-2xl px-6 py-8 shadow-[0_0_40px_rgba(16,185,129,0.25)]">
           <div className="text-center space-y-2">
-            <p className="text-sm tracking-[0.3em] uppercase text-emerald-400">hunajapannu.fi</p>
-            <h1 className="text-2xl font-semibold text-green-100">
+            {/* The site name is the heading; the rotating word is status, not
+                a title. It used to be the h1, which made the page's only
+                top-level heading a verb that changed every 900ms. */}
+            <h1 className="text-sm tracking-[0.3em] uppercase text-emerald-400 font-normal">hunajapannu.fi</h1>
+            <p className="text-2xl font-semibold text-green-100" role="status" aria-live="polite">
               {bootWord}<span className="animate-pulse">…</span>
-            </h1>
+            </p>
             <p className="text-xs text-emerald-500">Pulling attack data out of PostgreSQL.</p>
           </div>
 
@@ -512,7 +515,21 @@ function App() {
         }}
       />
 
-      <div className="w-full px-5 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5 sm:space-y-6 sm:max-w-7xl xl:max-w-screen-2xl 2xl:max-w-[1760px] sm:mx-auto flex-1">
+      {/* The page is long and every panel is keyboard-reachable, so without
+          this a keyboard user tabs through the whole header and live event
+          feed before reaching anything they chose to visit. Hidden until
+          focused, which is the first thing Tab lands on. */}
+      <a
+        href="#content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[1001] focus:rounded focus:border focus:border-emerald-400 focus:bg-slate-950 focus:px-3 focus:py-2 focus:text-sm focus:text-green-200"
+      >
+        Skip to content
+      </a>
+
+      <main
+        id="content"
+        className="w-full px-5 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5 sm:space-y-6 sm:max-w-7xl xl:max-w-screen-2xl 2xl:max-w-[1760px] sm:mx-auto flex-1"
+      >
         <DashboardHeader timeZone={localTimeZone} timeZoneLabel={timeZoneLabel} />
        <ErrorBoundary name="Summary">
          <ProjectSummary
@@ -667,10 +684,12 @@ function App() {
         <ErrorBoundary name="Topology">
           <AsciiTopology />
         </ErrorBoundary>
-        <footer className="mt-4 pt-3 border-t border-emerald-900/60 text-center text-[0.65rem] text-green-600">
-          hunajapannu.fi
-        </footer>
-      </div>
+      </main>
+
+      {/* Outside <main>: a footer is a sibling landmark, not page content. */}
+      <footer className="w-full px-5 sm:px-6 lg:px-8 pb-6 mt-4 pt-3 border-t border-emerald-900/60 text-center text-[0.65rem] text-green-600">
+        hunajapannu.fi
+      </footer>
 
       {openSessionId && (
         <SessionDrawer

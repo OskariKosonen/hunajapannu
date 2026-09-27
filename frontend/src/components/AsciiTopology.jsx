@@ -7,7 +7,7 @@ const AsciiTopology = () => (
     <div className="relative px-4 sm:px-5 py-3 border-b border-emerald-800/60 bg-slate-950/70 flex items-center justify-between gap-2">
       <div className="space-y-1">
         <p className="text-[0.68rem] uppercase tracking-[0.18em] text-emerald-200">Attack pipeline</p>
-        <h3 className="text-lg sm:text-xl font-semibold text-green-100">Network topology</h3>
+        <h2 className="text-lg sm:text-xl font-semibold text-green-100">Network topology</h2>
       </div>
     </div>
 
