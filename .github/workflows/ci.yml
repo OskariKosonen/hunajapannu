@@ -248,6 +248,14 @@ jobs:
           # while nothing was arriving.
           assert "health reports ingest fresh"   "false"      "$(jq_get "$API/health" '.ingestStale')"
           assert "health reports no clock skew"  "false"      "$(jq_get "$API/health" '.clockSkewed')"
+          # Disk was the one failure mode nothing watched: a migration filled
+          # the volume on 2026-09-22, PostgreSQL crashed, and the first signal
+          # was the crash itself. The watchdog keys on diskLow, so the field
+          # has to exist and be a real measurement rather than a default.
+          assert "health checked the disk"       "true"       "$(jq_get "$API/health" '.diskChecked')"
+          assert "health reports disk not low"   "false"      "$(jq_get "$API/health" '.diskLow')"
+          assert "health reports free megabytes" "true"       "$(jq_get "$API/health" '.diskFreeMb > 0')"
+          assert "and a used percentage in range" "true"      "$(jq_get "$API/health" '.diskUsedPercent >= 0 and .diskUsedPercent <= 100')"
 
           echo "--- MITRE tagging is applied server-side ---"
           assert "wget tagged T1105" "true" \

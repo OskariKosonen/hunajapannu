@@ -50,6 +50,13 @@ jobs:
           skewed=$(printf '%s' "$body" | jq -r 'if .clockSkewed == true then "true" else "false" end')
           skew=$(printf '%s' "$body" | jq -r '.clockSkewSeconds // 0')
 
+          # Same false-vs-missing care as ingestStale above. An older API that
+          # does not report disk at all yields "false" here, which is correct:
+          # absence of the field is not evidence of a full volume.
+          disklow=$(printf '%s' "$body" | jq -r 'if .diskLow == true then "true" else "false" end')
+          freemb=$(printf '%s' "$body" | jq -r '.diskFreeMb // "unknown"')
+          usedpct=$(printf '%s' "$body" | jq -r '.diskUsedPercent // "unknown"')
+
           if [ "$db" != "connected" ]; then
             echo "status=db" >> "$GITHUB_OUTPUT"
             echo "detail=The API is up but reports the database as '$db'." >> "$GITHUB_OUTPUT"
@@ -60,9 +67,15 @@ jobs:
             mins=$([ "$age" = "unknown" ] && echo unknown || echo $((age / 60)))
             echo "status=stale" >> "$GITHUB_OUTPUT"
             echo "detail=No events ingested for ${mins} minutes (last event: ${last})." >> "$GITHUB_OUTPUT"
+          elif [ "$disklow" = "true" ]; then
+            # Ranked below the others deliberately: a stopped feed is already
+            # losing data, a filling disk is going to. Both want an issue, but
+            # if somehow both are true the feed is the more urgent headline.
+            echo "status=disk" >> "$GITHUB_OUTPUT"
+            echo "detail=Only ${freemb} MB free on the database volume (${usedpct}% used). A full disk crashed PostgreSQL on 2026-09-22; see db/README.md for what can be reclaimed." >> "$GITHUB_OUTPUT"
           else
             echo "status=ok" >> "$GITHUB_OUTPUT"
-            echo "detail=Last event ${age}s ago." >> "$GITHUB_OUTPUT"
+            echo "detail=Last event ${age}s ago, ${freemb} MB free." >> "$GITHUB_OUTPUT"
           fi
 
       - name: Report

@@ -47,6 +47,16 @@ const INGEST_STALE_AFTER_SECONDS = Number(process.env.INGEST_STALE_AFTER_SECONDS
 // local (BST) times labelled 'Z', which puts every event an hour ahead.
 const CLOCK_SKEW_TOLERANCE_SECONDS = Number(process.env.CLOCK_SKEW_TOLERANCE_SECONDS || 120);
 
+// The volume to watch for free space. The API and PostgreSQL share one disk on
+// this deployment, so "/" is the database's volume too; override if they are
+// ever separated.
+const DISK_PATH = process.env.DISK_PATH || '/';
+// An absolute floor rather than a percentage. The volume is 20 GB and the
+// database is already 8 GB of it, so a percentage would trip either far too
+// early or far too late. 1 GB is roughly three months of ordinary growth, and
+// comfortably more than any single migration has needed.
+const DISK_LOW_FREE_MB = Number(process.env.DISK_LOW_FREE_MB || 1024);
+
 const SUMMARY_CACHE_TTL_MS = 60 * 1000; // 1 minute
 const LEADERBOARD_CACHE_TTL_MS = 60 * 1000; // 1 minute for top-N slices
 
@@ -77,6 +87,8 @@ module.exports = {
   CACHE_CONFIG,
   INGEST_STALE_AFTER_SECONDS,
   CLOCK_SKEW_TOLERANCE_SECONDS,
+  DISK_PATH,
+  DISK_LOW_FREE_MB,
   SUMMARY_CACHE_TTL_MS,
   LEADERBOARD_CACHE_TTL_MS,
   RATE_LIMIT_CONFIG,

@@ -6,9 +6,17 @@
  * arriving at all.
  */
 
+const fs = require('node:fs/promises');
+
 const { pool } = require('../db');
 const { assessIngest } = require('../lib/health');
-const { INGEST_STALE_AFTER_SECONDS, CLOCK_SKEW_TOLERANCE_SECONDS } = require('../config');
+const { assessDisk } = require('../lib/disk');
+const {
+  INGEST_STALE_AFTER_SECONDS,
+  CLOCK_SKEW_TOLERANCE_SECONDS,
+  DISK_PATH,
+  DISK_LOW_FREE_MB,
+} = require('../config');
 
 module.exports = function registerHealthRoutes(app) {
   // ============================================================================
@@ -37,13 +45,30 @@ module.exports = function registerHealthRoutes(app) {
         skewToleranceSeconds: CLOCK_SKEW_TOLERANCE_SECONDS,
       });
 
+      // statfs is cheap (one syscall, no I/O) so there is no reason to cache
+      // it. Wrapped because a health endpoint that throws on an unrelated
+      // filesystem problem is worse than one that reports the disk as
+      // unknown — the ingest verdict above is the part that must always work.
+      let statfs = null;
+      try {
+        statfs = await fs.statfs(DISK_PATH);
+      } catch (err) {
+        console.error('statfs failed for', DISK_PATH, err.message);
+      }
+      const disk = assessDisk(statfs, { lowFreeMb: DISK_LOW_FREE_MB });
+
       // Still HTTP 200 when only ingestion is stale: the service itself is
       // healthy, and failing this would make deploys fail for an unrelated
       // reason. Alerting keys on the ingestStale flag instead.
       res.json({
         ...ingest,
+        ...disk,
+        // Low disk degrades the verdict for the same reason stale ingest
+        // does: the service answers requests while heading for an outage.
+        status: ingest.status === 'ok' && disk.diskLow ? 'degraded' : ingest.status,
         db: 'connected',
         staleAfterSeconds: INGEST_STALE_AFTER_SECONDS,
+        diskLowFreeMb: DISK_LOW_FREE_MB,
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
