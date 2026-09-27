@@ -98,6 +98,22 @@ while [ "$lo" -lt "$MAXID" ]; do
 done
 echo
 
+# Reconcile before upserting. A command reclassified as a log artifact must
+# stop contributing indicators, and an indicator left with no source at all
+# must go — otherwise the feed keeps publishing things the corpus no longer
+# supports, and only ever grows. This is what makes the backfill authoritative
+# rather than merely additive.
+echo "  reconciling against the current classification"
+q "
+DELETE FROM cowrie_ioc_commands ic
+ USING cowrie_unique_commands u
+ WHERE u.id = ic.command_id AND u.record_class <> 'command';
+" >/dev/null
+q "
+DELETE FROM cowrie_iocs i
+ WHERE NOT EXISTS (SELECT 1 FROM cowrie_ioc_commands ic WHERE ic.ioc_id = i.id);
+" >/dev/null
+
 echo "  collapsing duplicates and upserting"
 # Aggregate in SQL rather than in the stream: an indicator appears in many
 # commands, and the stream sees each command independently.

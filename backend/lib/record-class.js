@@ -100,6 +100,13 @@ const LOG_ARTIFACT_PREFIXES = [
   'direct-tcp connection request to',
   'reversedns:',
   'Attempt to download file(s) from URL',
+  // Found while building the Phase 5 rules: 31 rows, 130 events, and they
+  // carry URLs, so Phase 4 was mining Cowrie's own logging as threat
+  // intelligence. Distinct from 'Attempt to download file(s) from URL' above,
+  // which is the failure case; this is the success case and has a different
+  // prefix. Prefix lists are inherently incomplete, which is why an unmatched
+  // row falls to 'command' and stays visible rather than being hidden.
+  'Downloaded URL',
 ];
 
 /** Exact strings, not prefixes: bare JSON fragments logged into the field. */

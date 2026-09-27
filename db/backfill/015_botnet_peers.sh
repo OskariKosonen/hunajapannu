@@ -82,6 +82,24 @@ while [ "$lo" -lt "$MAXID" ]; do
 done
 echo
 
+# Same reconciliation as the indicator backfill: a launch command that is no
+# longer classified as a command must stop contributing peers.
+echo "  reconciling against the current classification"
+q "
+DELETE FROM cowrie_peer_commands pc
+ USING cowrie_unique_commands u
+ WHERE u.id = pc.command_id AND u.record_class <> 'command';
+" >/dev/null
+q "
+DELETE FROM cowrie_botnet_peers p
+ WHERE NOT EXISTS (SELECT 1 FROM cowrie_peer_commands pc WHERE pc.peer_id = p.id);
+" >/dev/null
+q "
+DELETE FROM cowrie_peer_lists l
+ USING cowrie_unique_commands u
+ WHERE u.id = l.command_id AND u.record_class <> 'command';
+" >/dev/null
+
 echo "  recording the launches (including the empty ones)"
 # The 46 launches that pass no addresses are kept deliberately: the ratio of
 # empty to populated lists says how often the operator ships a fresh bootstrap
