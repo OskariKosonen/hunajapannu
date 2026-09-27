@@ -131,7 +131,11 @@ jobs:
           # visible warning instead of failing the whole run.
           if ! ssh -p "$PI_PORT" -o BatchMode=yes -o ConnectTimeout=10 \
                -o StrictHostKeyChecking=accept-new "$PI_USER@$PI_HOST" true 2>/dev/null; then
-            echo "::warning::Pi at $PI_HOST:$PI_PORT is unreachable; skipped forwarder deploy. Update the PI_HOST repo variable if its address changed, then re-run."
+            # Deliberately does not echo $PI_HOST. Actions logs are public on a
+            # public repository, and the Pi is on residential broadband, so its
+            # address is the author's home IP. The variable is where you look it
+            # up; the log does not need to repeat it.
+            echo "::warning::The Pi is unreachable; skipped the forwarder deploy. Check the PI_HOST and PI_PORT repo variables, then re-run."
             exit 0
           fi
           ssh -p "$PI_PORT" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
