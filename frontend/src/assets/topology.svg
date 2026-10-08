@@ -16,6 +16,9 @@
     </style>
   </defs>
 
+  <!-- solid background so the diagram stays readable when shown outside the dark dashboard (e.g. GitHub light mode) -->
+  <rect width="1280" height="400" rx="12" fill="#020617"/>
+
   <!-- zones -->
   <rect class="zone" x="240" y="44" width="496" height="150" rx="10"/>
   <text class="zlbl" x="252" y="36">HOME · FINLAND · RESIDENTIAL BROADBAND</text>
