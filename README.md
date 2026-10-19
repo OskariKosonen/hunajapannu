@@ -2,9 +2,9 @@
 
 An SSH honeypot running on a Raspberry Pi at home since November 2025, plus the pipeline, CI/CD and monitoring around it. Live at **[hunajapannu.fi](https://hunajapannu.fi)**.
 
-| 8M+ | 29k | 10+ months | 131 |
+| 8M+ | 29k | 10+ months | 50 GB |
 |:---:|:---:|:---:|:---:|
-| attacks logged | attacker IPs | running unattended | CI checks gate every deploy |
+| attacks logged | attacker IPs | running unattended | logs in DB |
 
 **Stack:** Linux · systemd · Python · Node.js / Express · PostgreSQL · nginx · Cloudflare · GitHub Actions · React
 
