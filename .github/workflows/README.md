@@ -1,24 +1,25 @@
 # Workflows
 
-Seven workflows. Two run on GitHub-hosted runners, five on a self-hosted runner
+Eight workflows. Two run on GitHub-hosted runners, six on a self-hosted runner
 that is the production VPS.
 
 | Workflow | Trigger | Runner | Does |
 |---|---|---|---|
 | [`ci.yml`](ci.yml) | push to a non-`main` branch, `workflow_call` | hosted | Lint, build, then boot the API against a real PostgreSQL 16 and assert 131 things about the responses |
 | [`deploy.yml`](deploy.yml) | push to `main` | self-hosted | Calls CI, then migrations → pm2 restart → health check → frontend rsync → Pi forwarder update |
-| [`ingest-watchdog.yml`](ingest-watchdog.yml) | schedule | hosted | Polls `/api/health` and fails if data has stopped arriving or the clocks have drifted |
+| [`ingest-watchdog.yml`](ingest-watchdog.yml) | schedule | hosted | Polls `/api/health` and fails if data has stopped arriving, the database is down, the disk is low or the clocks have drifted; reminds daily while an incident stays open |
 | [`vt-enrich.yml`](vt-enrich.yml) | schedule | self-hosted | Looks up captured malware hashes on VirusTotal, 4/min, bounded batch |
 | [`pi-diagnostics.yml`](pi-diagnostics.yml) | manual | self-hosted | Read-only look at the Pi. Reads nothing it does not print, prints no secret values |
 | [`pi-replay.yml`](pi-replay.yml) | manual | self-hosted | Pushes dead-lettered batches back through the ingest API |
 | [`db-inspect.yml`](db-inspect.yml) | manual | self-hosted | Counts and aggregates only. No row values, no dumps |
+| [`vps-housekeeping.yml`](vps-housekeeping.yml) | daily | self-hosted | Removes the runner's old versions and update staging, which filled the disk on 2026-10-22 |
 
 ## Conventions
 
 Every workflow declares a least-privilege `GITHUB_TOKEN` (`contents: read`,
 except the watchdog, which needs `issues: write` to file its alert), and every
 job sets `timeout-minutes`. The timeout matters more than it looks: one
-self-hosted runner serves five of these workflows, so a job that hangs — an
+self-hosted runner serves six of these workflows, so a job that hangs — an
 ssh to a Pi that has gone away, a psql that never returns — would otherwise
 hold the runner for GitHub's six-hour default and queue every deploy behind
 it. The jobs that share that runner also share concurrency groups.

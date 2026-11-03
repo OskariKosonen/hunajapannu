@@ -270,6 +270,21 @@ class PostBatchTests(unittest.TestCase):
             forwarder.post_batch("https://x/events", "events", [{"a": 1}])
         self.assertEqual(urlopen.call_count, 2)
 
+    def test_socket_level_failures_are_retried_not_fatal(self):
+        # A backend that accepts the connection and then stalls raises a bare
+        # TimeoutError from the read, not a URLError. It used to escape the
+        # retry loop and crash the forwarder, 28 times during the 2026-10-22
+        # database outage.
+        for exc in (TimeoutError("The read operation timed out"),
+                    ConnectionResetError("reset"),
+                    forwarder.http.client.RemoteDisconnected("closed")):
+            with self.subTest(exc=type(exc).__name__):
+                with mock.patch.object(forwarder.urllib.request, "urlopen",
+                                       side_effect=[exc, FakeResponse(200)]) as urlopen:
+                    forwarder.post_batch("https://x/events", "events", [{"a": 1}])
+                self.assertEqual(urlopen.call_count, 2)
+        self.assertEqual(self.deadletter_lines(), [])
+
     def test_request_carries_the_token_and_an_honest_user_agent(self):
         # Cloudflare's Browser Integrity Check 403s "Python-urllib/x.y" and
         # silently cut ingestion off on 2026-08-11. The header is load-bearing.
@@ -344,6 +359,15 @@ class RotationTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.log = os.path.join(self.tmp.name, "cowrie.json")
         p = mock.patch.object(forwarder, "LOG_PATH", self.log); p.start(); self.addCleanup(p.stop)
+        self.state = os.path.join(self.tmp.name, "state", "state.json")
+        p = mock.patch.object(forwarder, "STATE_PATH", self.state); p.start(); self.addCleanup(p.stop)
+
+    def write_rotated(self, date, *commands):
+        path = f"{self.log}.{date}"
+        with open(path, "w") as f:
+            for c in commands:
+                f.write(json.dumps({"eventid": "cowrie.command.input", "input": c, "session": "s1"}) + "\n")
+        return path
 
     def test_finds_the_rotated_file_by_inode(self):
         rotated = self.log + ".2026-09-01"
@@ -401,4 +425,57 @@ class RotationTests(unittest.TestCase):
     def test_an_unreadable_rotated_file_is_reported_not_raised(self):
         with mock.patch.object(forwarder, "flush") as flush:
             forwarder.drain_rotated(os.path.join(self.tmp.name, "gone.json"), 0)
+        flush.assert_not_called()
+
+    def test_a_post_timeout_while_draining_is_retried_not_treated_as_unreadable(self):
+        # 2026-11-02: TimeoutError is an OSError, the drain's `except OSError`
+        # caught it, logged "could not drain rotated cowrie.json.2026-10-30"
+        # and the rest of that file was dropped. A slow backend must block the
+        # drain, not end it.
+        rotated = self.write_rotated("2026-10-30", "id")
+        with mock.patch.object(forwarder.time, "sleep"), \
+             mock.patch.object(forwarder.urllib.request, "urlopen",
+                               side_effect=[TimeoutError("The read operation timed out"),
+                                            FakeResponse(200)]) as urlopen:
+            forwarder.drain_rotated(rotated, 0)
+        self.assertEqual(urlopen.call_count, 2)
+        self.assertEqual(forwarder.load_state(),
+                         {"inode": os.stat(rotated).st_ino, "offset": os.path.getsize(rotated)})
+
+    def test_drain_saves_progress_against_the_rotated_file(self):
+        # A restart part-way through a drain must resume where it stopped, and
+        # find_rotated can only locate the file again by its inode.
+        rotated = self.write_rotated("2026-10-30", *[f"cmd{i}" for i in range(5)])
+        with mock.patch.object(forwarder, "BATCH_MAX", 2), mock.patch.object(forwarder, "flush"):
+            forwarder.drain_rotated(rotated, 0)
+        state = forwarder.load_state()
+        self.assertEqual(state["inode"], os.stat(rotated).st_ino)
+        self.assertEqual(state["offset"], os.path.getsize(rotated))
+
+    def test_catch_up_drains_every_file_rotated_since_the_saved_one(self):
+        # An outage spanning several rotations: the saved offset points into
+        # the 10-30 file, and 10-31 and 11-01 were rotated after it. Draining
+        # only the 10-30 file skipped the days in between.
+        older = self.write_rotated("2026-10-29", "already-sent")
+        first = self.write_rotated("2026-10-30", "sent", "unsent")
+        self.write_rotated("2026-10-31", "day2")
+        self.write_rotated("2026-11-01", "day3a", "day3b")
+        with open(self.log, "w") as f:
+            f.write(json.dumps({"eventid": "cowrie.command.input", "input": "live", "session": "s1"}) + "\n")
+        offset = len(open(first).readline())
+
+        sent = []
+        with mock.patch.object(forwarder, "flush",
+                               side_effect=lambda ev, _f: sent.extend(e["command"] for e in ev)):
+            forwarder.catch_up({"inode": os.stat(first).st_ino, "offset": offset})
+
+        self.assertEqual(sent, ["unsent", "day2", "day3a", "day3b"])
+        self.assertTrue(os.path.exists(older))
+
+    def test_catch_up_with_the_saved_file_gone_sends_nothing(self):
+        # Nothing to anchor on, so nothing can be replayed without risking a
+        # duplicate of everything; it is reported instead.
+        self.write_rotated("2026-10-31", "day2")
+        with mock.patch.object(forwarder, "flush") as flush:
+            forwarder.catch_up({"inode": 999999999, "offset": 10})
         flush.assert_not_called()

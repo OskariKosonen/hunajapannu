@@ -5,6 +5,7 @@ is persisted only after a successful POST, so backend downtime never drops
 events (keep log-rotation retention longer than your worst-case outage).
 Delivery is at-least-once. Zero third-party deps."""
 import datetime
+import http.client
 import json
 import os
 import sys
@@ -65,7 +66,7 @@ def normalize_ts(s):
     # astimezone() on a naive datetime reads it as local time using the offset
     # in force on that date, so GMT readings pass through unchanged and only
     # BST ones shift. That keeps winter data correct without a special case.
-    return naive.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    return naive.astimezone(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
 def map_event(ev):
     # "" rather than None: a log line without an eventid must not turn a
@@ -143,8 +144,15 @@ def post_batch(url, key, rows):
             # honeypot data over a typo'd token would be worse than stalling.
             if e.code in (400, 413, 422):
                 dead_letter(key, rows, e.code); return
-        except urllib.error.URLError as e:
-            sys.stderr.write(f"POST {url} failed: {e}\n")
+        except (OSError, http.client.HTTPException) as e:
+            # URLError covers a refused connection, but a server that accepts
+            # the connection and then stalls past the timeout raises a bare
+            # TimeoutError from the socket read, and a dropped keep-alive a
+            # RemoteDisconnected. Neither is a URLError. Both used to escape
+            # this loop and kill the process: 28 crash-restarts while the
+            # database was down from 2026-10-22, and each restart that landed
+            # after a log rotation skipped ahead (see drain_rotated).
+            sys.stderr.write(f"POST {url} failed: {e!r}\n")
         time.sleep(backoff); backoff = min(backoff * 2, 60)
 
 def flush(events, files):
@@ -162,15 +170,18 @@ def drain_deadletter():
     except Exception as e:
         sys.stderr.write(f"dead-letter drain failed, continuing: {e}\n")
 
+def rotated_logs():
+    """Every rotated copy of LOG_PATH, oldest first. Cowrie names them
+    cowrie.json.YYYY-MM-DD, so name order is date order."""
+    d = os.path.dirname(LOG_PATH) or "."; base = os.path.basename(LOG_PATH)
+    try: names = os.listdir(d)
+    except OSError: return []
+    return [os.path.join(d, n) for n in sorted(names) if n.startswith(base + ".")]
+
 def find_rotated(inode):
     """Locate the rotated file that used to be LOG_PATH, by inode. Cowrie
     rotates cowrie.json -> cowrie.json.YYYY-MM-DD, keeping the same inode."""
-    d = os.path.dirname(LOG_PATH) or "."; base = os.path.basename(LOG_PATH)
-    try: names = os.listdir(d)
-    except OSError: return None
-    for n in sorted(names):
-        if n == base or not n.startswith(base + "."): continue
-        p = os.path.join(d, n)
+    for p in rotated_logs():
         try:
             if os.stat(p).st_ino == inode: return p
         except OSError: continue
@@ -179,26 +190,59 @@ def find_rotated(inode):
 def drain_rotated(path, offset):
     """Forward whatever is left in a file that has since been rotated away.
     Without this the unread tail is lost at every rotation — that is how
-    2026-08-12..14 went missing while the forwarder sat blocked on a POST."""
-    events, files = [], []
+    2026-08-12..14 went missing while the forwarder sat blocked on a POST.
+
+    Progress is saved against the rotated file's own inode after every
+    delivered batch, so a restart mid-drain resumes here (find_rotated locates
+    it again) instead of re-sending the file or skipping it.
+
+    Only opening and reading the file is guarded. The guard used to wrap the
+    POSTs as well, and TimeoutError is an OSError: on 2026-11-02 a timed-out
+    POST was reported as "could not drain rotated cowrie.json.2026-10-30" and
+    that file's tail, plus every day rotated after it, was silently dropped.
+    post_batch retries until delivery, so a slow backend now blocks here,
+    which is what at-least-once requires."""
     try:
-        with open(path) as f:
-            f.seek(offset)
-            for line in f:
-                if not line.endswith("\n"): break
-                s = line.strip()
-                if not s: continue
-                try: ev = json.loads(s)
-                except ValueError: continue
-                kind, row = map_event(ev)
-                if kind == "event": events.append(row)
-                elif kind == "file": files.append(row)
-                if len(events) + len(files) >= BATCH_MAX:
-                    flush(events, files); events, files = [], []
+        f = open(path); ino = os.fstat(f.fileno()).st_ino
     except OSError as e:
-        sys.stderr.write(f"could not drain rotated {path}: {e}\n"); return
-    flush(events, files)
+        sys.stderr.write(f"could not open rotated {path}, its unread events are lost: {e}\n"); return
+    events, files = [], []
+    with f:
+        f.seek(offset)
+        while True:
+            try: line = f.readline()
+            except OSError as e:
+                sys.stderr.write(f"could not read rotated {path} at {f.tell()}: {e}\n"); return
+            if not line or not line.endswith("\n"): break
+            s = line.strip()
+            if not s: continue
+            try: ev = json.loads(s)
+            except ValueError: continue
+            kind, row = map_event(ev)
+            if kind == "event": events.append(row)
+            elif kind == "file": files.append(row)
+            if len(events) + len(files) >= BATCH_MAX:
+                flush(events, files); events, files = [], []
+                save_state({"inode": ino, "offset": f.tell()})
+        flush(events, files)
+        save_state({"inode": ino, "offset": f.tell()})
     sys.stderr.write(f"drained rotated log {path} from offset {offset}\n")
+
+def catch_up(state):
+    """Forward everything rotated away since `state` was saved: the rest of the
+    file it points at, then every newer rotated file in full.
+
+    A long outage spans several rotations. Draining only the file the offset
+    was in skipped the days in between — after the 2026-10-22 database outage
+    that would have been ten days of captures."""
+    old = find_rotated(state["inode"])
+    if old is None:
+        sys.stderr.write(f"rotated log with inode {state['inode']} is gone; "
+                         f"events after offset {state['offset']} in it are lost\n")
+        return
+    drain_rotated(old, state["offset"])
+    for p in rotated_logs():
+        if p > old: drain_rotated(p, 0)
 
 def run():
     drain_deadletter()
@@ -209,8 +253,7 @@ def run():
         if state["inode"] != st.st_ino or st.st_size < state["offset"]:
             # Finish the rotated-away file before following the new one.
             if state["inode"] is not None and state["inode"] != st.st_ino:
-                old = find_rotated(state["inode"])
-                if old: drain_rotated(old, state["offset"])
+                catch_up(state)
             state = {"inode": st.st_ino, "offset": 0}
             save_state(state)
         with open(LOG_PATH) as f:

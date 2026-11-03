@@ -53,9 +53,15 @@ const CLOCK_SKEW_TOLERANCE_SECONDS = Number(process.env.CLOCK_SKEW_TOLERANCE_SEC
 const DISK_PATH = process.env.DISK_PATH || '/';
 // An absolute floor rather than a percentage. The volume is 20 GB and the
 // database is already 8 GB of it, so a percentage would trip either far too
-// early or far too late. 1 GB is roughly three months of ordinary growth, and
-// comfortably more than any single migration has needed.
-const DISK_LOW_FREE_MB = Number(process.env.DISK_LOW_FREE_MB || 1024);
+// early or far too late.
+//
+// 1 GB was the floor until 2026-10-22, and it gave about an hour's warning:
+// the alert fired at 18:06Z, PostgreSQL hit a full disk at 18:56Z and stayed
+// down for twelve days. Ordinary growth is slow; what ate the margin was the
+// self-hosted Actions runner updating itself (~700 MB unpacked, plus a ~700 MB
+// staging copy it leaves behind) on top of it. The floor has to cover one
+// such step and still leave days to react, so 2 GB.
+const DISK_LOW_FREE_MB = Number(process.env.DISK_LOW_FREE_MB || 2048);
 
 const SUMMARY_CACHE_TTL_MS = 60 * 1000; // 1 minute
 const LEADERBOARD_CACHE_TTL_MS = 60 * 1000; // 1 minute for top-N slices

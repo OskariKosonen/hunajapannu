@@ -8,6 +8,7 @@ Postgres 16 on the VPS, database `cowrie_db`, owned by `cowrie_user`.
 | `migrations/*.sql` | Ordered, apply-once changes on top of `schema.sql`. |
 | `testdata/seed.sql` | Synthetic traffic used by CI so endpoints are asserted against real rows. |
 | `apply-migrations.sh` | The only supported way to apply migrations. |
+| `systemd/` | Drop-in for `postgresql@16-main` so a failed start is retried. Installed by hand. |
 
 ## Applying migrations
 
@@ -73,6 +74,42 @@ production and rolled back 36 minutes of backfill.
 credentials; a btree index row tops out at 8191 bytes. `cowrie_unique_creds`
 and `cowrie_cred_ips` are limited to 1000 bytes of `username + password`, in
 both the trigger and the API (`LIMITS.MAX_CRED_BYTES`).
+
+## Disk
+
+The API and PostgreSQL share one 20 GB volume, and the database is about
+8 GB of it. `/api/health` reports `diskLow` below `DISK_LOW_FREE_MB` (2 GB)
+and the watchdog opens an issue.
+
+**When it fills, PostgreSQL stops.** That happened on 2026-10-22 and the
+database stayed down for twelve days after space returned, because nothing
+restarted it. [`systemd/postgresql@16-main.service.d/restart.conf`](systemd/postgresql@16-main.service.d/restart.conf)
+makes systemd retry a failed start every 30 s. It is installed on the VPS; if
+the machine is ever rebuilt, install it again (instructions in the file).
+
+**What can be reclaimed**, largest first:
+
+| What | Size | Safe? |
+|---|---|---|
+| `~/actions-runner/_work/_update` | ~700 MB | Yes. Staging copy the runner leaves after every self-update. |
+| `~/actions-runner/{bin,externals}.<old version>` | ~700 MB | Yes, for any version the `bin`/`externals` symlinks do not point at. |
+| `~/actions-runner/actions-runner-linux-*.tar.gz` | ~220 MB | Yes. The original installer. |
+
+The [`VPS housekeeping`](../.github/workflows/vps-housekeeping.yml) workflow
+removes all three daily, because the runner auto-updates and each update
+leaves another ~1.4 GB behind. That is what took the volume from "low" to
+full in under an hour on 2026-10-22.
+
+Inside the database, a `VACUUM FULL` or a rebuild of the large indexes can give
+space back, but both need free space roughly the size of the table being
+rewritten. Do them only with headroom to spare, and never at a full disk.
+
+**After an outage, backfill.** The forwarder delivers at-least-once, but
+events only stay on the Pi in Cowrie's rotated logs. If the forwarder has
+moved past a gap, [`tools/backfill_cowrie.py`](../tools/backfill_cowrie.py)
+replays a time window from those logs through the ingest API. The window
+matters: `cowrie_events` has no natural key, so replaying anything already
+stored doubles it and every counter maintained from it.
 
 ## Aggregate tables
 

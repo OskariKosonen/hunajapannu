@@ -91,7 +91,10 @@ jobs:
         # ruff is a lint-time tool only. The forwarder itself stays
         # dependency-free, which is deliberate: it runs unattended on a Pi
         # where a broken dependency tree means silent data loss.
-        run: pipx run ruff check .
+        # Pinned: an unpinned `pipx run ruff` picked up a new release with a
+        # new UP017 rule on 2026-10-19, failed CI, and so skipped every deploy
+        # from then on, for a change nobody had made. Bump it deliberately.
+        run: pipx run ruff==0.17.3 check .
       - name: Unit tests
         run: python3 -m unittest discover -p 'test_*.py' -v
 

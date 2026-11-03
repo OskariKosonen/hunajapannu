@@ -1,0 +1,84 @@
+name: VPS housekeeping
+
+# The self-hosted runner updates itself, and every update leaves the previous
+# version (~700 MB of bin/ and externals/) and a ~700 MB _work/_update staging
+# copy behind. Nothing removes either. On 2026-10-22 an update landed on a disk
+# that was already low; it was full within the hour, PostgreSQL stopped, and
+# the dashboard served no new events for twelve days.
+#
+# Deletes only things the running runner cannot be using: versions the
+# bin/externals symlinks do not point at, the update staging directory (an
+# update never runs while a job does), and the original installer tarball.
+
+on:
+  schedule:
+    - cron: "40 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  # Read-only token: nothing here writes to the repository.
+  contents: read
+
+concurrency:
+  # One self-hosted runner serves every job here, so overlapping runs queue
+  # behind each other anyway. Naming the group makes that explicit.
+  group: vps-housekeeping
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 10
+    steps:
+      - name: Prune runner leftovers
+        run: |
+          set -euo pipefail
+          # RUNNER_WORKSPACE is <runner root>/_work/<repo>.
+          root=$(cd "${RUNNER_WORKSPACE}/../.." && pwd)
+          cd "$root"
+          echo "runner root: $root"
+          df -h /
+
+          current_bin=$(readlink -f bin)
+          current_ext=$(readlink -f externals)
+          # Refuse to guess. If the layout is not the symlinked one this was
+          # written against, deleting "everything but current" is unsafe.
+          if [ ! -d "$current_bin" ] || [ ! -d "$current_ext" ] \
+             || [ "$current_bin" = "$root/bin" ] || [ "$current_ext" = "$root/externals" ]; then
+            echo "::error::bin/externals are not symlinks to versioned directories; not pruning."
+            exit 1
+          fi
+          echo "in use: $current_bin $current_ext"
+
+          for d in bin.* externals.*; do
+            [ -d "$d" ] || continue
+            full=$(readlink -f "$d")
+            if [ "$full" = "$current_bin" ] || [ "$full" = "$current_ext" ]; then
+              continue
+            fi
+            echo "removing $d ($(du -sh "$d" | cut -f1))"
+            rm -rf -- "$d"
+          done
+
+          if [ -d _work/_update ]; then
+            echo "removing _work/_update ($(du -sh _work/_update | cut -f1))"
+            rm -rf -- _work/_update
+          fi
+          for f in actions-runner-linux-*.tar.gz; do
+            [ -f "$f" ] || continue
+            echo "removing $f ($(du -sh "$f" | cut -f1))"
+            rm -f -- "$f"
+          done
+
+          df -h /
+
+          # pm2's log stream died on ENOSPC at 21:56:07 on 2026-10-22 and
+          # never reopened: twelve days of API errors, the whole outage, were
+          # written nowhere. reloadLogs reopens the files without restarting
+          # the API, so a full disk costs at most a day of logs.
+          pm2 reloadLogs
+
+          free_mb=$(df -Pm / | awk 'NR==2{print $4}')
+          if [ "$free_mb" -lt 2048 ]; then
+            echo "::warning::Only ${free_mb} MB free on / after pruning. See db/README.md#disk."
+          fi

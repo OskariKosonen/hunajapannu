@@ -32,12 +32,19 @@ jobs:
         run: |
           set -uo pipefail
 
-          body=$(curl -fsS --max-time 30 https://hunajapannu.fi/api/health) || {
+          # No -f: /api/health answers 503 with a JSON body when the
+          # database is down, and -f threw that body away. The 2026-10-22
+          # outage — PostgreSQL stopped at a full disk — was filed as "API
+          # unreachable" for twelve days, with advice to go and check nginx.
+          # Only no answer at all, or an answer that is not the health JSON
+          # (a proxy error page), counts as unreachable.
+          body=$(curl -sS --max-time 30 https://hunajapannu.fi/api/health) || body=""
+          echo "$body"
+          if ! printf '%s' "$body" | jq -e 'type == "object" and has("status")' >/dev/null 2>&1; then
             echo "status=unreachable" >> "$GITHUB_OUTPUT"
             echo "detail=The API did not respond to /api/health." >> "$GITHUB_OUTPUT"
             exit 0
-          }
-          echo "$body"
+          fi
 
           # Not `.ingestStale // true` — jq's // treats false as empty, so a
           # healthy `false` would fall through to the default and alert on
@@ -120,7 +127,8 @@ jobs:
               db: {
                 title: '🚨 Honeypot database unreachable',
                 steps: [
-                  'Check Postgres is running on the Pi and accepting connections',
+                  'On the VPS: `systemctl status postgresql@16-main` and `df -h /` (a full disk stopped it on 2026-10-22)',
+                  'The unit has a Restart=on-failure drop-in (db/systemd/), so once space is freed it should come back by itself within a minute',
                   'Check `pm2 logs cowrie-api` for connection errors',
                 ],
               },
@@ -135,22 +143,29 @@ jobs:
             const condition = CONDITIONS[status] || CONDITIONS.stale;
 
             const now = new Date().toISOString();
+            // Quiet updates are right for a few hours and wrong for days.
+            // The 2026-10-22 outage alerted once, then sat in this issue
+            // with every run green for twelve days. A condition that is still
+            // there a day later is news again: comment (which notifies) and
+            // fail the run, at most once per REMIND_AFTER_MS.
+            const REMIND_AFTER_MS = 24 * 60 * 60 * 1000;
             // Machine-readable marker so a later run can tell "same condition
             // still happening" from "the condition changed".
             const marker = (s) => `<!-- watchdog-status:${s} -->`;
 
-            const renderBody = (firstSeen) => [
+            const renderBody = (firstSeen, lastAlerted) => [
               marker(status),
               `**Problem:** ${detail}`,
               '',
               `First detected: ${firstSeen}`,
+              `Last alerted:   ${lastAlerted}`,
               `Last checked:   ${now}  (check: \`${status}\`)`,
               '',
               'Where to look:',
               ...condition.steps.map((s, i) => `${i + 1}. ${s}`),
               '',
               '_Raised automatically by `.github/workflows/ingest-watchdog.yml`._',
-              '_While this stays open, repeat detections update it quietly instead of failing every run; it closes itself once the check passes._',
+              '_While this stays open, repeat detections update it quietly instead of failing every run, with one reminder comment a day; it closes itself once the check passes._',
             ].join('\n');
 
             const { data: open } = await github.rest.issues.listForRepo({
@@ -163,7 +178,7 @@ jobs:
             if (open.length === 0) {
               const { data: issue } = await github.rest.issues.create({
                 owner: context.repo.owner, repo: context.repo.repo,
-                title: condition.title, body: renderBody(now), labels: ['ingest-watchdog'],
+                title: condition.title, body: renderBody(now, now), labels: ['ingest-watchdog'],
               });
               core.setFailed(`${detail} (opened #${issue.number})`);
               return;
@@ -172,6 +187,12 @@ jobs:
             const issue = open[0];
             const previous = (issue.body || '').match(/<!-- watchdog-status:(\w+) -->/)?.[1];
             const firstSeen = (issue.body || '').match(/First detected: (\S+)/)?.[1] || now;
+            // Issues opened before this field existed fall back to firstSeen,
+            // so an incident that is already old is reminded about at once.
+            const lastAlerted = (issue.body || '').match(/Last alerted: +(\S+)/)?.[1] || firstSeen;
+
+            const changed = previous !== status;
+            const overdue = Date.now() - Date.parse(lastAlerted) >= REMIND_AFTER_MS;
 
             // Editing the body does not notify anyone, so the issue can carry
             // a fresh "last checked" without pinging on every poll.
@@ -179,22 +200,33 @@ jobs:
               owner: context.repo.owner, repo: context.repo.repo,
               issue_number: issue.number,
               title: condition.title,
-              body: renderBody(firstSeen),
+              body: renderBody(firstSeen, changed || overdue ? now : lastAlerted),
             });
 
-            if (previous === status) {
-              core.info(`${detail}\nAlready tracked in #${issue.number} since ${firstSeen} — not re-alerting.`);
+            if (changed) {
+              // The condition genuinely changed (skew that became a stopped
+              // feed, say). That is new information, so speak up again.
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `Condition changed from \`${previous || 'unknown'}\` to \`${status}\`: ${detail}`,
+              });
+              core.setFailed(`Condition changed to ${status}: ${detail} (see #${issue.number})`);
               return;
             }
 
-            // The condition genuinely changed (skew that became a stopped
-            // feed, say). That is new information, so speak up again.
-            await github.rest.issues.createComment({
-              owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: issue.number,
-              body: `Condition changed from \`${previous || 'unknown'}\` to \`${status}\`: ${detail}`,
-            });
-            core.setFailed(`Condition changed to ${status}: ${detail} (see #${issue.number})`);
+            if (overdue) {
+              const days = Math.floor((Date.now() - Date.parse(firstSeen)) / 86400000);
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `Still failing after ${days} day(s), since ${firstSeen}: ${detail}`,
+              });
+              core.setFailed(`Still ${status} after ${days} day(s): ${detail} (see #${issue.number})`);
+              return;
+            }
+
+            core.info(`${detail}\nAlready tracked in #${issue.number} since ${firstSeen}, reminded ${lastAlerted} — not re-alerting.`);
 
       - name: Close alert issue on recovery
         if: steps.probe.outputs.status == 'ok'
