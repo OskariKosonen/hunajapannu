@@ -10,7 +10,7 @@ const ActivityView = ({ onOpenSession }) => {
   const trendApi = useApi(API.TRENDS);
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4">
       <ErrorBoundary name="Events per hour">
         <TrendPanel trend={trendApi.rows} trendError={trendApi.error} trendLoading={trendApi.loading} height={140} />
       </ErrorBoundary>

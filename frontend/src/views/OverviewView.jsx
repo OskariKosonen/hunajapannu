@@ -1,32 +1,24 @@
 import { memo } from "react";
 import Panel from "../components/ui/Panel";
-import Button from "../components/ui/Button";
 import { ErrorNotice, Skeleton, EmptyState } from "../components/ui/states";
-import { ChevronRightIcon } from "../components/ui/icons";
 import OverviewHero from "../components/OverviewHero";
+import KpiStrip from "../components/KpiStrip";
 import DayPanel from "../components/DayPanel";
+import OriginsShare from "../components/OriginsShare";
+import TechniquesPanel from "../components/TechniquesPanel";
 import EventsPanel from "../components/EventsPanel";
 import FeaturedAttack from "../components/FeaturedAttack";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import { useApi, buildUrl } from "../hooks/useApi";
 import { useCatalogue } from "../hooks/useCatalogue";
 import { API, PAGE_SIZE } from "../lib/api";
-import { countryFlag, countryName, formatNumber } from "../lib/format";
+import { formatNumber } from "../lib/format";
 
-/** A top-5 list with a link through to the full view. */
-const TopList = ({ title, rows, loading, error, errorLabel, label, value, onViewAll, viewAllLabel }) => {
+/** A top-5 list; the → in its header opens the full view. */
+const TopList = ({ title, rows, loading, error, errorLabel, label, value, onOpen, openLabel }) => {
   const max = Math.max(0, ...rows.map((r) => Number(value(r)) || 0));
   return (
-    <Panel
-      title={title}
-      meta="All time"
-      actions={
-        <Button variant="ghost" onClick={onViewAll} aria-label={viewAllLabel}>
-          View all
-          <ChevronRightIcon size={13} />
-        </Button>
-      }
-    >
+    <Panel title={title} meta="All time" onOpen={onOpen} openLabel={openLabel} className="h-full">
       {rows.length === 0 ? (
         error ? (
           <ErrorNotice>
@@ -59,8 +51,14 @@ const TopList = ({ title, rows, loading, error, errorLabel, label, value, onView
   );
 };
 
+/**
+ * The landing view, top to bottom: what this is, the all-time scale, the
+ * last day, a session to read, the live feed, and the leaderboards. Panels sit
+ * on a tight 16px grid so a laptop screen shows the first live panels without
+ * scrolling and the row below always peeks in.
+ */
 const OverviewView = ({ onOpenSession, onNavigate }) => {
-  const { byId: mitreById } = useCatalogue();
+  const { byId: mitreById, techniques } = useCatalogue();
 
   const summaryApi = useApi(API.SUMMARY);
   const trendApi = useApi(API.TRENDS);
@@ -70,34 +68,48 @@ const OverviewView = ({ onOpenSession, onNavigate }) => {
   const credsApi = useApi(buildUrl(API.CREDENTIALS, { limit: PAGE_SIZE.PREVIEW }));
   const commandsApi = useApi(buildUrl(API.COMMANDS, { limit: PAGE_SIZE.PREVIEW }));
 
-  const summaryLoading = summaryApi.loading && !summaryApi.raw;
+  const summary = summaryApi.raw;
+  const summaryLoading = summaryApi.loading && !summary;
 
   // A quiet week 404s the featured session; let the feed take the full width
   // rather than leave a hole beside it.
   const hasFeatured = Boolean(featuredApi.raw?.session) || (featuredApi.loading && !featuredApi.error);
 
   return (
-    <div className="space-y-5 sm:space-y-6">
+    <div className="space-y-4">
       <ErrorBoundary name="Introduction">
-        <OverviewHero summary={summaryApi.raw} loading={summaryLoading} onNavigate={onNavigate} />
+        <OverviewHero summary={summary} onNavigate={onNavigate} />
       </ErrorBoundary>
 
-      {summaryApi.error && !summaryApi.raw && (
-        <ErrorNotice>Failed to load summary: {summaryApi.error}</ErrorNotice>
-      )}
+      {summaryApi.error && !summary && <ErrorNotice>Failed to load summary: {summaryApi.error}</ErrorNotice>}
 
-      <ErrorBoundary name="Last 24 hours">
-        <DayPanel
-          summary={summaryApi.raw}
-          summaryLoading={summaryLoading}
-          trend={trendApi.rows}
-          trendLoading={trendApi.loading}
-          trendError={trendApi.error}
-          onNavigate={onNavigate}
-        />
+      <ErrorBoundary name="All-time figures">
+        <KpiStrip summary={summary} loading={summaryLoading} />
       </ErrorBoundary>
 
-      <div className={hasFeatured ? "grid gap-5 sm:gap-6 xl:grid-cols-2 xl:items-start" : ""}>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.85fr)_minmax(0,1fr)]">
+        <ErrorBoundary name="Last 24 hours">
+          <DayPanel
+            summary={summary}
+            summaryLoading={summaryLoading}
+            trend={trendApi.rows}
+            trendLoading={trendApi.loading}
+            trendError={trendApi.error}
+            onNavigate={onNavigate}
+          />
+        </ErrorBoundary>
+        <ErrorBoundary name="Attack origins">
+          <OriginsShare
+            countries={countriesApi.rows}
+            lifetimeEvents={summary?.lifetimeEvents}
+            loading={countriesApi.loading || summaryLoading}
+            error={countriesApi.error}
+            onOpen={() => onNavigate("origins")}
+          />
+        </ErrorBoundary>
+      </div>
+
+      <div className={hasFeatured ? "grid gap-4 xl:grid-cols-2 xl:items-start" : ""}>
         {hasFeatured && (
           <ErrorBoundary name="Featured session">
             <FeaturedAttack
@@ -124,25 +136,7 @@ const OverviewView = ({ onOpenSession, onNavigate }) => {
         </ErrorBoundary>
       </div>
 
-      <div className="grid gap-5 sm:gap-6 lg:grid-cols-3">
-        <ErrorBoundary name="Top countries">
-          <TopList
-            title="Top countries"
-            rows={countriesApi.rows}
-            loading={countriesApi.loading}
-            error={countriesApi.error}
-            errorLabel="Failed to load countries"
-            label={(r) => (
-              <>
-                <span aria-hidden="true" className="mr-2">{countryFlag(r.country_iso)}</span>
-                <span className="text-fg">{countryName(r.country_iso)}</span>
-              </>
-            )}
-            value={(r) => r.total}
-            onViewAll={() => onNavigate("origins")}
-            viewAllLabel="View all origins"
-          />
-        </ErrorBoundary>
+      <div className="grid gap-4 lg:grid-cols-3">
         <ErrorBoundary name="Top credentials">
           <TopList
             title="Top credentials"
@@ -158,8 +152,8 @@ const OverviewView = ({ onOpenSession, onNavigate }) => {
               </span>
             )}
             value={(r) => r.total}
-            onViewAll={() => onNavigate("credentials")}
-            viewAllLabel="View all credentials"
+            onOpen={() => onNavigate("credentials")}
+            openLabel="Open credentials"
           />
         </ErrorBoundary>
         <ErrorBoundary name="Top commands">
@@ -175,8 +169,17 @@ const OverviewView = ({ onOpenSession, onNavigate }) => {
               </span>
             )}
             value={(r) => r.total}
-            onViewAll={() => onNavigate("commands")}
-            viewAllLabel="View all commands"
+            onOpen={() => onNavigate("commands")}
+            openLabel="Open commands"
+          />
+        </ErrorBoundary>
+        <ErrorBoundary name="Techniques observed">
+          <TechniquesPanel
+            counts={commandsApi.raw?.counts}
+            techniques={techniques}
+            loading={commandsApi.loading}
+            error={commandsApi.error}
+            onOpen={() => onNavigate("commands")}
           />
         </ErrorBoundary>
       </div>

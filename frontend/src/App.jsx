@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AppHeader from "./components/AppHeader";
+import Sidebar from "./components/Sidebar";
 import SessionDrawer from "./components/SessionDrawer";
 import ErrorBoundary from "./components/common/ErrorBoundary";
 import OverviewView from "./views/OverviewView";
@@ -10,7 +11,18 @@ import MalwareView from "./views/MalwareView";
 import OriginsView from "./views/OriginsView";
 import BotnetView from "./views/BotnetView";
 import DataView from "./views/DataView";
-import { useApi, buildUrl, RefreshTickContext } from "./hooks/useApi";
+import { useApi, buildUrl, useMediaQuery, RefreshTickContext } from "./hooks/useApi";
+import { cx } from "./lib/cx";
+import {
+  ActivityIcon,
+  BugIcon,
+  DatabaseIcon,
+  GlobeIcon,
+  GridIcon,
+  KeyIcon,
+  NetworkIcon,
+  TerminalIcon,
+} from "./components/ui/icons";
 import { useUrlState } from "./hooks/useUrlState";
 import { RefreshContext, useRefresh, useRefreshClock } from "./hooks/useRefresh";
 import { CatalogueContext } from "./hooks/useCatalogue";
@@ -24,17 +36,36 @@ import { API, REFRESH_INTERVAL_MS } from "./lib/api";
  * on load to fill panels most visitors never scrolled to.
  */
 
+const GROUPS = ["Monitor", "Investigate", "Resources"];
+
 const TABS = [
-  { id: "overview", label: "Overview", Component: OverviewView },
-  { id: "activity", label: "Live activity", Component: ActivityView },
-  { id: "commands", label: "Commands", Component: CommandsView },
-  { id: "credentials", label: "Credentials", Component: CredentialsView },
-  { id: "malware", label: "Malware", Component: MalwareView },
-  { id: "origins", label: "Origins", Component: OriginsView },
-  { id: "botnet", label: "Botnet", Component: BotnetView },
-  { id: "data", label: "Data & API", Component: DataView },
+  { id: "overview", label: "Overview", group: "Monitor", Icon: GridIcon, Component: OverviewView,
+    description: "What the honeypot is seeing, at a glance" },
+  { id: "activity", label: "Live activity", group: "Monitor", Icon: ActivityIcon, Component: ActivityView,
+    description: "Every connection, login and command as it arrives" },
+  { id: "commands", label: "Commands", group: "Investigate", Icon: TerminalIcon, Component: CommandsView,
+    description: "What attackers run once they are in, tagged with MITRE ATT&CK" },
+  { id: "credentials", label: "Credentials", group: "Investigate", Icon: KeyIcon, Component: CredentialsView,
+    description: "The usernames and passwords bots try" },
+  { id: "malware", label: "Malware", group: "Investigate", Icon: BugIcon, Component: MalwareView,
+    description: "Captured samples and the hosts serving them" },
+  { id: "origins", label: "Origins", group: "Investigate", Icon: GlobeIcon, Component: OriginsView,
+    description: "Where the traffic comes from, by country and network" },
+  { id: "botnet", label: "Botnet", group: "Investigate", Icon: NetworkIcon, Component: BotnetView,
+    description: "A P2P worm's peer mesh, and attackers checking for honeypots" },
+  { id: "data", label: "Data & API", group: "Resources", Icon: DatabaseIcon, Component: DataView,
+    description: "Indicator exports, the public API and how it is built" },
 ];
 const TAB_LIST = TABS.map(({ id, label }) => ({ id, label }));
+
+const SIDEBAR_KEY = "hunajapannu:sidebar-collapsed";
+const readCollapsed = () => {
+  try {
+    return window.localStorage.getItem(SIDEBAR_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
 
 // The browser tab says where you are, site name last so it survives
 // truncation in a crowded tab bar as "Commands · hunaja…" rather than
@@ -49,6 +80,21 @@ const titleFor = (tab, sessionOpen) =>
 
 function Shell() {
   const { lastUpdated, refresh } = useRefresh();
+
+  // Sidebar on a desktop, a tab strip on anything narrower. Decided in JS
+  // rather than CSS so only one set of navigation exists in the page.
+  const desktop = useMediaQuery("(min-width: 1024px)");
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const toggleSidebar = useCallback(() => {
+    setCollapsed((c) => {
+      try {
+        window.localStorage.setItem(SIDEBAR_KEY, c ? "0" : "1");
+      } catch {
+        /* preference just will not persist */
+      }
+      return !c;
+    });
+  }, []);
 
   // The view and the open session live in the query string, so any screen —
   // a filtered command list, a specific attacker session — can be linked.
@@ -103,7 +149,22 @@ function Shell() {
 
   return (
     <CatalogueContext.Provider value={catalogue}>
-      <div className="min-h-screen flex flex-col">
+      {desktop && (
+        <Sidebar
+          items={TABS}
+          groups={GROUPS}
+          view={active.id}
+          onView={navigate}
+          collapsed={collapsed}
+          onToggle={toggleSidebar}
+        />
+      )}
+      <div
+        className={cx(
+          "min-h-screen flex flex-col transition-[padding] duration-200",
+          desktop && (collapsed ? "pl-16" : "pl-60")
+        )}
+      >
         {/* Hidden until focused; the first thing Tab lands on. */}
         <a
           href="#content"
@@ -113,8 +174,9 @@ function Shell() {
         </a>
 
         <AppHeader
+          desktop={desktop}
           tabs={TAB_LIST}
-          view={active.id}
+          active={active}
           onView={navigate}
           lastEventAt={lastEventAt}
           lastUpdated={lastUpdated}
@@ -124,9 +186,11 @@ function Shell() {
         <main
           id="content"
           tabIndex={-1}
-          className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-6 sm:px-6 sm:py-8 lg:px-8 focus:outline-none"
+          aria-label={active.label}
+          className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 focus:outline-none"
         >
-          <div role="tabpanel" id="view-panel" aria-labelledby={`view-${active.id}`}>
+          {/* With the phone's tab strip, the view is that tablist's panel. */}
+          <div {...(desktop ? {} : { role: "tabpanel", id: "view-panel", "aria-labelledby": `view-${active.id}` })}>
             <ErrorBoundary key={active.id} name={active.label}>
               <View onOpenSession={openSession} onNavigate={navigate} />
             </ErrorBoundary>

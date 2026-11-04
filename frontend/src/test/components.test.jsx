@@ -570,3 +570,26 @@ describe("EventsPanel", () => {
     expect(screen.queryByText(/waiting for attackers/i)).toBeNull();
   });
 });
+
+describe("OriginsShare", () => {
+  const countries = [
+    { country_iso: "NL", total: 600, unique_ips: 1 },
+    { country_iso: "US", total: 300, unique_ips: 1 },
+  ];
+
+  it("splits all attacks by country and folds the rest into one remainder", async () => {
+    const { default: OriginsShare } = await import("../components/OriginsShare");
+    render(<OriginsShare countries={countries} lifetimeEvents={1000} />);
+    expect(screen.getByText("Netherlands")).toBeInTheDocument();
+    expect(screen.getByText("60.0%")).toBeInTheDocument();
+    expect(screen.getByText("Everywhere else")).toBeInTheDocument();
+    expect(screen.getByText("10.0%")).toBeInTheDocument();
+  });
+
+  it("reports a failed request instead of drawing only the remainder", async () => {
+    const { default: OriginsShare } = await import("../components/OriginsShare");
+    render(<OriginsShare countries={[]} lifetimeEvents={1000} error="API error 500" />);
+    expect(screen.getByText(/failed to load countries/i)).toBeInTheDocument();
+    expect(screen.queryByText("Everywhere else")).toBeNull();
+  });
+});

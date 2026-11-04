@@ -1,5 +1,5 @@
 import { cx } from "../../lib/cx";
-import { CodeIcon } from "./icons";
+import { ArrowRightIcon, CodeIcon } from "./icons";
 
 /**
  * The card every panel sits in: a titled header with room for context and
@@ -12,6 +12,8 @@ import { CodeIcon } from "./icons";
  * @param {React.ReactNode} [toolbar]     A row between header and body (search, filters).
  * @param {React.ReactNode} [footer]      Small print under the body.
  * @param {boolean} [flush]               Body without padding, for edge-to-edge tables.
+ * @param {function} [onOpen]             Shows a → in the header that drills into the full view.
+ * @param {string} [openLabel]            Accessible name for that →.
  */
 const Panel = ({
   title,
@@ -21,6 +23,8 @@ const Panel = ({
   toolbar,
   footer,
   flush = false,
+  onOpen,
+  openLabel,
   className = "",
   bodyClassName = "",
   children,
@@ -30,16 +34,27 @@ const Panel = ({
     className={cx("flex flex-col min-w-0 rounded-lg border border-line bg-surface", className)}
     {...rest}
   >
-    {(title || actions || meta) && (
+    {(title || actions || meta || onOpen) && (
       <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-4 pt-3.5 pb-3 sm:px-5">
         <div className="min-w-0">
           {title && <h2 className="text-base font-semibold text-fg">{title}</h2>}
           {description && <p className="mt-0.5 text-sm text-fg-muted">{description}</p>}
         </div>
-        {(meta || actions) && (
+        {(meta || actions || onOpen) && (
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {meta && <span className="text-xs text-fg-subtle whitespace-nowrap tabular-nums">{meta}</span>}
             {actions}
+            {onOpen && (
+              <button
+                type="button"
+                onClick={onOpen}
+                aria-label={openLabel || "Open full view"}
+                title={openLabel || "Open full view"}
+                className="-mr-1.5 flex h-7 w-7 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-fg transition-colors"
+              >
+                <ArrowRightIcon size={16} />
+              </button>
+            )}
           </div>
         )}
       </header>

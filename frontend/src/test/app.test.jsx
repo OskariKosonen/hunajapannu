@@ -110,6 +110,42 @@ describe("App", () => {
     );
   });
 
+  describe("on a desktop", () => {
+    const realMatchMedia = window.matchMedia;
+    beforeEach(() => {
+      window.localStorage.clear();
+      window.matchMedia = (query) => ({
+        matches: query.includes("min-width: 1024px"),
+        media: query,
+        addEventListener: vi.fn(), removeEventListener: vi.fn(),
+        addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
+      });
+    });
+    afterEach(() => { window.matchMedia = realMatchMedia; });
+
+    it("navigates from a grouped sidebar of real links", async () => {
+      render(<App />);
+      const nav = await screen.findByRole("navigation", { name: /dashboard sections/i });
+      expect(within(nav).getByText("Investigate")).toBeInTheDocument();
+      const link = within(nav).getByRole("link", { name: "Malware" });
+      // A real href, so middle-click opens the view in a new tab.
+      expect(link).toHaveAttribute("href", "/?view=malware");
+      fireEvent.click(link);
+      expect(window.location.search).toContain("view=malware");
+      expect(within(nav).getByRole("link", { name: "Malware" })).toHaveAttribute("aria-current", "page");
+      expect(screen.queryByRole("tablist")).toBeNull();
+    });
+
+    it("collapses to an icon rail and remembers it", async () => {
+      const { unmount } = render(<App />);
+      fireEvent.click(await screen.findByRole("button", { name: /collapse sidebar/i }));
+      expect(screen.getByRole("button", { name: /expand sidebar/i })).toBeInTheDocument();
+      unmount();
+      render(<App />);
+      expect(await screen.findByRole("button", { name: /expand sidebar/i })).toBeInTheDocument();
+    });
+  });
+
   it("names the current view in the browser tab", async () => {
     render(<App />);
     await waitFor(() => expect(document.title).toMatch(/^hunajapannu\.fi — Live SSH honeypot/));

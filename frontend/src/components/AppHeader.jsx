@@ -49,49 +49,76 @@ const StatusPill = ({ lastEventAt, now }) => {
   );
 };
 
-const AppHeader = ({ tabs, view, onView, lastEventAt, lastUpdated, onRefresh }) => {
+const Controls = ({ lastEventAt, lastUpdated, onRefresh, now }) => (
+  <div className="ml-auto flex items-center gap-2 sm:gap-3 min-w-0">
+    <StatusPill lastEventAt={lastEventAt} now={now} />
+    <span
+      className="hidden xl:inline text-xs text-fg-subtle whitespace-nowrap"
+      title="All timestamps are shown in your local timezone"
+    >
+      Times in {TIME_ZONE}
+      {TIME_ZONE_LABEL ? ` (${TIME_ZONE_LABEL})` : ""}
+    </span>
+    <Button
+      variant="secondary"
+      onClick={onRefresh}
+      title={lastUpdated ? `Last updated ${formatClock(lastUpdated)} · refreshes every 2 minutes` : "Refresh"}
+      aria-label="Refresh data"
+    >
+      <RefreshIcon size={14} />
+      <span className="hidden sm:inline tabular-nums">
+        {lastUpdated ? `Updated ${formatClock(lastUpdated)}` : "Refresh"}
+      </span>
+    </Button>
+  </div>
+);
+
+/**
+ * The bar above the content.
+ *
+ * Desktop: the brand and the sections live in the sidebar, so this names the
+ * view you are on (Grafana's dashboard title, more or less) and carries the
+ * live status and refresh. Phone: no room for a sidebar, so it carries the
+ * brand and the sections become a scrolling tab strip underneath.
+ */
+const AppHeader = ({ desktop, tabs, active, onView, lastEventAt, lastUpdated, onRefresh }) => {
   // Ticks here rather than in App, so "12s ago" re-renders the header alone.
   const now = useNow(15000);
+  const controls = <Controls lastEventAt={lastEventAt} lastUpdated={lastUpdated} onRefresh={onRefresh} now={now} />;
+
+  if (desktop) {
+    const Icon = active.Icon;
+    return (
+      <header className="sticky top-0 z-30 border-b border-line bg-canvas/85 backdrop-blur supports-[backdrop-filter]:bg-canvas/70">
+        <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-4 px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <Icon size={18} className="text-fg-subtle" />
+            <span className="text-base font-semibold text-fg whitespace-nowrap">{active.label}</span>
+            {active.description && (
+              <span className="hidden truncate border-l border-line pl-3 text-sm text-fg-subtle 2xl:inline">
+                {active.description}
+              </span>
+            )}
+          </div>
+          {controls}
+        </div>
+      </header>
+    );
+  }
+
   return (
-  <header className="sticky top-0 z-40 border-b border-line bg-canvas/90 backdrop-blur supports-[backdrop-filter]:bg-canvas/75">
-    <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-8">
-      <div className="flex h-14 items-center gap-3 sm:gap-4">
+    <header className="sticky top-0 z-30 border-b border-line bg-canvas/90 backdrop-blur supports-[backdrop-filter]:bg-canvas/75">
+      <div className="flex h-14 items-center gap-3 px-4 sm:px-6">
         <a href="/" className="flex items-center gap-2.5 shrink-0" aria-label="hunajapannu.fi — home">
           <LogoMark />
           <h1 className="text-base font-semibold tracking-tight text-fg">hunajapannu.fi</h1>
         </a>
-        <span className="hidden md:inline text-sm text-fg-subtle border-l border-line pl-4">
-          SSH honeypot threat intelligence
-        </span>
-
-        <div className="ml-auto flex items-center gap-2 sm:gap-3 min-w-0">
-          <StatusPill lastEventAt={lastEventAt} now={now} />
-          <span
-            className="hidden lg:inline text-xs text-fg-subtle whitespace-nowrap"
-            title="All timestamps are shown in your local timezone"
-          >
-            Times in {TIME_ZONE}
-            {TIME_ZONE_LABEL ? ` (${TIME_ZONE_LABEL})` : ""}
-          </span>
-          <Button
-            variant="ghost"
-            onClick={onRefresh}
-            title={lastUpdated ? `Last updated ${formatClock(lastUpdated)} · refreshes every 2 minutes` : "Refresh"}
-            aria-label="Refresh data"
-          >
-            <RefreshIcon size={14} />
-            <span className="hidden sm:inline tabular-nums">
-              {lastUpdated ? `Updated ${formatClock(lastUpdated)}` : "Refresh"}
-            </span>
-          </Button>
-        </div>
+        {controls}
       </div>
-
-      <nav aria-label="Dashboard sections">
-        <Tabs tabs={tabs} value={view} onChange={onView} label="Dashboard sections" idPrefix="view" />
+      <nav aria-label="Dashboard sections" className="px-4 sm:px-6">
+        <Tabs tabs={tabs} value={active.id} onChange={onView} label="Dashboard sections" idPrefix="view" />
       </nav>
-    </div>
-  </header>
+    </header>
   );
 };
 

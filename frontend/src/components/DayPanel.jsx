@@ -1,8 +1,6 @@
 import { memo, useMemo } from "react";
 import Panel, { ApiLink } from "./ui/Panel";
 import AreaSparkline from "./common/AreaSparkline";
-import Button from "./ui/Button";
-import { ChevronRightIcon } from "./ui/icons";
 import { ErrorNotice, EmptyState } from "./ui/states";
 import { formatHourLabel, formatNumber, formatPercent } from "../lib/format";
 
@@ -43,17 +41,12 @@ const DayPanel = ({ summary, summaryLoading, trend, trendLoading, trendError, on
     <Panel
       title="Last 24 hours"
       meta="Events per hour"
-      actions={
-        <>
-          <Button variant="ghost" onClick={() => onNavigate("activity")}>
-            Live feed
-            <ChevronRightIcon size={13} />
-          </Button>
-          <ApiLink href="/api/public/cowrie/events-per-hour?hours=24" />
-        </>
-      }
+      actions={<ApiLink href="/api/public/cowrie/events-per-hour?hours=24" />}
+      onOpen={() => onNavigate("activity")}
+      openLabel="Open live activity"
+      className="h-full"
     >
-      <div className="grid gap-4 lg:grid-cols-[12rem_minmax(0,1fr)] lg:gap-8">
+      <div className="grid gap-4 lg:grid-cols-[10rem_minmax(0,1fr)] lg:gap-8">
         <div className="grid grid-cols-3 gap-4 lg:grid-cols-1 lg:content-start lg:gap-3.5">
           <Figure label="Attacks" loading={summaryLoading} value={formatNumber(summary?.attacks24h)} />
           <Figure
@@ -74,9 +67,9 @@ const DayPanel = ({ summary, summaryLoading, trend, trendLoading, trendError, on
           {trendError && trend.length === 0 ? (
             <ErrorNotice>Failed to load trend: {trendError}</ErrorNotice>
           ) : trendLoading && trend.length === 0 ? (
-            <div className="h-[150px] rounded bg-surface-2 animate-pulse" />
+            <div className="h-[184px] rounded bg-surface-2 animate-pulse" />
           ) : chartData.length > 0 ? (
-            <AreaSparkline data={chartData} height={150} />
+            <AreaSparkline data={chartData} height={184} />
           ) : (
             <EmptyState title="No events in the last 24 hours." />
           )}

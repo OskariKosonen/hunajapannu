@@ -2,8 +2,6 @@ import { memo, useMemo, useState } from "react";
 import Panel, { ApiLink } from "./ui/Panel";
 import DataTable from "./ui/DataTable";
 import SegmentedControl from "./ui/SegmentedControl";
-import Button from "./ui/Button";
-import { ChevronRightIcon } from "./ui/icons";
 import { EMPTY_STATES } from "../lib/flavour";
 import { countryFlag, formatTimestamp, formatTime, networkLabel, placeLabel } from "../lib/format";
 
@@ -145,14 +143,11 @@ const EventsPanel = ({
             <SegmentedControl label="Event type" options={KIND_FILTERS} value={kind} onChange={setKind} />
           )}
           {!compact && <ApiLink href="/api/public/cowrie/latest?limit=100" />}
-          {compact && onViewAll && (
-            <Button variant="ghost" onClick={onViewAll}>
-              View all
-              <ChevronRightIcon size={13} />
-            </Button>
-          )}
+
         </>
       }
+      onOpen={compact ? onViewAll : undefined}
+      openLabel="Open live activity"
       flush
       className={className}
     >

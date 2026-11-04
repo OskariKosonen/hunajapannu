@@ -14,7 +14,7 @@ const BotnetView = () => {
   const probesApi = useApi(buildUrl(API.PROBES, { limit: 50 }));
 
   return (
-    <div className="grid gap-5 sm:gap-6 xl:grid-cols-2 xl:items-stretch">
+    <div className="grid gap-4 xl:grid-cols-2 xl:items-stretch">
       <ErrorBoundary name="Botnet peers">
         <BotnetPeersPanel data={peersApi.raw} loading={peersApi.loading} error={peersApi.error} />
       </ErrorBoundary>

@@ -40,9 +40,9 @@ const About = () => (
 );
 
 const DataView = () => (
-  <div className="space-y-5 sm:space-y-6">
-    <div className="grid gap-5 sm:gap-6 lg:grid-cols-2 lg:items-start">
-      <div className="space-y-5 sm:space-y-6 min-w-0">
+  <div className="space-y-4">
+    <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+      <div className="space-y-4 min-w-0">
         <ErrorBoundary name="Export indicators">
           <IocExport endpoint={API.IOCS} />
         </ErrorBoundary>

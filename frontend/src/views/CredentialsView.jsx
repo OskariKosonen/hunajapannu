@@ -13,7 +13,7 @@ const CredentialsView = () => {
   const summaryApi = useApi(API.SUMMARY);
 
   return (
-    <div className="grid gap-5 sm:gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:items-start">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:items-start">
       <ErrorBoundary name="Top credentials">
         <TopCredentialsPanel
           creds={credsApi.rows}
