@@ -14,6 +14,7 @@ const { pool } = require('../db');
 const { LIMITS } = require('../config');
 const { tagCommand } = require('../lib/mitre');
 const { cached } = require('../cache');
+const { pickFeatured, READABLE_MAX } = require('../lib/featured');
 
 module.exports = function registerSessionRoutes(app) {
   /**
@@ -96,30 +97,62 @@ module.exports = function registerSessionRoutes(app) {
         const since = new Date(Date.now() - hours * 60 * 60 * 1000);
         // Bounded by idx_events_timestamp: a week is tens of thousands of rows,
         // not the 7.7M-row scan that used to starve the pool.
-        // Rank by DISTINCT commands, not by how many command rows exist.
-        // Ranking by raw count picks whichever session is most duplicated: the
-        // first version of this chose a session with 48 events that were twelve
-        // exact copies of four commands, which replays as the same four lines
-        // over and over. Distinct commands is what "did the most" actually means.
-        const { rows } = await pool.query(
+        //
+        // Shortlist the sessions with the most readable commands, then let
+        // pickFeatured() choose the one that tells a story (lib/featured.js).
+        // Ranking by distinct commands alone, as this used to, featured
+        // scripted droppers: a hundred lines of noise and base64 blobs.
+        const { rows: shortlist } = await pool.query(
           `SELECT session_id
            FROM cowrie_events
            WHERE timestamp >= $1 AND session_id IS NOT NULL
+             AND command IS NOT NULL AND command <> ''
            GROUP BY session_id
-           HAVING COUNT(DISTINCT NULLIF(command, '')) > 0
-           ORDER BY COUNT(DISTINCT NULLIF(command, '')) DESC,
-                    COUNT(*) DESC
-           LIMIT 1`,
-          [since]
+           HAVING COUNT(DISTINCT command) FILTER (WHERE length(command) <= $2) >= 3
+           ORDER BY COUNT(DISTINCT command) FILTER (WHERE length(command) <= $2) DESC
+           LIMIT 40`,
+          [since, READABLE_MAX]
         );
+
+        let chosen = null;
+        if (shortlist.length > 0) {
+          const ids = shortlist.map((r) => r.session_id);
+          const { rows: cmds } = await pool.query(
+            `SELECT session_id, command
+             FROM cowrie_events
+             WHERE session_id = ANY($1) AND command IS NOT NULL AND command <> ''`,
+            [ids]
+          );
+          const bySession = new Map(ids.map((id) => [id, []]));
+          for (const r of cmds) bySession.get(r.session_id)?.push(r.command);
+          chosen = pickFeatured(ids.map((id) => ({ session_id: id, commands: bySession.get(id) })));
+        }
+
+        if (!chosen) {
+          // A quiet week with nothing readable: fall back to the session that
+          // ran the most distinct commands, whatever they were. Distinct, not
+          // raw count, because some sessions were ingested more than once.
+          const { rows } = await pool.query(
+            `SELECT session_id
+             FROM cowrie_events
+             WHERE timestamp >= $1 AND session_id IS NOT NULL
+             GROUP BY session_id
+             HAVING COUNT(DISTINCT NULLIF(command, '')) > 0
+             ORDER BY COUNT(DISTINCT NULLIF(command, '')) DESC,
+                      COUNT(*) DESC
+             LIMIT 1`,
+            [since]
+          );
+          chosen = rows[0]?.session_id ?? null;
+        }
 
         // Null rather than a 404 from in here: this runs inside the cache
         // producer, so returning a response object would both cache it and
         // send the reply twice. Returning null caches nothing, which is what
         // we want — a quiet week should be re-checked, not remembered for a
         // minute.
-        if (rows.length === 0) return null;
-        return loadSessionTimeline(rows[0].session_id);
+        if (!chosen) return null;
+        return loadSessionTimeline(chosen);
       });
 
       // A quiet week is not an error; the client hides the panel.

