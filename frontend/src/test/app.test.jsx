@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import App from "../App";
 
 /**
@@ -108,6 +108,20 @@ describe("App", () => {
     await waitFor(() =>
       expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true")
     );
+  });
+
+  it("names the current view in the browser tab", async () => {
+    render(<App />);
+    await waitFor(() => expect(document.title).toMatch(/^hunajapannu\.fi — Live SSH honeypot/));
+    fireEvent.click(await screen.findByRole("tab", { name: "Credentials" }));
+    await waitFor(() => expect(document.title).toBe("Credentials · hunajapannu.fi"));
+  });
+
+  it("says what the site is before any figures", async () => {
+    // Linked from a CV: the first visitor may never have heard of a honeypot.
+    render(<App />);
+    const heading = await screen.findByRole("heading", { level: 2, name: /real attacks against a real server/i });
+    expect(within(heading.closest("section")).getByRole("link", { name: "Oskari Kosonen" })).toBeInTheDocument();
   });
 
   it("opens straight into the view a shared link names", async () => {

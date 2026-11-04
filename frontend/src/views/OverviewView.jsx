@@ -1,25 +1,17 @@
-import { memo, useMemo } from "react";
+import { memo } from "react";
 import Panel from "../components/ui/Panel";
-import Stat from "../components/ui/Stat";
 import Button from "../components/ui/Button";
 import { ErrorNotice, Skeleton, EmptyState } from "../components/ui/states";
 import { ChevronRightIcon } from "../components/ui/icons";
-import TrendPanel from "../components/TrendPanel";
+import OverviewHero from "../components/OverviewHero";
+import DayPanel from "../components/DayPanel";
 import EventsPanel from "../components/EventsPanel";
 import FeaturedAttack from "../components/FeaturedAttack";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import { useApi, buildUrl } from "../hooks/useApi";
 import { useCatalogue } from "../hooks/useCatalogue";
 import { API, PAGE_SIZE } from "../lib/api";
-import {
-  countryFlag,
-  countryName,
-  formatCompact,
-  formatHourLabel,
-  formatLongDate,
-  formatNumber,
-  formatPercent,
-} from "../lib/format";
+import { countryFlag, countryName, formatNumber } from "../lib/format";
 
 /** A top-5 list with a link through to the full view. */
 const TopList = ({ title, rows, loading, error, errorLabel, label, value, onViewAll, viewAllLabel }) => {
@@ -78,13 +70,7 @@ const OverviewView = ({ onOpenSession, onNavigate }) => {
   const credsApi = useApi(buildUrl(API.CREDENTIALS, { limit: PAGE_SIZE.PREVIEW }));
   const commandsApi = useApi(buildUrl(API.COMMANDS, { limit: PAGE_SIZE.PREVIEW }));
 
-  const s = summaryApi.raw;
-  const summaryLoading = summaryApi.loading && !s;
-
-  const peak = useMemo(
-    () => trendApi.rows.reduce((acc, p) => (!acc || (p.events || 0) > acc.events ? p : acc), null),
-    [trendApi.rows]
-  );
+  const summaryLoading = summaryApi.loading && !summaryApi.raw;
 
   // A quiet week 404s the featured session; let the feed take the full width
   // rather than leave a hole beside it.
@@ -92,71 +78,23 @@ const OverviewView = ({ onOpenSession, onNavigate }) => {
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
-        <div>
-          <h2 className="text-xl font-semibold tracking-tight text-fg">Overview</h2>
-          <p className="mt-0.5 text-sm text-fg-muted">
-            Live SSH and Telnet attacks against a Cowrie honeypot on a Finnish home network.
-          </p>
-        </div>
-        {/* Lifetime scale: 7,000 today against 7.7M since November is the
-            difference between "a demo" and "a system that has been running". */}
-        {s?.lifetimeEvents > 0 && (
-          <p className="text-sm text-fg-muted">
-            <span title={`${formatNumber(s.lifetimeEvents)} events`}>
-              <strong className="font-semibold text-fg tabular-nums">{formatCompact(s.lifetimeEvents)}</strong> attacks
-              recorded
-            </span>
-            <span className="mx-2 text-fg-subtle">·</span>
-            <strong className="font-semibold text-fg tabular-nums">{formatNumber(s.lifetimeUniqueIps)}</strong> unique
-            attackers
-            <span className="mx-2 text-fg-subtle">·</span>
-            <strong className="font-semibold text-fg tabular-nums">{formatNumber(s.lifetimeCountries)}</strong> countries
-            {s.firstEventAt && (
-              <span className="text-fg-subtle"> since {formatLongDate(s.firstEventAt)}</span>
-            )}
-          </p>
-        )}
-      </div>
+      <ErrorBoundary name="Introduction">
+        <OverviewHero summary={summaryApi.raw} loading={summaryLoading} onNavigate={onNavigate} />
+      </ErrorBoundary>
 
-      {summaryApi.error && !s && <ErrorNotice>Failed to load summary: {summaryApi.error}</ErrorNotice>}
+      {summaryApi.error && !summaryApi.raw && (
+        <ErrorNotice>Failed to load summary: {summaryApi.error}</ErrorNotice>
+      )}
 
-      <section aria-label="Key figures" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Stat
-          label="Attacks · 24h"
-          loading={summaryLoading}
-          value={formatNumber(s?.attacks24h)}
-          hint={peak ? `Peak ${formatNumber(peak.events)} at ${formatHourLabel(peak.hour)}` : "Events in the last 24 hours"}
+      <ErrorBoundary name="Last 24 hours">
+        <DayPanel
+          summary={summaryApi.raw}
+          summaryLoading={summaryLoading}
+          trend={trendApi.rows}
+          trendLoading={trendApi.loading}
+          trendError={trendApi.error}
+          onNavigate={onNavigate}
         />
-        <Stat
-          label="Distinct IP ratio · 24h"
-          loading={summaryLoading}
-          value={s?.uniqueIpPercent != null ? formatPercent(s.uniqueIpPercent, 2) : "—"}
-          hint="Distinct source IPs per 100 events"
-        />
-        <Stat
-          label="Malware samples"
-          loading={summaryLoading}
-          value={formatNumber(s?.malwareSamples)}
-          hint="Unique SHA-256, all time"
-        />
-        <Stat
-          label="Unique commands"
-          loading={summaryLoading}
-          value={formatNumber(s?.uniqueCommands)}
-          hint="Distinct commands, all time"
-        />
-        <Stat
-          label="Credential pairs"
-          loading={summaryLoading}
-          value={formatNumber(s?.uniqueCredCount)}
-          hint="Distinct username/password pairs"
-          className="col-span-2 lg:col-span-1"
-        />
-      </section>
-
-      <ErrorBoundary name="Events per hour">
-        <TrendPanel trend={trendApi.rows} trendError={trendApi.error} trendLoading={trendApi.loading} height={220} />
       </ErrorBoundary>
 
       <div className={hasFeatured ? "grid gap-5 sm:gap-6 xl:grid-cols-2 xl:items-start" : ""}>

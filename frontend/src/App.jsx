@@ -36,6 +36,17 @@ const TABS = [
 ];
 const TAB_LIST = TABS.map(({ id, label }) => ({ id, label }));
 
+// The browser tab says where you are, site name last so it survives
+// truncation in a crowded tab bar as "Commands · hunaja…" rather than
+// "hunajapannu.fi · Co…".
+const SITE_TITLE = "hunajapannu.fi — Live SSH honeypot threat intelligence";
+const titleFor = (tab, sessionOpen) =>
+  sessionOpen
+    ? "Session timeline · hunajapannu.fi"
+    : tab.id === "overview"
+      ? SITE_TITLE
+      : `${tab.label} · hunajapannu.fi`;
+
 function Shell() {
   const { lastUpdated, refresh } = useRefresh();
 
@@ -83,6 +94,10 @@ function Shell() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [openSessionId, closeSession]);
+
+  useEffect(() => {
+    document.title = titleFor(active, Boolean(openSessionId));
+  }, [active, openSessionId]);
 
   const View = active.Component;
 
