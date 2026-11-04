@@ -121,33 +121,41 @@ export const LinkedInIcon = ({ size = 16, className = "" }) => (
 /**
  * The brand mark: a honey pot with a shell prompt cut out of its belly.
  * Hunajapannu is Finnish for honey pot, and what this one catches is typed
- * into a terminal. Honey amber is the one colour in the brand that is not the
- * UI's emerald, so the mark reads as honey before anyone parses the shape.
- * The prompt is a mask rather than paint, so it shows the surface beneath.
+ * into a terminal.
+ *
+ * Constructed on a 48 grid rather than drawn: the body is one circle
+ * (r 15.5) cut flat at the opening and the base, the rim a 26-unit bar a
+ * fixed gap above it, and a 1.6 stroke in the fill colour gives every corner
+ * the same small radius. Honey amber is the one colour in the brand that is
+ * not the UI's emerald. The prompt is a mask, so it shows the surface beneath.
  */
-const LOGO_RIM = "M6.4 2.8h11.2a1.6 1.6 0 0 1 0 3.2H6.4a1.6 1.6 0 0 1 0-3.2Z";
-const LOGO_BELLY =
-  "M8.3 6.9h7.4c0 .9.5 1.4 1.4 1.9 2.4 1.3 3.7 3.5 3.7 6.2 0 4-3.6 6.8-8.8 6.8s-8.8-2.8-8.8-6.8c0-2.7 1.3-4.9 3.7-6.2.9-.5 1.4-1 1.4-1.9Z";
-const LOGO_PROMPT = "M8.4 12.3l2.7 2.3-2.7 2.3M12.9 16.9h3.1";
+const LOGO_BODY = "M13.29 15H34.71A15.5 15.5 0 0 1 31.44 39.8H16.56A15.5 15.5 0 0 1 13.29 15Z";
+const LOGO_PROMPT = "M17.2 22.6l4.8 4.2-4.8 4.2M25.6 31h5.6";
 
 export const LogoMark = ({ size = 22, className = "" }) => {
   const id = useId();
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" className={`shrink-0 ${className}`}>
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" className={`shrink-0 ${className}`}>
       <mask id={id}>
-        <rect width="24" height="24" fill="#fff" />
+        <rect width="48" height="48" fill="#fff" />
         <path
           d={LOGO_PROMPT}
           fill="none"
           stroke="#000"
-          strokeWidth="2.1"
+          strokeWidth="3.2"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
       </mask>
-      <g fill="rgb(var(--honey))" mask={`url(#${id})`}>
-        <path d={LOGO_RIM} />
-        <path d={LOGO_BELLY} />
+      <g
+        fill="rgb(var(--honey))"
+        stroke="rgb(var(--honey))"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+        mask={`url(#${id})`}
+      >
+        <rect x="11" y="7.6" width="26" height="4" rx="1.2" />
+        <path d={LOGO_BODY} />
       </g>
     </svg>
   );
