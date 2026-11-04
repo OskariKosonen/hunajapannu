@@ -67,7 +67,7 @@ const TopCredentialsPanel = ({ creds, credsError, credsLoading, credsTotal, sear
       error={credsError}
       errorLabel="Failed to load credentials"
       emptyTitle={search ? "No credentials match that search." : "No credentials data yet."}
-      maxHeight="36rem"
+      maxHeight="max(24rem, calc(100vh - 17rem))"
     />
   </Panel>
 );

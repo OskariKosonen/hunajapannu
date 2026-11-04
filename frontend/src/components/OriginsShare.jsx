@@ -18,7 +18,7 @@ import { countryFlag, countryName, formatNumber } from "../lib/format";
 const SERIES = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181"];
 const OTHER = "rgb(var(--fg-subtle) / 0.45)";
 
-const OriginsShare = ({ countries, lifetimeEvents, loading, error, onOpen }) => {
+const OriginsShare = ({ countries, lifetimeEvents, loading, error, onOpen, className = "h-full" }) => {
   const parts = useMemo(() => {
     const top = countries.slice(0, SERIES.length).map((c, i) => ({
       key: c.country_iso || `?${i}`,
@@ -40,7 +40,13 @@ const OriginsShare = ({ countries, lifetimeEvents, loading, error, onOpen }) => 
   }, [countries, lifetimeEvents]);
 
   return (
-    <Panel title="Attack origins" meta="Share of all attacks" onOpen={onOpen} openLabel="Open attack origins" className="h-full">
+    <Panel
+      title={onOpen ? "Attack origins" : "Share of all attacks"}
+      meta={onOpen ? "Share of all attacks" : "Top 5 countries"}
+      onOpen={onOpen}
+      openLabel="Open attack origins"
+      className={className}
+    >
       {parts.length === 0 ? (
         error ? (
           <ErrorNotice>Failed to load countries: {error}</ErrorNotice>

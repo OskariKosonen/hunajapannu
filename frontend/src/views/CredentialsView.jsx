@@ -29,7 +29,7 @@ const CredentialsView = () => {
         <PasswordCheck
           endpoint={API.PASSWORD_RANGE}
           uniqueCredCount={summaryApi.raw?.uniqueCredCount}
-          className="lg:sticky lg:top-32"
+          className="lg:sticky lg:top-[4.5rem]"
         />
       </ErrorBoundary>
     </div>

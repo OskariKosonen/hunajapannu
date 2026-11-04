@@ -135,7 +135,7 @@ const OriginsPanel = ({
         error={isAsn ? asnError : countriesError}
         errorLabel={isAsn ? "Failed to load networks" : "Failed to load countries"}
         emptyTitle={isAsn && search ? "No networks match that search." : "No origin data yet."}
-        maxHeight="40rem"
+        maxHeight={isAsn ? "max(24rem, calc(100vh - 18rem))" : "max(24rem, calc(100vh - 14.5rem))"}
       />
     </Panel>
   );

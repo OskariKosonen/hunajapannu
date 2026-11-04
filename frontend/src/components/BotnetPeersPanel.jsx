@@ -24,6 +24,7 @@ const COLUMNS = [
     header: "Peer",
     primary: true,
     nowrap: true,
+    width: "11.5rem",
     render: (r) => (
       <span className="inline-flex items-center gap-2">
         <span aria-hidden="true">{countryFlag(r.country_iso)}</span>
@@ -34,13 +35,14 @@ const COLUMNS = [
   {
     key: "network",
     header: "Network",
-    className: "text-fg-muted max-w-[14rem] truncate",
+    className: "text-fg-muted truncate",
     render: (r) => <span title={r.org ?? ""}>{r.org || (r.asn ? `AS${r.asn}` : "—")}</span>,
   },
   {
     key: "lists",
     header: "Lists",
     align: "right",
+    width: "4.5rem",
     render: (r) => (
       <span className={r.list_count >= 15 ? "font-semibold text-accent" : r.list_count >= 5 ? "text-fg" : "text-fg-muted"}>
         {r.list_count}
@@ -51,6 +53,7 @@ const COLUMNS = [
     key: "last",
     header: "Last seen",
     align: "right",
+    width: "7rem",
     nowrap: true,
     hideOnMobile: true,
     className: "text-fg-subtle",

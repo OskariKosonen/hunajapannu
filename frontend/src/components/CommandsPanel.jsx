@@ -175,7 +175,7 @@ const CommandsPanel = ({
         error={commandsError}
         errorLabel="Failed to load commands"
         emptyTitle={filtered ? "No commands match the current search or filter." : "No command statistics yet."}
-        maxHeight="40rem"
+        maxHeight="max(24rem, calc(100vh - 21rem))"
       />
     </Panel>
   );

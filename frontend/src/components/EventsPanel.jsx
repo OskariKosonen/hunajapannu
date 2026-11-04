@@ -3,7 +3,7 @@ import Panel, { ApiLink } from "./ui/Panel";
 import DataTable from "./ui/DataTable";
 import SegmentedControl from "./ui/SegmentedControl";
 import { EMPTY_STATES } from "../lib/flavour";
-import { countryFlag, formatTimestamp, formatTime, networkLabel, placeLabel } from "../lib/format";
+import { countryFlag, formatEventTime, formatTimestamp, networkLabel, placeLabel } from "../lib/format";
 
 /**
  * The live event feed.
@@ -45,11 +45,17 @@ const Source = ({ ev }) => (
   </div>
 );
 
-const Activity = ({ ev }) => {
+// overflow-wrap:anywhere rather than break-all: a long token still wraps,
+// but "uname -s -v -n -r -m" no longer splits its last flag onto a line of
+// its own. In the compact feed a command is one line, cut with an ellipsis.
+const Activity = ({ ev, compact }) => {
   const kind = classify(ev);
   if (kind === "command") {
     return (
-      <div className="font-mono text-[0.8125rem] text-fg break-all line-clamp-2" title={ev.command}>
+      <div
+        className={`font-mono text-[0.8125rem] text-fg ${compact ? "truncate" : "line-clamp-2 [overflow-wrap:anywhere]"}`}
+        title={ev.command}
+      >
         <span className="text-accent">$ </span>
         {ev.command}
       </div>
@@ -57,7 +63,7 @@ const Activity = ({ ev }) => {
   }
   if (kind === "login") {
     return (
-      <div className="font-mono text-[0.8125rem] text-danger break-all">
+      <div className={`font-mono text-[0.8125rem] text-danger ${compact ? "truncate" : "[overflow-wrap:anywhere]"}`}>
         {`${ev.username || "—"} / ${ev.password ?? "—"}`}
       </div>
     );
@@ -90,9 +96,7 @@ const EventsPanel = ({
         nowrap: true,
         className: "text-fg-muted tabular-nums",
         render: (ev) => (
-          <span title={formatTimestamp(ev.timestamp)}>
-            {compact ? formatTime(ev.timestamp) : formatTimestamp(ev.timestamp)}
-          </span>
+          <span title={formatTimestamp(ev.timestamp)}>{formatEventTime(ev.timestamp)}</span>
         ),
         hideOnMobile: false,
       },
@@ -124,7 +128,8 @@ const EventsPanel = ({
       {
         key: "activity",
         header: "Activity",
-        render: (ev) => <Activity ev={ev} />,
+        className: compact ? "max-w-0 w-full" : undefined,
+        render: (ev) => <Activity ev={ev} compact={compact} />,
       },
     ],
     [compact]

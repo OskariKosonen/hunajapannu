@@ -6,6 +6,7 @@ import {
   formatBytes,
   formatDuration,
   formatRelative,
+  formatEventTime,
   formatPercent,
   countryFlag,
   networkLabel,
@@ -47,6 +48,13 @@ describe("format", () => {
     expect(formatRelative("2026-11-01T12:00:00Z", now)).toBe("3d ago");
     // Clock skew between the Pi and the browser must not produce "-3s ago".
     expect(formatRelative("2026-11-04T12:00:03Z", now)).toBe("0s ago");
+  });
+
+  it("drops the date from today's event times, and keeps it otherwise", () => {
+    const now = new Date();
+    expect(formatEventTime(now, now)).toMatch(/^\d{2}:\d{2}:\d{2}$/);
+    const lastWeek = new Date(now.getTime() - 7 * 86_400_000);
+    expect(formatEventTime(lastWeek, now)).toMatch(/^\d{1,2} [A-Z][a-z]{2,3}, \d{2}:\d{2}:\d{2}$/);
   });
 
   it("labels places and networks without empty separators", () => {

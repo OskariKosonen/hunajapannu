@@ -360,6 +360,21 @@ describe("FeaturedAttack", () => {
     spy.mockRestore();
   });
 
+  it("clamps a giant one-line dropper so the rest of the session stays readable", () => {
+    withReducedMotion();
+    const blob = `echo ${"A".repeat(2000)} > /tmp/x`;
+    render(<FeaturedAttack {...props} data={{
+      session: attack.session,
+      events: [
+        { timestamp: "2026-08-16T10:00:20Z", command: blob, username: null, password: null, tags: [] },
+        { timestamp: "2026-08-16T10:00:21Z", command: "chmod +x /tmp/x", username: null, password: null, tags: [] },
+      ],
+    }} />);
+    expect(screen.getByText(/\+1,8\d\d characters/)).toBeInTheDocument();
+    expect(screen.getByTitle(blob)).toBeInTheDocument();
+    expect(screen.getByText("chmod +x /tmp/x")).toBeInTheDocument();
+  });
+
   it("collapses events ingested more than once", () => {
     // A 2026-08-09 session holds twelve exact copies of every event. Replaying
     // "chattr -ia .ssh" twelve times reads as a broken page, not an attack.
@@ -591,5 +606,18 @@ describe("OriginsShare", () => {
     render(<OriginsShare countries={[]} lifetimeEvents={1000} error="API error 500" />);
     expect(screen.getByText(/failed to load countries/i)).toBeInTheDocument();
     expect(screen.queryByText("Everywhere else")).toBeNull();
+  });
+});
+
+describe("TopMalwarePanel", () => {
+  const base = { downloadsError: "", downloadsLoading: false, downloadsTotal: 1, search: "", onSearch: noop, pageSize: 50 };
+
+  it("drops the size column when no sample has a size", async () => {
+    const { default: TopMalwarePanel } = await import("../components/TopMalwarePanel");
+    const { rerender } = render(<TopMalwarePanel {...base} downloads={[{ sha256: "ab", size_bytes: null }]} />);
+    expect(screen.queryByRole("columnheader", { name: "Size" })).toBeNull();
+    rerender(<TopMalwarePanel {...base} downloads={[{ sha256: "ab", size_bytes: 2048 }]} />);
+    expect(screen.getByRole("columnheader", { name: "Size" })).toBeInTheDocument();
+    expect(screen.getByText("2.0 KB")).toBeInTheDocument();
   });
 });

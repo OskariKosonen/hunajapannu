@@ -35,28 +35,31 @@ const Panel = ({
     {...rest}
   >
     {(title || actions || meta || onOpen) && (
-      <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-4 pt-3.5 pb-3 sm:px-5">
-        <div className="min-w-0">
-          {title && <h2 className="text-base font-semibold text-fg">{title}</h2>}
-          {description && <p className="mt-0.5 text-sm text-fg-muted">{description}</p>}
+      // Title and controls share one row; the description runs full width
+      // underneath, so a long explanation never squeezes into the gap left
+      // beside the controls.
+      <header className="px-4 pt-3.5 pb-3 sm:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          {title && <h2 className="min-w-0 text-base font-semibold text-fg">{title}</h2>}
+          {(meta || actions || onOpen) && (
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2 sm:gap-3">
+              {meta && <span className="text-xs text-fg-subtle whitespace-nowrap tabular-nums">{meta}</span>}
+              {actions}
+              {onOpen && (
+                <button
+                  type="button"
+                  onClick={onOpen}
+                  aria-label={openLabel || "Open full view"}
+                  title={openLabel || "Open full view"}
+                  className="-mr-1.5 flex h-7 w-7 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-fg transition-colors"
+                >
+                  <ArrowRightIcon size={16} />
+                </button>
+              )}
+            </div>
+          )}
         </div>
-        {(meta || actions || onOpen) && (
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            {meta && <span className="text-xs text-fg-subtle whitespace-nowrap tabular-nums">{meta}</span>}
-            {actions}
-            {onOpen && (
-              <button
-                type="button"
-                onClick={onOpen}
-                aria-label={openLabel || "Open full view"}
-                title={openLabel || "Open full view"}
-                className="-mr-1.5 flex h-7 w-7 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-fg transition-colors"
-              >
-                <ArrowRightIcon size={16} />
-              </button>
-            )}
-          </div>
-        )}
+        {description && <p className="mt-1 max-w-4xl text-sm text-fg-muted">{description}</p>}
       </header>
     )}
     {toolbar && <div className="px-4 pb-3 sm:px-5 space-y-3">{toolbar}</div>}

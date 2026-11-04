@@ -6,7 +6,7 @@
     <style>
       .zone  { fill:none; stroke:#065f46; stroke-width:1.5; stroke-dasharray:5 5; }
       .zlbl  { fill:#34d399; font:600 11px ui-monospace,"SFMono-Regular",Menlo,monospace; letter-spacing:.14em; }
-      .node  { fill:#020617; stroke:#34d399; stroke-width:1.75; }
+      .node  { fill:#0a0f0d; stroke:#34d399; stroke-width:1.75; }
       .accent{ fill:#022c22; stroke:#6ee7b7; stroke-width:2; }
       .name  { fill:#d1fae5; font:600 14px ui-monospace,"SFMono-Regular",Menlo,monospace; }
       .sub   { fill:#6ee7b7; font:11.5px ui-monospace,"SFMono-Regular",Menlo,monospace; }
@@ -17,7 +17,7 @@
   </defs>
 
   <!-- solid background so the diagram stays readable when shown outside the dark dashboard (e.g. GitHub light mode) -->
-  <rect width="1280" height="400" rx="12" fill="#020617"/>
+  <rect width="1280" height="400" rx="12" fill="#040706"/>
 
   <!-- zones -->
   <rect class="zone" x="240" y="44" width="496" height="150" rx="10"/>

@@ -59,6 +59,12 @@ const markSeen = (sessionId) => {
 // "thinking, then acting" survive.
 const gapFor = (ms) => Math.min(Math.max(Math.sqrt(Math.max(ms, 0)) * 14, 260), 1500);
 
+// Droppers often push a whole binary through `echo` as one base64 line. Left
+// whole, a single command filled the transcript and the rest of the
+// session scrolled out of sight. Long commands show their opening, which is
+// where the intent is, and say how much was left out. The full text is on hover.
+const MAX_COMMAND_CHARS = 180;
+
 const relativeTime = (ms) => {
   if (!Number.isFinite(ms) || ms < 0) return "+0.0s";
   if (ms < 60_000) return `+${(ms / 1000).toFixed(1)}s`;
@@ -98,17 +104,21 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
       const at = new Date(ev.timestamp).getTime();
       const prev = i === 0 ? at : new Date(events[i - 1].timestamp).getTime();
       const kind = ev.command ? "command" : ev.username ? "login" : "connect";
+      const full =
+        kind === "command"
+          ? ev.command
+          : kind === "login"
+            ? `${ev.username} / ${ev.password ?? ""}`
+            : "connection opened";
+      const clamp = kind === "command" && full.length > MAX_COMMAND_CHARS;
       return {
         kind,
         offset: at - t0,
         gap: at - prev,
         tags: ev.tags || [],
-        text:
-          kind === "command"
-            ? ev.command
-            : kind === "login"
-              ? `${ev.username} / ${ev.password ?? ""}`
-              : "connection opened",
+        full,
+        text: clamp ? full.slice(0, MAX_COMMAND_CHARS) : full,
+        omitted: clamp ? full.length - MAX_COMMAND_CHARS : 0,
       };
     });
   }, [data]);
@@ -295,7 +305,12 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
                 {line.kind === "command" && (
                   <>
                     <span className="text-accent">$ </span>
-                    <span className="text-fg">{shown}</span>
+                    <span className="text-fg" title={line.omitted ? line.full : undefined}>
+                      {shown}
+                    </span>
+                    {line.omitted > 0 && (!isCurrent || typed >= line.text.length) && (
+                      <span className="text-fg-subtle"> … +{line.omitted.toLocaleString("en-GB")} characters</span>
+                    )}
                     {isCurrent && (
                       <span className="inline-block w-[0.5em] h-[1em] align-text-bottom bg-accent animate-pulse ml-0.5" />
                     )}

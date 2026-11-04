@@ -1,5 +1,6 @@
 import { memo } from "react";
 import OriginsPanel from "../components/OriginsPanel";
+import OriginsShare from "../components/OriginsShare";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import { useApi, useDebounced, buildUrl } from "../hooks/useApi";
 import { useUrlState } from "../hooks/useUrlState";
@@ -11,9 +12,10 @@ const OriginsView = () => {
   const debounced = useDebounced(search, SEARCH_DEBOUNCE_MS);
   const countriesApi = useApi(buildUrl(API.TOP_COUNTRIES, { limit: PAGE_SIZE.COUNTRIES }));
   const asnApi = useApi(buildUrl(API.TOP_ASN, { limit: PAGE_SIZE.ASN, search: debounced }));
+  const summaryApi = useApi(API.SUMMARY);
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] xl:items-start">
       <ErrorBoundary name="Attack origins">
         <OriginsPanel
           view={view}
@@ -28,6 +30,15 @@ const OriginsView = () => {
           search={search}
           onSearch={setSearch}
           pageSize={PAGE_SIZE.ASN}
+        />
+      </ErrorBoundary>
+      <ErrorBoundary name="Share of all attacks">
+        <OriginsShare
+          countries={countriesApi.rows}
+          lifetimeEvents={summaryApi.raw?.lifetimeEvents}
+          loading={countriesApi.loading || (summaryApi.loading && !summaryApi.raw)}
+          error={countriesApi.error}
+          className="xl:sticky xl:top-[4.5rem]"
         />
       </ErrorBoundary>
     </div>

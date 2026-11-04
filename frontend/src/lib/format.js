@@ -74,6 +74,20 @@ export function formatTime(ts) {
   });
 }
 
+/**
+ * "14:32:07" for today, "3 Nov, 14:32:07" otherwise. The live feed is almost
+ * all today, and repeating 04/11/2026 on every row made the one column a
+ * reader scans by the hardest to scan.
+ */
+export function formatEventTime(ts, now = new Date()) {
+  const d = toDate(ts);
+  if (!d) return "—";
+  const day = (x) => x.toLocaleDateString(LOCALE, { timeZone: TIME_ZONE });
+  if (day(d) === day(now)) return formatTime(d);
+  const date = d.toLocaleDateString(LOCALE, { timeZone: TIME_ZONE, day: "numeric", month: "short" });
+  return `${date}, ${formatTime(d)}`;
+}
+
 /** 14:32 — for status lines. */
 export function formatClock(ts) {
   const d = toDate(ts);
