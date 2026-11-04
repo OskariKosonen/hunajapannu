@@ -16,6 +16,11 @@ const BARE_RE =
 
 const IPV4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
 
+const { isRoutableIpv4 } = require('./peers');
+
+// A DNS name with at least one dot and an alphabetic top-level label.
+const HOSTNAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$/i;
+
 /** Host portion of a URL, without scheme, port, credentials or path. */
 function hostOf(url) {
   const stripped = String(url).replace(/^[a-z]+:\/\//i, '');
@@ -33,6 +38,22 @@ function extractUrls(command) {
 }
 
 const isIp = (host) => IPV4.test(String(host));
+
+/**
+ * Whether a URL's host names a server someone could actually block.
+ *
+ * Droppers are often scripts, and the parser sees them before the shell does:
+ * "wget http://$SERVER_IP/p.txt" or "http://${HOST}/${BIN_DIR}/x" name a
+ * variable, not a host, and were being listed as payload servers. The cloud
+ * metadata address (169.254.169.254) and other non-routable ranges are the
+ * victim's own network, probed for credentials rather than fetched from.
+ * A variable in the path is fine: the host in front of it is real.
+ */
+function isRealHost(host) {
+  if (!host) return false;
+  if (isIp(host)) return isRoutableIpv4(host);
+  return HOSTNAME.test(host);
+}
 
 /** 1.2.3.4 -> 1.2.3[.]4 — last dot only, the usual convention for addresses. */
 const defangIp = (ip) => String(ip).replace(/\.(?=[^.]*$)/, '[.]');
@@ -62,4 +83,4 @@ function defangUrl(value) {
   return `${m[1].replace(/^http/i, 'hxxp')}://${bracketed}${port}${m[3]}`;
 }
 
-module.exports = { extractUrls, hostOf, isIp, defangIp, defangUrl };
+module.exports = { extractUrls, hostOf, isIp, isRealHost, defangIp, defangUrl };

@@ -17,7 +17,7 @@
 const { pool } = require('../db');
 const { lookupGeo } = require('../geo');
 const { cached } = require('../cache');
-const { extractUrls, hostOf, isIp } = require('../lib/urls');
+const { extractUrls, hostOf, isIp, isRealHost } = require('../lib/urls');
 
 /**
  * GET /api/public/cowrie/payload-hosts
@@ -48,7 +48,7 @@ module.exports = function registerInfrastructureRoutes(app) {
         for (const row of rows) {
           for (const url of extractUrls(row.command || '')) {
             const host = hostOf(url);
-            if (!host) continue;
+            if (!isRealHost(host)) continue;
             let entry = byHost.get(host);
             if (!entry) {
               entry = {

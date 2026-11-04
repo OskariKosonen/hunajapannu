@@ -8,7 +8,7 @@ const { LIMITS } = require('../config');
 const { cached } = require('../cache');
 // Defanging lives in lib/urls.js with the extraction it belongs to, so it can
 // be unit tested and so the URL and IP forms cannot drift apart.
-const { extractUrls, hostOf, defangIp, defangUrl } = require('../lib/urls');
+const { extractUrls, hostOf, isRealHost, defangIp, defangUrl } = require('../lib/urls');
 const { classFilterSql } = require('../lib/record-class');
 
 // Public type name -> how it is served.
@@ -85,7 +85,11 @@ module.exports = function registerIocRoutes(app) {
               LIMIT $2`,
             [since, IOC_MAX_ROWS]
           );
-          collected = result.rows.map((r) => ({
+          // Rows stored before the extractor learned to skip shell variables
+          // ("http://$SERVER_IP/x") and metadata probes are filtered here.
+          const rows =
+            type === 'urls' ? result.rows.filter((r) => isRealHost(hostOf(r.value))) : result.rows;
+          collected = rows.map((r) => ({
             ...r,
             total_events: Number(r.total_events),
             unique_ips: Number(r.unique_ips),
@@ -105,7 +109,11 @@ module.exports = function registerIocRoutes(app) {
               LIMIT $2`,
             [IOC_BACKED[type], IOC_MAX_ROWS]
           );
-          collected = result.rows.map((r) => ({
+          // Rows stored before the extractor learned to skip shell variables
+          // ("http://$SERVER_IP/x") and metadata probes are filtered here.
+          const rows =
+            type === 'urls' ? result.rows.filter((r) => isRealHost(hostOf(r.value))) : result.rows;
+          collected = rows.map((r) => ({
             // 'urls' keeps the field names it has always published. This is a
             // public feed with no versioning, so renaming url -> value would
             // break anyone consuming it for the sake of internal tidiness.
@@ -135,7 +143,11 @@ module.exports = function registerIocRoutes(app) {
              LIMIT $2`,
             [since, IOC_MAX_ROWS]
           );
-          collected = result.rows.map((r) => ({
+          // Rows stored before the extractor learned to skip shell variables
+          // ("http://$SERVER_IP/x") and metadata probes are filtered here.
+          const rows =
+            type === 'urls' ? result.rows.filter((r) => isRealHost(hostOf(r.value))) : result.rows;
+          collected = rows.map((r) => ({
             ...r,
             events: Number(r.events),
             commands: Number(r.commands),

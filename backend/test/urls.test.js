@@ -1,6 +1,6 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
-const { extractUrls, hostOf, isIp, defangIp, defangUrl } = require('../lib/urls');
+const { extractUrls, hostOf, isIp, isRealHost, defangIp, defangUrl } = require('../lib/urls');
 
 /**
  * A missed shape here is a delivery host nobody ever sees, which is the whole
@@ -67,6 +67,37 @@ describe('hostOf', () => {
   test('handles a query string and fragment', () => {
     assert.equal(hostOf('http://x.example?a=1'), 'x.example');
     assert.equal(hostOf('http://x.example#frag'), 'x.example');
+  });
+});
+
+describe('isRealHost', () => {
+  test('accepts routable addresses and real names', () => {
+    assert.equal(isRealHost('45.115.26.22'), true);
+    assert.equal(isRealHost('skynet8.ydns.eu'), true);
+    assert.equal(isRealHost(hostOf('http://raw.githubusercontent.com/a/b.sh')), true);
+  });
+
+  test('rejects shell variables the parser read literally', () => {
+    // Seen in production as "payload hosts": a script's variables, unexpanded.
+    assert.equal(isRealHost(hostOf('http://$SERVER_IP/p.txt')), false);
+    assert.equal(isRealHost(hostOf('http://${HOST}/${BIN_DIR}/x')), false);
+    assert.equal(isRealHost(hostOf('http://$SERVIDOR')), false);
+  });
+
+  test('keeps a real host whose path is templated', () => {
+    assert.equal(isRealHost(hostOf('http://176.65.139.89/bot_${arch}')), true);
+  });
+
+  test('rejects the metadata service and other non-routable ranges', () => {
+    assert.equal(isRealHost('169.254.169.254'), false);
+    assert.equal(isRealHost('127.0.0.1'), false);
+    assert.equal(isRealHost('192.168.1.10'), false);
+  });
+
+  test('rejects bare words and empties', () => {
+    assert.equal(isRealHost('localhost'), false);
+    assert.equal(isRealHost(''), false);
+    assert.equal(isRealHost(null), false);
   });
 });
 

@@ -19,6 +19,8 @@
  *    every count by exactly the number of fallbacks the malware happens to use.
  */
 
+const { hostOf, isRealHost } = require('./urls');
+
 // RFC 5737/1918 and friends. An attacker telling a bot to fetch from 127.0.0.1
 // or 10.x is describing the victim's own network, not infrastructure we can
 // report, and 0.0.0.0/255.255.255.255 are noise from config strings.
@@ -68,6 +70,8 @@ function extractUrls(command) {
   for (const raw of command.match(re) || []) {
     // Trailing punctuation belongs to the shell, not the URL.
     const value = raw.replace(/[.,;:]+$/, '');
+    // "http://$SERVER_IP/x" names a script variable, not a server.
+    if (!isRealHost(hostOf(value))) continue;
     if (!out.has(value)) out.set(value, { type: 'url', value, meta: {} });
   }
   return [...out.values()];

