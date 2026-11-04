@@ -1,27 +1,25 @@
-import { memo } from "react";
-import LoadingSkeleton from "./common/LoadingSkeleton";
-import ScrollShadow from "./common/ScrollShadow";
-import SearchBox from "./common/SearchBox";
+import { memo, useMemo } from "react";
+import Panel, { ApiLink } from "./ui/Panel";
+import DataTable from "./ui/DataTable";
+import SearchInput from "./ui/SearchInput";
+import SegmentedControl from "./ui/SegmentedControl";
+import { countryFlag, countryName, formatNumber } from "../lib/format";
 
 /**
- * Where the traffic comes from, at two granularities.
- *
- * Countries and ASNs were separate panels sitting at the bottom of a column of
- * nine. They answer the same question — where is this coming from — at
- * different resolutions, and neither is the most differentiated content here,
- * so between them they were taking two full slots to say one thing. One panel,
- * one toggle.
- *
- * Formatting numbers matters more here than elsewhere: these are the only
- * columns on the page where a reader compares magnitudes across rows, and
- * "1548513" against "441665" is much harder to rank at a glance than
- * "1,548,513" against "441,665".
+ * Where the traffic comes from, at two granularities: countries and networks
+ * (ASNs) answer the same question at different resolutions, so one panel with
+ * a toggle.
  */
 
-const TABS = [
-  { id: "countries", label: "Countries" },
-  { id: "asn", label: "Networks" },
-];
+/** A count with a thin bar showing it relative to the busiest row. */
+const Volume = ({ value, max }) => (
+  <div className="flex items-center justify-end gap-3">
+    <div className="hidden sm:block h-1.5 w-24 rounded-full bg-surface-3 overflow-hidden" aria-hidden="true">
+      <div className="h-full rounded-full bg-accent/70" style={{ width: `${max ? (Number(value) / max) * 100 : 0}%` }} />
+    </div>
+    <span className="w-24 text-right">{formatNumber(value)}</span>
+  </div>
+);
 
 const OriginsPanel = ({
   view,
@@ -29,7 +27,6 @@ const OriginsPanel = ({
   topCountries,
   countriesError,
   countriesLoading,
-  countryFlag,
   topAsn,
   asnError,
   asnLoading,
@@ -37,162 +34,110 @@ const OriginsPanel = ({
   search,
   onSearch,
   pageSize,
-  formatNumber,
-  isMobile,
 }) => {
   const isAsn = view === "asn";
   const rows = isAsn ? topAsn : topCountries;
-  const error = isAsn ? asnError : countriesError;
-  const loading = isAsn ? asnLoading : countriesLoading;
+  const max = useMemo(() => Math.max(0, ...rows.map((r) => Number(r.total) || 0)), [rows]);
+
+  const columns = useMemo(
+    () => [
+      isAsn
+        ? {
+            key: "asn",
+            header: "Network",
+            primary: true,
+            render: (row) => (
+              <div className="min-w-0">
+                <div className="font-mono text-[0.8125rem] text-fg">AS{row.asn || "?"}</div>
+                <div className="text-xs text-fg-subtle truncate max-w-[22rem]">{row.org || "Unknown"}</div>
+              </div>
+            ),
+          }
+        : {
+            key: "country",
+            header: "Country",
+            primary: true,
+            render: (row) => (
+              <div className="flex items-center gap-2">
+                <span aria-hidden="true">{countryFlag(row.country_iso)}</span>
+                <span className="text-fg">{countryName(row.country_iso)}</span>
+                <span className="font-mono text-xs text-fg-subtle">{row.country_iso}</span>
+              </div>
+            ),
+          },
+      {
+        key: "total",
+        header: "Events",
+        align: "right",
+        render: (row) => <Volume value={row.total} max={max} />,
+      },
+      {
+        key: "unique_ips",
+        header: "Source IPs",
+        align: "right",
+        className: "text-fg-muted w-28",
+        render: (row) => formatNumber(row.unique_ips),
+      },
+    ],
+    [isAsn, max]
+  );
+
+  // Two views in one panel hide half the errors: a failure in the view you
+  // are not looking at is marked on its toggle so it stays discoverable.
+  const options = [
+    { value: "countries", label: "Countries", failed: Boolean(countriesError) },
+    { value: "asn", label: "Networks", failed: Boolean(asnError) },
+  ].map((o) => ({
+    value: o.value,
+    title: o.failed ? `Failed to load ${o.label.toLowerCase()}` : undefined,
+    label: (
+      <>
+        {o.label}
+        {o.failed && <span className="text-danger font-semibold">!</span>}
+      </>
+    ),
+  }));
 
   return (
-    <section className="relative overflow-hidden border border-emerald-700/50 rounded-xl bg-slate-950/70 shadow-[0_10px_35px_rgba(0,0,0,0.45)] backdrop-blur-sm min-w-0">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-slate-950/70 border-b border-emerald-800/60">
-        <h2 className="text-[0.68rem] uppercase tracking-[0.18em] px-2 py-1 rounded-full border border-emerald-600/60 text-emerald-200 bg-emerald-500/5">
-          Origins
-        </h2>
-        <div className="flex items-center gap-1" role="group" aria-label="Origin granularity">
-          {TABS.map((t) => {
-            // Merging two panels into one hid half the errors: a failure in the
-            // view you are not looking at used to have its own panel to report
-            // in. Mark the tab so it stays discoverable.
-            const failed = t.id === "asn" ? Boolean(asnError) : Boolean(countriesError);
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => onView(t.id)}
-                aria-pressed={view === t.id}
-                className={`px-2.5 py-1 rounded-md border text-[0.66rem] transition ${
-                  view === t.id
-                    ? "border-emerald-400 text-emerald-100 bg-emerald-500/15"
-                    : "border-emerald-800/70 text-emerald-500 hover:border-emerald-600"
-                }`}
-              >
-                {t.label}
-                {failed && (
-                  <span className="text-red-400 ml-1" title={`Failed to load ${t.label.toLowerCase()}`}>
-                    !
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="p-4 sm:p-5 text-[0.72rem] sm:text-[0.78rem] leading-tight">
-        {error && rows.length === 0 && (
-          <div className="text-[0.6rem] text-red-400 border border-red-500/50 rounded px-2 py-1 mb-2">
-            Failed to load {isAsn ? "networks" : "geo"}: {error}
-          </div>
-        )}
-
-        {/* Only the ASN view is searchable server-side; countries are 153 rows
-            and arrive whole, so a search box there would be decoration. */}
-        {isAsn && (
-          <div className="mb-3">
-            <SearchBox
-              value={search}
-              onChange={onSearch}
-              placeholder="Search network or AS number…"
-              resultLabel={asnTotal ? `${formatNumber(asnTotal)} networks` : null}
-            />
-          </div>
-        )}
-
-        {loading && rows.length === 0 ? (
-          <LoadingSkeleton />
-        ) : rows.length === 0 ? (
-          !error && (
-            <div className="text-[0.6rem] text-emerald-500">
-              {isAsn && search ? "No networks match that search." : "No origin data yet."}
-            </div>
-          )
-        ) : isMobile && isAsn ? (
-          <div className="grid grid-cols-1 gap-2.5">
-            {topAsn.map((row, idx) => (
-              <div
-                key={`${row.asn}-${idx}`}
-                className="border border-emerald-800/70 rounded-lg bg-slate-950/85 p-3 space-y-1.5"
-              >
-                <div className="text-[0.8rem] text-emerald-100">AS{row.asn || "?"}</div>
-                <div className="text-[0.68rem] text-emerald-300 truncate">
-                  {row.org || "Unknown"}
-                </div>
-                <div className="flex items-center justify-between text-[0.7rem] text-emerald-200">
-                  <span>Events</span>
-                  <span className="font-semibold tabular-nums">{formatNumber(row.total)}</span>
-                </div>
-                <div className="flex items-center justify-between text-[0.7rem] text-emerald-200">
-                  <span>IPs</span>
-                  <span className="font-semibold tabular-nums">{formatNumber(row.unique_ips)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <ScrollShadow className="max-h-[16.5rem] overflow-y-auto border border-emerald-800/70 rounded-lg">
-            <table className="w-full text-[0.68rem] sm:text-[0.72rem]">
-              <thead className="bg-slate-950 sticky top-0 z-10 border-b border-emerald-800/70">
-                <tr>
-                  <th className="px-2.5 py-1.5 text-left font-semibold text-emerald-100 bg-slate-950">
-                    {isAsn ? "ASN / Org" : "Country"}
-                  </th>
-                  <th className="px-2.5 py-1.5 text-right font-semibold text-emerald-100 bg-slate-950">
-                    Events
-                  </th>
-                  <th className="px-2.5 py-1.5 text-right font-semibold text-emerald-100 bg-slate-950">
-                    IPs
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-emerald-900/70 bg-slate-950/80">
-                {rows.map((row, idx) => (
-                  <tr
-                    key={isAsn ? `${row.asn}-${idx}` : `${row.country_iso}-${idx}`}
-                    className="hover:bg-emerald-900/15 odd:bg-slate-950/50 transition-colors"
-                  >
-                    <td className="px-2.5 py-1.5 text-emerald-200 whitespace-nowrap">
-                      {isAsn ? (
-                        <div className="flex flex-col leading-tight">
-                          <span className="text-emerald-100">AS{row.asn || "?"}</span>
-                          <span className="text-emerald-500 truncate">
-                            {row.org || "Unknown"}
-                          </span>
-                        </div>
-                      ) : (
-                        <>
-                          <span className="mr-1" aria-hidden="true">
-                            {countryFlag(row.country_iso)}
-                          </span>
-                          {row.country_iso}
-                        </>
-                      )}
-                    </td>
-                    <td className="px-2.5 py-1.5 text-right text-emerald-200 tabular-nums">
-                      {formatNumber(row.total)}
-                    </td>
-                    <td className="px-2.5 py-1.5 text-right text-emerald-200 tabular-nums">
-                      {formatNumber(row.unique_ips)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </ScrollShadow>
-        )}
-
-        <p className="text-[0.68rem] text-emerald-400 mt-2">
-          {isAsn ? "/api/public/cowrie/top-asn" : "/api/public/cowrie/top-countries"}
-          {isAsn && asnTotal > topAsn.length && (
-            <span className="text-emerald-600">
-              {" "}· showing top {Math.min(pageSize, topAsn.length)} of {formatNumber(asnTotal)}
-            </span>
-          )}
-        </p>
-      </div>
-    </section>
+    <Panel
+      title="Attack origins"
+      description="Where connections come from, by the GeoIP country and network of the source address."
+      meta="All time"
+      actions={
+        <>
+          <SegmentedControl label="Origin granularity" options={options} value={view} onChange={onView} />
+          <ApiLink href={isAsn ? "/api/public/cowrie/top-asn?limit=50" : "/api/public/cowrie/top-countries?limit=50"} />
+        </>
+      }
+      // Only networks are searchable server-side; countries arrive whole.
+      toolbar={
+        isAsn ? (
+          <SearchInput
+            value={search}
+            onChange={onSearch}
+            placeholder="Search network or AS number…"
+            resultLabel={asnTotal ? `${formatNumber(asnTotal)} networks` : null}
+          />
+        ) : undefined
+      }
+      footer={
+        isAsn && asnTotal > topAsn.length
+          ? `Showing the top ${formatNumber(Math.min(pageSize, topAsn.length))} of ${formatNumber(asnTotal)}`
+          : undefined
+      }
+      flush
+    >
+      <DataTable
+        columns={columns}
+        rows={rows}
+        rowKey={(row, i) => (isAsn ? `${row.asn}-${i}` : `${row.country_iso}-${i}`)}
+        loading={isAsn ? asnLoading : countriesLoading}
+        error={isAsn ? asnError : countriesError}
+        errorLabel={isAsn ? "Failed to load networks" : "Failed to load countries"}
+        emptyTitle={isAsn && search ? "No networks match that search." : "No origin data yet."}
+        maxHeight="40rem"
+      />
+    </Panel>
   );
 };
 

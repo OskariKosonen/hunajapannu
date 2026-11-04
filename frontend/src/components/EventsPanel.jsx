@@ -1,21 +1,21 @@
-import { memo } from "react";
-import ScrollShadow from "./common/ScrollShadow";
+import { memo, useMemo, useState } from "react";
+import Panel, { ApiLink } from "./ui/Panel";
+import DataTable from "./ui/DataTable";
+import SegmentedControl from "./ui/SegmentedControl";
+import Button from "./ui/Button";
+import { ChevronRightIcon } from "./ui/icons";
 import { EMPTY_STATES } from "../lib/flavour";
+import { countryFlag, formatTimestamp, formatTime, networkLabel, placeLabel } from "../lib/format";
 
 /**
  * The live event feed.
  *
- * Two things this has to get right that it previously did not:
+ * Not every row is equally interesting. The overwhelming majority are a bot
+ * connecting and trying one password; a handful actually ran commands. Rows
+ * are weighted by what happened: commands are tinted, bare connects recede.
  *
- * 1. Not every row is equally interesting. The overwhelming majority are a bot
- *    connecting and trying one password; a handful actually ran commands. They
- *    used to render identically, so the most interesting thing on the page was
- *    hidden in a hundred rows of noise. Rows are now weighted by what happened.
- *
- * 2. It has to work on a phone. This is a seven-column table of nowrap cells,
- *    and the site is shared from LinkedIn, where most clicks open in a phone
- *    browser. The table became a horizontally-scrolling strip. Narrow viewports
- *    now get cards instead, the same approach the session timeline uses.
+ * A row opens its session's full timeline, so the feed is a way in rather
+ * than a wall of text.
  */
 
 /** connect < login < command, in increasing order of "worth reading". */
@@ -26,143 +26,152 @@ const classify = (ev) => {
 };
 
 const ROW_TONE = {
-  command: "bg-emerald-500/[0.07]",
+  command: "bg-accent/[0.04]",
   login: "",
-  connect: "opacity-55",
+  connect: "opacity-60",
 };
 
-const EventsPanel = ({ events, eventLimit, formatTimestamp, renderGeoPill, isMobile }) => {
-  const shown = events.slice(0, eventLimit);
+const KIND_FILTERS = [
+  { value: "all", label: "All" },
+  { value: "login", label: "Logins" },
+  { value: "command", label: "Commands" },
+];
+
+const Source = ({ ev }) => (
+  <div className="min-w-0">
+    <div className="font-mono text-[0.8125rem] text-info">{ev.src_ip}</div>
+    <div className="mt-0.5 flex items-center gap-1 text-xs text-fg-subtle truncate">
+      <span aria-hidden="true">{countryFlag(ev.country_iso)}</span>
+      <span className="truncate">{placeLabel(ev)}</span>
+    </div>
+  </div>
+);
+
+const Activity = ({ ev }) => {
+  const kind = classify(ev);
+  if (kind === "command") {
+    return (
+      <div className="font-mono text-[0.8125rem] text-fg break-all line-clamp-2" title={ev.command}>
+        <span className="text-accent">$ </span>
+        {ev.command}
+      </div>
+    );
+  }
+  if (kind === "login") {
+    return (
+      <div className="font-mono text-[0.8125rem] text-danger break-all">
+        {`${ev.username || "—"} / ${ev.password ?? "—"}`}
+      </div>
+    );
+  }
+  return <div className="text-xs text-fg-subtle">Connection only · port {ev.dest_port ?? 22}</div>;
+};
+
+const EventsPanel = ({
+  events,
+  eventLimit,
+  loading = false,
+  error = "",
+  onOpenSession,
+  compact = false,
+  onViewAll,
+  className = "",
+}) => {
+  const [kind, setKind] = useState("all");
+
+  const shown = useMemo(() => {
+    const limited = events.slice(0, eventLimit);
+    return kind === "all" ? limited : limited.filter((ev) => classify(ev) === kind);
+  }, [events, eventLimit, kind]);
+
+  const columns = useMemo(
+    () => [
+      {
+        key: "time",
+        header: "Time",
+        nowrap: true,
+        className: "text-fg-muted tabular-nums",
+        render: (ev) => (
+          <span title={formatTimestamp(ev.timestamp)}>
+            {compact ? formatTime(ev.timestamp) : formatTimestamp(ev.timestamp)}
+          </span>
+        ),
+        hideOnMobile: false,
+      },
+      {
+        key: "source",
+        header: "Source",
+        primary: true,
+        className: "w-[13rem]",
+        render: (ev) => <Source ev={ev} />,
+      },
+      ...(compact
+        ? []
+        : [
+            {
+              key: "network",
+              header: "Network",
+              className: "text-fg-muted max-w-[14rem] truncate",
+              render: (ev) => <span title={networkLabel(ev)}>{networkLabel(ev)}</span>,
+            },
+            {
+              key: "port",
+              header: "Port",
+              align: "right",
+              className: "text-fg-muted",
+              hideOnMobile: true,
+              render: (ev) => ev.dest_port ?? 22,
+            },
+          ]),
+      {
+        key: "activity",
+        header: "Activity",
+        render: (ev) => <Activity ev={ev} />,
+      },
+    ],
+    [compact]
+  );
+
+  const filtered = kind !== "all";
 
   return (
-    <section className="relative flex flex-col h-full overflow-hidden border border-emerald-700/50 rounded-xl bg-slate-950/70 shadow-[0_10px_35px_rgba(0,0,0,0.45)] backdrop-blur-sm min-w-0">
-      <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-slate-950/70 border-b border-emerald-800/60 shrink-0">
-        <h2 className="text-[0.68rem] uppercase tracking-[0.18em] px-2 py-1 rounded-full border border-emerald-600/60 text-emerald-200 bg-emerald-500/5 whitespace-nowrap">
-          Live Events
-        </h2>
-      </div>
-
-      <div className="flex flex-col flex-1 min-h-0 p-4 sm:p-5 w-full space-y-2">
-        {isMobile ? (
-          // Cards: a nowrap table cannot be read on a 390px screen, and
-          // side-scrolling the page to see the command column is worse than
-          // dropping the grid entirely.
-          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar space-y-2">
-            {shown.map((ev) => {
-              const kind = classify(ev);
-              return (
-                <div
-                  key={ev.id || `${ev.timestamp}-${ev.src_ip}-${ev.session_id || ""}`}
-                  className={`border rounded-lg p-2.5 space-y-1 ${
-                    kind === "command"
-                      ? "border-emerald-600/60 bg-emerald-500/[0.06]"
-                      : "border-emerald-900/70 bg-slate-950/80"
-                  } ${kind === "connect" ? "opacity-60" : ""}`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-cyan-400 text-[0.78rem]">{ev.src_ip}</span>
-                    <span className="text-[0.6rem] text-green-600 tabular-nums shrink-0">
-                      {formatTimestamp(ev.timestamp)}
-                    </span>
-                  </div>
-                  <div className="text-[0.62rem]">{renderGeoPill(ev)}</div>
-                  {kind === "command" && (
-                    <div className="text-[0.68rem] text-emerald-100 break-all">
-                      <span className="text-green-500">$ </span>
-                      {ev.command}
-                    </div>
-                  )}
-                  {kind === "login" && (
-                    <div className="text-[0.68rem] text-red-400 break-all">
-                      {ev.username || "—"} / {ev.password ?? "—"}
-                    </div>
-                  )}
-                  {kind === "connect" && (
-                    <div className="text-[0.62rem] text-emerald-700">
-                      connection only · port {ev.dest_port ?? 22}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <ScrollShadow
-            containerClassName="flex flex-col flex-1 min-h-0"
-            className="w-full min-w-0 flex-1"
-            topScrollbar
-          >
-            <table className="text-[0.72rem] sm:text-[0.78rem] w-full">
-              <thead className="bg-slate-950 border-b border-emerald-800/60 sticky top-0 z-10">
-                <tr>
-                  {["Timestamp", "Src IP", "Geo / ASN", "Dst Port", "User", "Pass", "Command"].map(
-                    (col) => (
-                      <th
-                        key={col}
-                        className="px-3 py-2 text-left font-semibold text-emerald-100 uppercase tracking-[0.14em] bg-slate-950 whitespace-nowrap"
-                      >
-                        {col}
-                      </th>
-                    )
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-emerald-900/70 bg-slate-950">
-                {shown.map((ev) => {
-                  const kind = classify(ev);
-                  return (
-                    <tr
-                      key={ev.id || `${ev.timestamp}-${ev.src_ip}-${ev.session_id || ""}`}
-                      className={`hover:bg-emerald-900/15 transition-colors ${ROW_TONE[kind]}`}
-                    >
-                      <td className="px-3 py-2 whitespace-nowrap text-green-400 tabular-nums">
-                        {formatTimestamp(ev.timestamp)}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-cyan-400">{ev.src_ip}</td>
-                      <td className="px-3 py-2 whitespace-nowrap max-w-[180px]">
-                        {renderGeoPill(ev)}
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-yellow-300 text-right tabular-nums">
-                        {ev.dest_port ?? 22}
-                      </td>
-                      {/* Red is for a credential that was actually tried. An
-                          absent one is dimmed instead: most rows are a bare
-                          connect, so colouring those red spent the loudest
-                          colour on the page marking nothing, and "NULL" put
-                          a database word in front of visitors. The mobile
-                          cards below already rendered these as a dash. */}
-                      <td className={`px-3 py-2 whitespace-nowrap ${ev.username ? "text-red-400" : "text-emerald-800"}`}>
-                        {ev.username || "—"}
-                      </td>
-                      <td className={`px-3 py-2 whitespace-nowrap ${ev.password ? "text-red-400" : "text-emerald-800"}`}>
-                        {ev.password || "—"}
-                      </td>
-                      <td
-                        className={`px-3 py-2 max-w-xs truncate ${
-                          kind === "command" ? "text-emerald-100" : "text-emerald-200"
-                        }`}
-                        title={ev.command || undefined}
-                      >
-                        {ev.command || "—"}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </ScrollShadow>
-        )}
-
-        {events.length === 0 && (
-          <div className="shrink-0 py-6 text-center text-xs text-green-500 space-y-1">
-            <div>
-              <span className="text-green-400">$</span> {EMPTY_STATES.events.line}
-            </div>
-            <div className="text-[0.65rem] text-emerald-700">{EMPTY_STATES.events.hint}</div>
-          </div>
-        )}
-      </div>
-    </section>
+    <Panel
+      title="Live events"
+      description={compact ? undefined : "Every connection, login attempt and command, newest first. Select a row to open its session."}
+      meta={compact ? "Newest first" : `Latest ${events.length.toLocaleString("en-GB")}`}
+      actions={
+        <>
+          {!compact && (
+            <SegmentedControl label="Event type" options={KIND_FILTERS} value={kind} onChange={setKind} />
+          )}
+          {!compact && <ApiLink href="/api/public/cowrie/latest?limit=100" />}
+          {compact && onViewAll && (
+            <Button variant="ghost" onClick={onViewAll}>
+              View all
+              <ChevronRightIcon size={13} />
+            </Button>
+          )}
+        </>
+      }
+      flush
+      className={className}
+    >
+      <DataTable
+        columns={columns}
+        rows={shown}
+        rowKey={(ev, i) => ev.id || `${ev.timestamp}-${ev.src_ip}-${ev.session_id || ""}-${i}`}
+        loading={loading}
+        error={error}
+        errorLabel="Failed to load events"
+        emptyTitle={filtered ? "No events of this type in the latest batch." : EMPTY_STATES.events.line}
+        emptyHint={filtered ? undefined : EMPTY_STATES.events.hint}
+        rowClassName={(ev) => ROW_TONE[classify(ev)]}
+        onRowClick={onOpenSession ? (ev) => ev.session_id && onOpenSession(ev.session_id) : undefined}
+        rowLabel={(ev) => `Open session from ${ev.src_ip}`}
+        maxHeight={compact ? "27rem" : "calc(100vh - 16rem)"}
+        skeletonRows={compact ? 8 : 12}
+      />
+    </Panel>
   );
 };
 

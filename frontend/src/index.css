@@ -2,147 +2,90 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Global console vibe */
-body {
-  @apply bg-black text-green-400 font-mono;
+/*
+ * Design tokens. Bare RGB channels so Tailwind's opacity modifiers work on
+ * them (see tailwind.config.cjs). Same black-and-emerald colourway as before,
+ * reduced to a handful of roles: surfaces, borders, three text tiers, one
+ * accent, and three colours that only ever carry meaning.
+ */
+:root {
+  --canvas: 4 7 6;
+  --surface: 10 15 13;
+  --surface-2: 15 22 19;
+  --surface-3: 21 30 26;
+
+  --line: 28 43 36;
+  --line-strong: 40 62 52;
+
+  --fg: 226 240 233;
+  --fg-muted: 157 184 171;
+  --fg-subtle: 110 140 126;
+
+  --accent: 52 211 153;
+  --accent-strong: 16 185 129;
+  --accent-fg: 2 44 34;
+
+  --danger: 248 113 113;
+  --warn: 251 191 36;
+  --info: 103 232 249;
+
+  color-scheme: dark;
 }
 
-.hero-grid::before,
-.hero-grid::after {
-  content: "";
-  position: absolute;
-  inset: -50%;
-  background: repeating-linear-gradient(
-      90deg,
-      rgba(16, 185, 129, 0.06),
-      rgba(16, 185, 129, 0.06) 1px,
-      transparent 1px,
-      transparent 30px
-    ),
-    repeating-linear-gradient(
-      0deg,
-      rgba(16, 185, 129, 0.06),
-      rgba(16, 185, 129, 0.06) 1px,
-      transparent 1px,
-      transparent 30px
-    );
-  animation: heroParallax 18s linear infinite;
-  opacity: 0.15;
-}
-
-.hero-grid::after {
-  animation-direction: reverse;
-  opacity: 0.1;
-}
-
-@keyframes heroParallax {
-  from {
-    transform: translate3d(-6px, -6px, 0);
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
   }
-  to {
-    transform: translate3d(6px, 6px, 0);
+
+  body {
+    @apply bg-canvas text-fg font-sans text-base antialiased;
+    font-feature-settings: "cv11", "ss01";
   }
-}
 
-.animate-heroGlow {
-  animation: heroGlowPulse 24s ease-in-out infinite;
-}
-
-@keyframes heroGlowPulse {
-  0% {
-    opacity: 0.1;
+  table {
+    font-variant-numeric: tabular-nums;
   }
-  50% {
-    opacity: 0.25;
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 2px;
   }
-  100% {
-    opacity: 0.1;
-  }
-}
 
-.loading-grid {
-  background: radial-gradient(circle at 20% 20%, rgba(16, 185, 129, 0.2), transparent 45%),
-    radial-gradient(circle at 80% 0%, rgba(52, 211, 153, 0.2), transparent 40%),
-    repeating-linear-gradient(
-      90deg,
-      rgba(15, 118, 110, 0.15) 0,
-      rgba(15, 118, 110, 0.15) 1px,
-      transparent 1px,
-      transparent 40px
-    ),
-    repeating-linear-gradient(
-      0deg,
-      rgba(15, 118, 110, 0.15) 0,
-      rgba(15, 118, 110, 0.15) 1px,
-      transparent 1px,
-      transparent 40px
-    );
-  animation: heroParallax 24s linear infinite;
-}
-
-.loading-bar {
-  position: relative;
-}
-
-.loading-bar__indicator {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(52, 211, 153, 0.8), transparent);
-  width: 50%;
-  animation: loadingSweep 1.8s linear infinite;
-}
-
-@keyframes loadingSweep {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(200%);
-  }
-}
-
-.animate-fadeIn {
-  opacity: 0;
-  animation: fadeIn 0.6s ease forwards;
-}
-
-@keyframes fadeIn {
-  to {
-    opacity: 1;
+  ::selection {
+    background: rgb(var(--accent) / 0.3);
   }
 }
 
 .custom-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #22c55e rgba(15, 23, 42, 0.85);
+  scrollbar-color: rgb(var(--line-strong)) transparent;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-  height: 6px;
-  width: 6px;
+  height: 8px;
+  width: 8px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.9);
-  border-radius: 9999px;
+  background: transparent;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #34d399, #22d3ee);
+  background: rgb(var(--line-strong));
   border-radius: 9999px;
-  border: 1px solid rgba(16, 185, 129, 0.35);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #6ee7b7, #2dd4bf);
+  background: rgb(var(--fg-subtle));
+  background-clip: padding-box;
 }
 
 /* The attack replay auto-scrolls to keep the newest line in view, so the row
    at the top of the box is almost always sliced through the middle and reads
-   as a rendering fault. Fading the first line or so into the background turns
-   that clip into an obvious "there is more above". A mask rather than an
-   overlay because the panel behind it is a gradient, so there is no single
-   colour an overlay could match. */
+   as a rendering fault. Fading the first line or so turns that clip into an
+   obvious "there is more above". */
 .fade-scroll-top {
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 1.4rem);
   mask-image: linear-gradient(to bottom, transparent 0, #000 1.4rem);
@@ -154,4 +97,14 @@ body {
 
 .hide-native-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

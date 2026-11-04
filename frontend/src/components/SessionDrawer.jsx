@@ -1,39 +1,30 @@
 import { memo, useEffect, useRef } from "react";
-import LoadingSkeleton from "./common/LoadingSkeleton";
+import Badge from "./ui/Badge";
+import TechniqueBadge from "./TechniqueBadge";
+import { ErrorNotice, Skeleton, EmptyState } from "./ui/states";
+import { XIcon } from "./ui/icons";
+import { countryFlag, formatDuration, formatTimestamp, networkLabel } from "../lib/format";
 
 /** Classifies an event so the timeline can show what kind of step it was. */
 function describe(ev) {
-  if (ev.command) return { kind: "command", label: "cmd", text: ev.command };
+  if (ev.command) return { kind: "command", label: "Command", text: ev.command };
   if (ev.username || ev.password) {
     return {
       kind: "login",
-      label: "login",
+      label: "Login",
       text: `${ev.username || "∅"} / ${ev.password || "∅"}`,
     };
   }
-  return { kind: "connect", label: "conn", text: "session opened" };
+  return { kind: "connect", label: "Connect", text: "session opened" };
 }
 
-const KIND_STYLES = {
-  command: "border-cyan-400/60 text-cyan-100 bg-cyan-500/10",
-  login: "border-amber-400/60 text-amber-100 bg-amber-500/10",
-  connect: "border-emerald-400/60 text-emerald-100 bg-emerald-500/10",
-};
+const KIND_TONE = { command: "accent", login: "danger", connect: "muted" };
 
 /**
  * Full timeline for one session: connect, credentials tried, commands run —
  * in order, with the MITRE techniques each command matched.
  */
-const SessionDrawer = ({
-  data,
-  loading,
-  error,
-  onClose,
-  formatTimestamp,
-  formatDuration,
-  countryFlag,
-  mitreById,
-}) => {
+const SessionDrawer = ({ data, loading, error, onClose, mitreById = {} }) => {
   const session = data?.session || {};
   const events = data?.events || [];
   const panelRef = useRef(null);
@@ -75,115 +66,96 @@ const SessionDrawer = ({
     };
   }, []);
 
+  const facts = [
+    ["Events", session.events ?? events.length],
+    ["Duration", formatDuration(session.duration_ms)],
+    ["Started", formatTimestamp(session.started_at)],
+  ];
+
   return (
     <div
-      className="fixed inset-0 z-[1100] flex justify-end bg-black/70 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex justify-end bg-black/60"
       onClick={onClose}
       role="presentation"
     >
       <aside
         ref={panelRef}
-        className="w-full sm:max-w-2xl h-full bg-slate-950 border-l border-emerald-700/60 shadow-2xl flex flex-col"
+        className="flex h-full w-full flex-col border-l border-line-strong bg-surface shadow-2xl sm:max-w-xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="Session timeline"
       >
-        <header className="flex items-start justify-between gap-3 px-4 sm:px-5 py-3 border-b border-emerald-800/60 bg-slate-950/90">
+        <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div className="min-w-0">
-            <div className="text-[0.68rem] uppercase tracking-[0.18em] text-emerald-400">
-              Session timeline
-            </div>
-            <div className="text-emerald-100 text-sm mt-1 flex items-center gap-2 flex-wrap">
+            <div className="text-xs font-medium text-fg-subtle">Session timeline</div>
+            <div className="mt-1 flex items-center gap-2 text-lg font-semibold text-fg">
               <span aria-hidden="true">{countryFlag(session.country_iso)}</span>
-              <span className="font-semibold">{session.src_ip || "—"}</span>
-              <span className="text-[0.65rem] text-emerald-500 font-mono truncate">
-                {session.session_id}
-              </span>
+              <span className="font-mono text-info">{session.src_ip || "—"}</span>
             </div>
-            <div className="text-[0.65rem] text-emerald-500 mt-0.5 truncate">
-              {[session.city, session.org, session.asn && `AS${session.asn}`]
-                .filter(Boolean)
-                .join(" · ") || "—"}
+            <div className="mt-0.5 text-sm text-fg-muted truncate">
+              {[session.city, networkLabel(session)].filter(Boolean).join(" · ")}
             </div>
+            {session.session_id && (
+              <div className="mt-1 font-mono text-xs text-fg-subtle truncate">{session.session_id}</div>
+            )}
           </div>
           <button
             ref={closeRef}
             type="button"
             onClick={onClose}
             aria-label="Close session timeline"
-            className="text-emerald-400 hover:text-emerald-100 border border-emerald-800/70 hover:border-emerald-500/70 rounded-md px-2 py-1 text-[0.75rem] transition shrink-0"
+            className="rounded-md p-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg transition-colors shrink-0"
           >
-            ✕
+            <XIcon size={18} />
           </button>
         </header>
 
         {!loading && events.length > 0 && (
-          <div className="grid grid-cols-3 gap-px bg-emerald-900/40 border-b border-emerald-800/60 text-center">
-            {[
-              ["Events", session.events ?? events.length],
-              ["Duration", formatDuration(session.duration_ms)],
-              ["Started", formatTimestamp(session.started_at)],
-            ].map(([label, value]) => (
-              <div key={label} className="bg-slate-950 px-2 py-2">
-                <div className="text-[0.58rem] uppercase tracking-[0.14em] text-emerald-500">
-                  {label}
-                </div>
-                <div className="text-[0.72rem] text-emerald-100 mt-0.5 break-words">{value}</div>
+          <dl className="grid grid-cols-3 divide-x divide-line border-b border-line">
+            {facts.map(([label, value]) => (
+              <div key={label} className="px-5 py-3">
+                <dt className="text-xs text-fg-subtle">{label}</dt>
+                <dd className="mt-0.5 text-sm text-fg tabular-nums break-words">{value}</dd>
               </div>
             ))}
-          </div>
+          </dl>
         )}
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar px-4 sm:px-5 py-4">
+        <div className="flex-1 overflow-y-auto custom-scrollbar px-5 py-5">
           {error ? (
-            <div className="text-[0.7rem] text-red-400 border border-red-500/50 rounded px-2 py-1">
-              Failed to load session: {error}
-            </div>
+            <ErrorNotice>Failed to load session: {error}</ErrorNotice>
           ) : loading ? (
-            <LoadingSkeleton />
+            <Skeleton rows={8} />
           ) : events.length === 0 ? (
-            <div className="text-[0.7rem] text-emerald-500">No events in this session.</div>
+            <EmptyState title="No events in this session." />
           ) : (
-            <ol className="relative border-l border-emerald-800/70 ml-2 space-y-3">
+            <ol className="relative ml-1.5 space-y-4 border-l border-line">
               {events.map((ev, idx) => {
                 const { kind, label, text } = describe(ev);
                 return (
-                  <li key={`${ev.timestamp}-${idx}`} className="ml-4">
-                    <span className="absolute -left-[5px] mt-1.5 h-2.5 w-2.5 rounded-full bg-emerald-500 border border-slate-950" />
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span
-                        className={`inline-flex px-1.5 py-0.5 rounded-full border text-[0.58rem] uppercase tracking-wide ${KIND_STYLES[kind]}`}
-                      >
-                        {label}
-                      </span>
-                      <time className="text-[0.62rem] text-emerald-500 font-mono">
-                        {formatTimestamp(ev.timestamp)}
-                      </time>
+                  <li key={`${ev.timestamp}-${idx}`} className="relative pl-5">
+                    <span
+                      className={`absolute -left-[4.5px] top-1.5 h-2 w-2 rounded-full ring-4 ring-surface ${
+                        kind === "command" ? "bg-accent" : kind === "login" ? "bg-danger" : "bg-fg-subtle"
+                      }`}
+                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge tone={KIND_TONE[kind]}>{label}</Badge>
+                      <time className="text-xs text-fg-subtle tabular-nums">{formatTimestamp(ev.timestamp)}</time>
                     </div>
                     <div
-                      className={`mt-1 text-[0.75rem] break-words whitespace-pre-wrap ${
-                        kind === "command" ? "text-emerald-100 font-mono" : "text-emerald-300"
+                      className={`mt-1.5 text-sm break-words whitespace-pre-wrap ${
+                        kind === "connect" ? "text-fg-subtle" : "font-mono text-fg"
                       }`}
                     >
                       {text}
                     </div>
                     {ev.tags?.length > 0 && (
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {ev.tags.map((id) => {
-                          const sig = mitreById[id];
-                          return (
-                            <span
-                              key={id}
-                              title={sig?.description}
-                              className={`inline-flex px-1.5 py-0.5 rounded-full border text-[0.6rem] ${
-                                sig?.badgeColor || "border-emerald-400/60 text-emerald-100 bg-emerald-500/10"
-                              }`}
-                            >
-                              {sig?.name || id}
-                            </span>
-                          );
-                        })}
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {ev.tags.map((id) => (
+                          <TechniqueBadge key={id} id={id} technique={mitreById[id]} />
+                        ))}
                       </div>
                     )}
                   </li>
@@ -193,7 +165,7 @@ const SessionDrawer = ({
           )}
 
           {session.truncated && (
-            <p className="mt-4 text-[0.62rem] text-amber-300/80">
+            <p className="mt-5 text-xs text-warn">
               Timeline truncated — this session has more events than the display limit.
             </p>
           )}

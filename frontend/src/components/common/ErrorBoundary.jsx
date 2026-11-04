@@ -1,4 +1,6 @@
 import { Component } from "react";
+import Button from "../ui/Button";
+import { AlertIcon } from "../ui/icons";
 
 /**
  * Keeps one misbehaving panel from taking the page down with it.
@@ -26,23 +28,15 @@ class ErrorBoundary extends Component {
     if (!this.state.error) return this.props.children;
 
     return (
-      <section
-        role="alert"
-        className="border border-red-500/60 rounded-xl bg-slate-950/80 p-4 text-[0.72rem] space-y-2"
-      >
-        <div className="text-red-300 font-semibold">
+      <section role="alert" className="rounded-lg border border-danger/30 bg-surface p-4 space-y-2">
+        <div className="flex items-center gap-2 text-sm font-medium text-danger">
+          <AlertIcon size={14} />
           {this.props.name ? `${this.props.name} failed to render` : "Panel failed to render"}
         </div>
-        <p className="text-emerald-500 text-[0.68rem]">
+        <p className="text-sm text-fg-muted">
           The rest of the dashboard is unaffected. Details are in the browser console.
         </p>
-        <button
-          type="button"
-          onClick={() => this.setState({ error: null })}
-          className="px-2.5 py-1 rounded-md border border-emerald-700/70 text-emerald-300 hover:border-emerald-500/70 transition text-[0.68rem]"
-        >
-          Try again
-        </button>
+        <Button onClick={() => this.setState({ error: null })}>Try again</Button>
       </section>
     );
   }

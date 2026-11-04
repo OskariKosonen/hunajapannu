@@ -66,11 +66,11 @@ describe("App", () => {
 
   afterEach(() => { vi.restoreAllMocks(); });
 
-  it("loads every panel's endpoint and renders their data", async () => {
+  it("loads the overview's endpoints and renders their data", async () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText("hunajapannu.fi")).toBeInTheDocument());
 
-    for (const path of ["/latest", "/summary", "/commands", "/creds", "/files", "/top-asn", "/top-countries", "/events-per-hour", "/mitre"]) {
+    for (const path of ["/latest", "/summary", "/commands", "/creds", "/top-countries", "/events-per-hour", "/mitre", "/sessions/featured"]) {
       expect(requested.some((u) => u.includes(path)), `expected a request to ${path}`).toBe(true);
     }
 
@@ -79,7 +79,91 @@ describe("App", () => {
     expect(screen.getAllByText(/Chinanet/).length).toBeGreaterThan(0);
   });
 
+  it("only fetches what the current view shows", async () => {
+    // The single-page dashboard requested every endpoint on load to fill
+    // panels most visitors never scrolled to.
+    render(<App />);
+    await screen.findByText(/attacks recorded/i);
+    for (const path of ["/files", "/payload-hosts", "/top-asn", "/peers", "/probes"]) {
+      expect(requested.some((u) => u.includes(path)), `did not expect ${path} on the overview`).toBe(false);
+    }
+  });
+
+  it("fetches a view's data once that view is opened", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Malware" }));
+    await waitFor(() => expect(requested.some((u) => u.includes("/files"))).toBe(true));
+    expect(requested.some((u) => u.includes("/payload-hosts"))).toBe(true);
+    expect(await screen.findByText(/deadbeef/)).toBeInTheDocument();
+  });
+
+  it("keeps the active view in the url, and Back returns to the previous one", async () => {
+    render(<App />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Commands" }));
+    expect(window.location.search).toContain("view=commands");
+    expect(screen.getByRole("tab", { name: "Commands" })).toHaveAttribute("aria-selected", "true");
+
+    window.history.back();
+    await waitFor(() => expect(window.location.search).not.toContain("view="));
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true")
+    );
+  });
+
+  it("opens straight into the view a shared link names", async () => {
+    window.history.replaceState(null, "", "/?view=origins&origins=asn");
+    render(<App />);
+    expect(await screen.findByText("AS4134")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Origins" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("falls back to the overview for an unknown view", async () => {
+    window.history.replaceState(null, "", "/?view=nope");
+    render(<App />);
+    expect(await screen.findByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("moves between views with the arrow keys", async () => {
+    render(<App />);
+    const overview = await screen.findByRole("tab", { name: "Overview" });
+    fireEvent.keyDown(overview, { key: "ArrowRight" });
+    expect(screen.getByRole("tab", { name: "Live activity" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Live activity" })).toHaveFocus();
+  });
+
+  it("flags the sensor as stale when no event has arrived for a while", async () => {
+    // The fixture's newest event is months old.
+    render(<App />);
+    await waitFor(() =>
+      expect(screen.getAllByRole("status").some((el) => /no events for/i.test(el.textContent))).toBe(true)
+    );
+  });
+
+  it("shows the sensor as live when events are fresh", async () => {
+    const fresh = new Date(Date.now() - 20_000).toISOString();
+    global.fetch = vi.fn((url) => {
+      const u = String(url);
+      requested.push(u);
+      const body = u.includes("/latest") ? [{ ...payloadFor(u)[0], timestamp: fresh }] : payloadFor(u);
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+    });
+    render(<App />);
+    await waitFor(() =>
+      expect(screen.getAllByRole("status").some((el) => /live · last event/i.test(el.textContent))).toBe(true)
+    );
+  });
+
+  it("opens a session from a row in the live feed", async () => {
+    window.history.replaceState(null, "", "/?view=activity");
+    render(<App />);
+    const rows = await screen.findAllByTitle("Open session from 1.2.3.4");
+    fireEvent.click(rows[0]);
+    await waitFor(() => expect(window.location.search).toContain("session=abc123"));
+    expect(await screen.findByRole("dialog", { name: /session timeline/i })).toBeInTheDocument();
+  });
+
   it("asks for only a page of rows, not thousands", async () => {
+    window.history.replaceState(null, "", "/?view=commands");
     render(<App />);
     await waitFor(() => expect(requested.some((u) => u.includes("/commands")), "commands requested").toBe(true));
     const commands = requested.find((u) => u.includes("/commands"));
@@ -123,7 +207,7 @@ describe("App", () => {
   it("restores a search from the url and sends it to the API", async () => {
     // ?q= drove the deleted session list; ?cred= is the same mechanism on a
     // panel that still exists.
-    window.history.replaceState(null, "", "/?cred=root");
+    window.history.replaceState(null, "", "/?view=credentials&cred=root");
     render(<App />);
     await waitFor(() =>
       expect(requested.some((u) => u.includes("/creds") && u.includes("search=root"))).toBe(true)
@@ -165,7 +249,7 @@ describe("App", () => {
     });
     render(<App />);
     await waitFor(() => expect(screen.getByText("hunajapannu.fi")).toBeInTheDocument());
-    expect(await screen.findByText(/failed to load geo/i)).toBeInTheDocument();
+    expect(await screen.findByText(/failed to load countries/i)).toBeInTheDocument();
     // The rest of the dashboard is unaffected.
     expect(screen.getAllByText(/wget http:\/\/a\/b\.sh/).length).toBeGreaterThan(0);
   });
@@ -209,6 +293,8 @@ describe("App", () => {
   });
 
   describe("phase 3 and 5 panels", () => {
+    beforeEach(() => { window.history.replaceState(null, "", "/?view=botnet"); });
+
     it("shows the persistent peers with their recurrence", async () => {
       render(<App />);
       // The count is the whole point of the panel: a peer in 41 separate

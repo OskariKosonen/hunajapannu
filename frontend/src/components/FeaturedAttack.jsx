@@ -1,4 +1,10 @@
 import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
+import Button from "./ui/Button";
+import Badge from "./ui/Badge";
+import TechniqueBadge from "./TechniqueBadge";
+import { Skeleton } from "./ui/states";
+import { ChevronDownIcon, ChevronRightIcon, PauseIcon, PlayIcon, ReplayIcon, SkipIcon, TimelineIcon } from "./ui/icons";
+import { countryFlag, networkLabel } from "../lib/format";
 
 /**
  * Replays one real attacker session as a terminal.
@@ -65,7 +71,7 @@ const prefersReducedMotion = () =>
   typeof window.matchMedia === "function" &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const FeaturedAttack = ({ data, loading, error, mitreById, countryFlag, onOpenFull }) => {
+const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className = "" }) => {
   const session = data?.session;
 
   // One display line per event, precomputed so the replay loop only advances
@@ -161,11 +167,8 @@ const FeaturedAttack = ({ data, loading, error, mitreById, countryFlag, onOpenFu
 
   if (loading && !data) {
     return (
-      <section className="border border-emerald-700/50 rounded-xl bg-slate-950/70 p-5">
-        <div className="flex items-center gap-2 text-[0.7rem] text-emerald-500">
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-emerald-400" />
-          Loading a captured session…
-        </div>
+      <section className={`rounded-lg border border-line bg-surface p-5 ${className}`} aria-label="Featured session">
+        <Skeleton rows={6} />
       </section>
     );
   }
@@ -179,33 +182,35 @@ const FeaturedAttack = ({ data, loading, error, mitreById, countryFlag, onOpenFu
   const techniques = [...new Set(lines.flatMap((l) => l.tags))];
   // Techniques already revealed at this point in the replay.
   const seen = new Set(visible.flatMap((l, i) => (i < step ? l.tags : typed > 0 ? l.tags : [])));
+  const duration = relativeTime(lines[lines.length - 1].offset).slice(1);
 
   return (
-    <section className="relative overflow-hidden border border-emerald-600/60 rounded-xl bg-gradient-to-br from-slate-950 via-emerald-950/25 to-black shadow-[0_10px_35px_rgba(0,0,0,0.45)]">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-3 border-b border-emerald-800/60 bg-black/40">
+    <section className={`flex flex-col min-w-0 rounded-lg border border-line bg-surface ${className}`}>
+      <header className="flex flex-wrap items-start justify-between gap-3 px-4 pt-3.5 pb-3 sm:px-5">
         <div className="min-w-0">
-          <p className="text-[0.65rem] uppercase tracking-[0.2em] text-emerald-400">
-            Anatomy of an attack
-          </p>
-          <h2 className="text-base sm:text-lg font-semibold text-green-200 truncate">
-            {countryFlag ? `${countryFlag(session.country_iso)} ` : ""}
-            {session.src_ip}
-            <span className="text-emerald-500 font-normal text-[0.8rem]">
-              {session.org ? ` · ${session.org}` : ""}
-              {session.city ? ` · ${session.city}` : ""}
-            </span>
+          <div className="flex items-center gap-2">
+            <Badge tone="accent">Featured session</Badge>
+            <span className="text-xs text-fg-subtle">Busiest of the past week</span>
+          </div>
+          <h2 className="mt-2 flex items-center gap-2 text-base font-semibold text-fg min-w-0">
+            <span aria-hidden="true">{countryFlag(session.country_iso)}</span>
+            <span className="font-mono text-info">{session.src_ip}</span>
           </h2>
-          <p className="text-[0.65rem] text-emerald-500 mt-0.5">
-            {commandCount} commands over {relativeTime(lines[lines.length - 1].offset).slice(1)} —
-            replayed at the pace it happened
+          <p className="mt-0.5 text-sm text-fg-muted truncate">
+            {networkLabel(session)}
+            {session.city ? ` · ${session.city}` : ""}
+          </p>
+          <p className="mt-0.5 text-xs text-fg-subtle">
+            {commandCount} {commandCount === 1 ? "command" : "commands"} over {duration}, replayed in
+            order
           </p>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5">
           {!collapsed && (
             <>
-              <button
-                type="button"
+              <Button
+                className="w-[5.5rem]"
                 onClick={() => {
                   if (done) {
                     setStep(0);
@@ -215,36 +220,32 @@ const FeaturedAttack = ({ data, loading, error, mitreById, countryFlag, onOpenFu
                     setPlaying((p) => !p);
                   }
                 }}
-                className="px-2.5 py-1 rounded-md border border-emerald-700/70 text-emerald-300 hover:border-emerald-500 hover:text-emerald-100 transition text-[0.68rem] w-[4.6rem]"
               >
-                {done ? "↻ Replay" : playing ? "❚❚ Pause" : "▶ Play"}
-              </button>
+                {done ? <ReplayIcon size={13} /> : playing ? <PauseIcon size={13} /> : <PlayIcon size={13} />}
+                {done ? "Replay" : playing ? "Pause" : "Play"}
+              </Button>
               {!done && (
-                <button
-                  type="button"
+                <Button
                   onClick={() => {
                     setPlaying(false);
                     setStep(lines.length);
                     setTyped(0);
                   }}
-                  className="px-2.5 py-1 rounded-md border border-emerald-700/70 text-emerald-300 hover:border-emerald-500 hover:text-emerald-100 transition text-[0.68rem]"
                 >
+                  <SkipIcon size={13} />
                   Skip
-                </button>
+                </Button>
               )}
             </>
           )}
           {onOpenFull && (
-            <button
-              type="button"
-              onClick={() => onOpenFull(session.session_id)}
-              className="px-2.5 py-1 rounded-md border border-emerald-700/70 text-emerald-300 hover:border-emerald-500 hover:text-emerald-100 transition text-[0.68rem]"
-            >
+            <Button onClick={() => onOpenFull(session.session_id)}>
+              <TimelineIcon size={13} />
               Full timeline
-            </button>
+            </Button>
           )}
-          <button
-            type="button"
+          <Button
+            variant="ghost"
             onClick={() => {
               // Stop playback on the way down, or the replay keeps ticking
               // behind a closed panel and is half over when it is reopened.
@@ -253,44 +254,42 @@ const FeaturedAttack = ({ data, loading, error, mitreById, countryFlag, onOpenFu
             }}
             aria-expanded={!collapsed}
             aria-controls={bodyId}
-            className="px-2.5 py-1 rounded-md border border-emerald-700/70 text-emerald-300 hover:border-emerald-500 hover:text-emerald-100 transition text-[0.68rem]"
           >
-            {collapsed ? "▸ Show" : "▾ Hide"}
-          </button>
+            {collapsed ? <ChevronRightIcon size={13} /> : <ChevronDownIcon size={13} />}
+            {collapsed ? "Show" : "Hide"}
+          </Button>
         </div>
-      </div>
+      </header>
 
       <div
         ref={scrollRef}
         id={bodyId}
         hidden={collapsed}
-        className="p-4 sm:p-5 font-mono text-[0.72rem] sm:text-[0.78rem] leading-relaxed h-[15rem] sm:h-[17rem] overflow-y-auto custom-scrollbar fade-scroll-top"
+        className="mx-4 mb-4 sm:mx-5 flex-1 min-h-[14rem] max-h-[18rem] overflow-y-auto custom-scrollbar fade-scroll-top rounded-md border border-line bg-canvas px-3.5 py-3 font-mono text-[0.8125rem] leading-relaxed"
       >
         {visible.map((line, i) => {
           const isCurrent = i === step && !done;
           const shown =
             isCurrent && line.kind === "command" ? line.text.slice(0, typed) : line.text;
           return (
-            <div key={i} className="flex gap-2 sm:gap-3">
-              <span className="text-emerald-800 tabular-nums shrink-0 hidden sm:inline">
+            <div key={i} className="flex gap-3">
+              <span className="text-fg-subtle/70 tabular-nums shrink-0 hidden sm:inline w-14 text-right">
                 {relativeTime(line.offset)}
               </span>
               <span className="min-w-0 break-all">
-                {line.kind === "connect" && (
-                  <span className="text-emerald-600">— {shown} —</span>
-                )}
+                {line.kind === "connect" && <span className="text-fg-subtle">{shown}</span>}
                 {line.kind === "login" && (
                   <>
-                    <span className="text-emerald-600">login </span>
-                    <span className="text-red-400">{shown}</span>
+                    <span className="text-fg-subtle">login </span>
+                    <span className="text-danger">{shown}</span>
                   </>
                 )}
                 {line.kind === "command" && (
                   <>
-                    <span className="text-green-500">$ </span>
-                    <span className="text-emerald-100">{shown}</span>
+                    <span className="text-accent">$ </span>
+                    <span className="text-fg">{shown}</span>
                     {isCurrent && (
-                      <span className="inline-block w-[0.5em] h-[1em] align-text-bottom bg-emerald-400 animate-pulse ml-0.5" />
+                      <span className="inline-block w-[0.5em] h-[1em] align-text-bottom bg-accent animate-pulse ml-0.5" />
                     )}
                   </>
                 )}
@@ -299,34 +298,22 @@ const FeaturedAttack = ({ data, loading, error, mitreById, countryFlag, onOpenFu
           );
         })}
         {done && (
-          <div className="text-emerald-700 mt-2">
-            — session ended after {relativeTime(lines[lines.length - 1].offset).slice(1)} —
-          </div>
+          <div className="text-fg-subtle mt-2">session ended after {duration}</div>
         )}
       </div>
 
       {!collapsed && techniques.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 px-4 sm:px-5 py-3 border-t border-emerald-800/60 bg-black/30">
-          <span className="text-[0.6rem] uppercase tracking-[0.15em] text-emerald-500 mr-1">
-            Techniques
-          </span>
-          {techniques.map((id) => {
-            const t = mitreById?.[id];
-            const lit = seen.has(id);
-            return (
-              <span
-                key={id}
-                title={t?.name || id}
-                className={`text-[0.6rem] px-2 py-0.5 rounded-full border transition-colors duration-300 ${
-                  lit
-                    ? "border-emerald-400/70 text-emerald-200 bg-emerald-500/15"
-                    : "border-emerald-900/70 text-emerald-800"
-                }`}
-              >
-                {t?.name || id}
-              </span>
-            );
-          })}
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-line px-4 py-3 sm:px-5">
+          <span className="text-xs text-fg-subtle mr-1">Techniques</span>
+          {techniques.map((id) => (
+            <TechniqueBadge
+              key={id}
+              id={id}
+              technique={mitreById?.[id] ? { name: mitreById[id].name } : undefined}
+              active={seen.has(id)}
+              dim={!seen.has(id)}
+            />
+          ))}
         </div>
       )}
     </section>

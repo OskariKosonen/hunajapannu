@@ -10,8 +10,12 @@ import { useCallback, useEffect, useState } from "react";
  *
  * @param {string} key      Query-string parameter name.
  * @param {string} fallback Value used when the parameter is absent.
+ * @param {object} [options]
+ * @param {boolean} [options.push=false] Add a history entry instead of
+ *   replacing the current one. For navigation (switching views) Back should
+ *   undo the change; for a search box it should not undo every keystroke.
  */
-export function useUrlState(key, fallback = "") {
+export function useUrlState(key, fallback = "", { push = false } = {}) {
   const read = useCallback(() => {
     if (typeof window === "undefined") return fallback;
     return new URLSearchParams(window.location.search).get(key) ?? fallback;
@@ -36,13 +40,15 @@ export function useUrlState(key, fallback = "") {
         params.set(key, next);
       }
       const qs = params.toString();
-      window.history.replaceState(
-        null,
-        "",
-        `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`
-      );
+      const nextUrl = `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`;
+      const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (push && nextUrl !== current) {
+        window.history.pushState(null, "", nextUrl);
+      } else {
+        window.history.replaceState(null, "", nextUrl);
+      }
     },
-    [key, fallback]
+    [key, fallback, push]
   );
 
   return [value, update];

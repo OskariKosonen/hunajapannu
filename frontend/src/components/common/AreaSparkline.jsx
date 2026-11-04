@@ -57,7 +57,7 @@ const AreaSparkline = ({ data, max, height = 160 }) => {
 
   const W = width;
   const H = height;
-  const PAD = { top: 10, right: 10, bottom: 20, left: 40 };
+  const PAD = { top: 12, right: 12, bottom: 22, left: 44 };
   const plotW = Math.max(W - PAD.left - PAD.right, 1);
   const plotH = Math.max(H - PAD.top - PAD.bottom, 1);
 
@@ -76,7 +76,7 @@ const AreaSparkline = ({ data, max, height = 160 }) => {
 
   const yTicks = [0, 0.25, 0.5, 0.75, 1];
   // Roughly 52px per label, so narrow screens thin them out instead of colliding.
-  const maxLabels = Math.max(2, Math.floor(plotW / 52));
+  const maxLabels = Math.max(2, Math.floor(plotW / 60));
   const xStep = Math.max(1, Math.ceil(data.length / maxLabels));
   const colW = plotW / Math.max(data.length - 1, 1);
 
@@ -95,8 +95,8 @@ const AreaSparkline = ({ data, max, height = 160 }) => {
       >
         <defs>
           <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#34d399" stopOpacity="0.45" />
-            <stop offset="100%" stopColor="#34d399" stopOpacity="0.06" />
+            <stop offset="0%" stopColor="rgb(var(--accent))" stopOpacity="0.28" />
+            <stop offset="100%" stopColor="rgb(var(--accent))" stopOpacity="0.02" />
           </linearGradient>
         </defs>
 
@@ -109,18 +109,18 @@ const AreaSparkline = ({ data, max, height = 160 }) => {
                 x2={W - PAD.right}
                 y1={gy}
                 y2={gy}
-                stroke="#0f172a"
-                strokeDasharray="3 3"
+                stroke="rgb(var(--line))"
+                strokeDasharray={f === 0 ? undefined : "2 4"}
               />
-              <text x={PAD.left - 6} y={gy + 3} textAnchor="end" fontSize="9" fill="#5eead4">
-                {Math.round(axisMax * f).toLocaleString()}
+              <text x={PAD.left - 8} y={gy + 4} textAnchor="end" fontSize="11" fill="rgb(var(--fg-subtle))">
+                {Math.round(axisMax * f).toLocaleString("en-GB")}
               </text>
             </g>
           );
         })}
 
         <path d={area} fill={`url(#${gradientId})`} />
-        <path d={line} fill="none" stroke="#34d399" strokeWidth="2" />
+        <path d={line} data-series="line" fill="none" stroke="rgb(var(--accent))" strokeWidth="1.75" strokeLinejoin="round" />
 
         {data.map((d, i) => {
           if (i % xStep !== 0) return null;
@@ -129,7 +129,7 @@ const AreaSparkline = ({ data, max, height = 160 }) => {
           const px = x(i);
           const anchor = px < PAD.left + 16 ? "start" : px > W - PAD.right - 16 ? "end" : "middle";
           return (
-            <text key={`x${i}`} x={px} y={H - 5} textAnchor={anchor} fontSize="9" fill="#5eead4">
+            <text key={`x${i}`} x={px} y={H - 5} textAnchor={anchor} fontSize="11" fill="rgb(var(--fg-subtle))">
               {d.label}
             </text>
           );
@@ -142,10 +142,17 @@ const AreaSparkline = ({ data, max, height = 160 }) => {
               x2={x(hover)}
               y1={PAD.top}
               y2={PAD.top + plotH}
-              stroke="#34d399"
-              strokeOpacity="0.4"
+              stroke="rgb(var(--fg-subtle))"
+              strokeOpacity="0.5"
             />
-            <circle cx={x(hover)} cy={y(data[hover].value)} r="3.5" fill="#f472b6" />
+            <circle
+              cx={x(hover)}
+              cy={y(data[hover].value)}
+              r="4"
+              fill="rgb(var(--surface))"
+              stroke="rgb(var(--accent))"
+              strokeWidth="2"
+            />
           </g>
         )}
 
@@ -166,11 +173,11 @@ const AreaSparkline = ({ data, max, height = 160 }) => {
 
       {hover != null && (
         <div
-          className="absolute pointer-events-none px-2 py-1 rounded-md border border-emerald-500/40 bg-black/85 text-emerald-100 text-[0.65rem] whitespace-nowrap -translate-x-1/2"
+          className="absolute pointer-events-none rounded-md border border-line-strong bg-surface-2 px-2.5 py-1.5 text-xs shadow-lg whitespace-nowrap -translate-x-1/2"
           style={{ left: `${(x(hover) / W) * 100}%`, top: 0 }}
         >
-          <div className="font-semibold">{data[hover].label}</div>
-          <div>{data[hover].value.toLocaleString()} events</div>
+          <div className="text-fg-subtle">{data[hover].label}</div>
+          <div className="font-medium text-fg tabular-nums">{data[hover].value.toLocaleString("en-GB")} events</div>
         </div>
       )}
     </div>

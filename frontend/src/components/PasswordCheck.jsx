@@ -1,4 +1,8 @@
 import { memo, useCallback, useId, useState } from "react";
+import Panel from "./ui/Panel";
+import Button from "./ui/Button";
+import { ErrorNotice } from "./ui/states";
+import { formatNumber } from "../lib/format";
 
 /**
  * "Have the bots tried your password?"
@@ -33,7 +37,7 @@ async function sha256Hex(text) {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-const PasswordCheck = ({ endpoint, formatNumber, uniqueCredCount }) => {
+const PasswordCheck = ({ endpoint, uniqueCredCount, className = "" }) => {
   const inputId = useId();
   const [value, setValue] = useState("");
   const [reveal, setReveal] = useState(false);
@@ -80,22 +84,17 @@ const PasswordCheck = ({ endpoint, formatNumber, uniqueCredCount }) => {
   );
 
   return (
-    <section className="relative overflow-hidden border border-emerald-700/50 rounded-xl bg-slate-950/70 shadow-[0_10px_35px_rgba(0,0,0,0.45)]">
-      <div className="px-4 sm:px-5 py-3 border-b border-emerald-800/60 bg-black/40">
-        <p className="text-[0.65rem] uppercase tracking-[0.2em] text-emerald-400">
-          Credential corpus
-        </p>
-        <h2 className="text-base sm:text-lg font-semibold text-green-200">
-          Have the bots tried your password?
-        </h2>
-        <p className="text-[0.65rem] text-emerald-500 mt-0.5">
-          Checked against {formatNumber(uniqueCredCount)} username/password pairs captured
-          by the honeypot.
-        </p>
-      </div>
-
-      <div className="p-4 sm:p-5 space-y-3">
-        <form onSubmit={check} className="flex flex-col sm:flex-row gap-2">
+    <Panel
+      title="Password check"
+      description={
+        uniqueCredCount != null
+          ? `Has this password been tried against the honeypot? Checked against ${formatNumber(uniqueCredCount)} captured username/password pairs.`
+          : "Has this password been tried against the honeypot?"
+      }
+      className={className}
+    >
+      <div className="space-y-4">
+        <form onSubmit={check} className="flex flex-col gap-2 sm:flex-row">
           <div className="relative flex-1 min-w-0">
             <label htmlFor={inputId} className="sr-only">
               Password to check
@@ -108,53 +107,38 @@ const PasswordCheck = ({ endpoint, formatNumber, uniqueCredCount }) => {
                 setValue(e.target.value);
                 setState({ status: "idle" });
               }}
-              placeholder="try 123456"
+              placeholder="e.g. 123456"
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="off"
               spellCheck="false"
-              className="w-full bg-black/50 border border-emerald-800/70 rounded-md pl-3 pr-16 py-2 text-[0.8rem] text-emerald-100 placeholder-emerald-800 focus:outline-none focus:border-emerald-500"
+              className="h-9 w-full rounded-md border border-line bg-surface-2 pl-3 pr-16 font-mono text-sm text-fg placeholder:font-sans placeholder:text-fg-subtle focus:border-accent/60 focus:outline-none"
             />
             <button
               type="button"
               onClick={() => setReveal((r) => !r)}
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2 py-1 text-[0.6rem] uppercase tracking-wider text-emerald-500 hover:text-emerald-300"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded px-2 py-1 text-xs text-fg-subtle hover:text-fg"
             >
               {reveal ? "Hide" : "Show"}
             </button>
           </div>
-          <button
-            type="submit"
-            disabled={!value || state.status === "checking"}
-            className="px-4 py-2 rounded-md border border-emerald-400 text-slate-950 bg-emerald-200 hover:bg-emerald-100 disabled:opacity-40 disabled:hover:bg-emerald-200 transition-colors font-semibold text-[0.8rem] shrink-0"
-          >
+          <Button type="submit" variant="primary" size="md" disabled={!value || state.status === "checking"}>
             {state.status === "checking" ? "Checking…" : "Check"}
-          </button>
+          </Button>
         </form>
 
-        <p className="text-[0.6rem] text-emerald-600 leading-relaxed">
-          Your password never leaves this page. It is hashed here with SHA-256 and only the
-          first {PREFIX_LENGTH} characters of that hash are sent — one of{" "}
-          {(16 ** PREFIX_LENGTH).toLocaleString()} buckets, shared by dozens of other captured
-          passwords, so the server cannot tell which one you asked about.{" "}
-          <span className="text-emerald-500">
-            Still — don't type a password you currently use, into this or any other site.
-          </span>
-        </p>
-
         {state.status === "error" && (
-          <div role="alert" className="text-[0.68rem] text-red-400 border border-red-500/50 rounded px-2.5 py-1.5">
-            {state.message}
+          <div role="alert">
+            <ErrorNotice>{state.message}</ErrorNotice>
           </div>
         )}
 
         {state.status === "done" && state.hit && (
-          <div role="status" className="border border-amber-500/50 bg-amber-500/5 rounded-lg p-3 space-y-1">
-            <div className="text-amber-200 font-semibold text-[0.85rem]">
-              Yes — seen {formatNumber(state.hit.attempts)}{" "}
-              {state.hit.attempts === 1 ? "time" : "times"}.
+          <div role="status" className="rounded-md border border-warn/40 bg-warn/5 p-3.5 space-y-1">
+            <div className="text-sm font-semibold text-warn">
+              Yes — seen {formatNumber(state.hit.attempts)} {state.hit.attempts === 1 ? "time" : "times"}.
             </div>
-            <div className="text-[0.68rem] text-emerald-400">
+            <div className="text-sm text-fg-muted">
               Tried against {formatNumber(state.hit.pairs)}{" "}
               {state.hit.pairs === 1 ? "username" : "different usernames"}
               {state.hit.usernames?.length > 0 && (
@@ -163,7 +147,7 @@ const PasswordCheck = ({ endpoint, formatNumber, uniqueCredCount }) => {
                   {state.hit.usernames.map((u, i) => (
                     <span key={u}>
                       {i > 0 && ", "}
-                      <span className="text-red-400">{u}</span>
+                      <span className="font-mono text-fg">{u}</span>
                     </span>
                   ))}
                 </>
@@ -174,27 +158,33 @@ const PasswordCheck = ({ endpoint, formatNumber, uniqueCredCount }) => {
         )}
 
         {state.status === "done" && !state.hit && (
-          <div role="status" className="border border-emerald-600/50 bg-emerald-500/5 rounded-lg p-3 space-y-1">
-            <div className="text-emerald-200 font-semibold text-[0.85rem]">
-              Not in this corpus.
-            </div>
-            <div className="text-[0.68rem] text-emerald-500">
-              These are the passwords bots have actually thrown at one honeypot — not a
-              measure of whether a password is strong or has leaked elsewhere.
+          <div role="status" className="rounded-md border border-accent/30 bg-accent/5 p-3.5 space-y-1">
+            <div className="text-sm font-semibold text-accent">Not in this corpus.</div>
+            <div className="text-sm text-fg-muted">
+              These are the passwords bots have actually thrown at one honeypot — not a measure of whether a
+              password is strong or has leaked elsewhere.
             </div>
           </div>
         )}
 
-        {state.status === "done" && (
-          <p className="text-[0.58rem] text-emerald-800">
-            Sent prefix <code className="text-emerald-600">{state.prefix}</code> — the server
-            returned {formatNumber(state.candidates)}{" "}
-            {state.candidates === 1 ? "hash" : "hashes"} sharing it, matched locally — it cannot
-            tell which of them you were asking about.
+        <div className="rounded-md bg-surface-2/60 px-3.5 py-3 text-xs leading-relaxed text-fg-muted space-y-1.5">
+          <p>
+            <span className="font-medium text-fg">Your password never leaves this page.</span> It is hashed here
+            with SHA-256 and only the first {PREFIX_LENGTH} characters of the hash are sent — one of{" "}
+            {(16 ** PREFIX_LENGTH).toLocaleString("en-GB")} buckets, shared by dozens of other captured passwords,
+            so the server cannot tell which one you asked about.
           </p>
-        )}
+          <p className="text-warn/90">Still — don't type a password you currently use, into this or any other site.</p>
+          {state.status === "done" && (
+            <p className="text-fg-subtle">
+              Sent prefix <code className="font-mono text-fg-muted">{state.prefix}</code>; the server returned{" "}
+              {formatNumber(state.candidates)} {state.candidates === 1 ? "hash" : "hashes"} sharing it, matched
+              locally.
+            </p>
+          )}
+        </div>
       </div>
-    </section>
+    </Panel>
   );
 };
 

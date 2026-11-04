@@ -1,35 +1,32 @@
 import { memo, useState } from "react";
+import Panel, { ApiLink } from "./ui/Panel";
+import Badge from "./ui/Badge";
+import { EmptyState, ErrorNotice, Skeleton } from "./ui/states";
+import { formatNumber } from "../lib/format";
 
 /**
  * Commands that look like someone checking whether the box is real.
  *
- * The first version printed each command in full. One of them is a 2,000
- * character `export PATH=...` one-liner, so the panel became an unreadable
- * wall of shell that buried the thing it was meant to show. Commands are
- * clamped to two lines and expand on click.
+ * Commands are clamped to two lines and expand on click: one of them is a
+ * 2,000-character `export PATH=...` one-liner.
  *
  * The score is shown rather than a verdict, because the evidence genuinely
  * varies: naming a hypervisor is decisive, reading /proc/cpuinfo is also just
- * recon. The strongest rule is promoted to a readable label so the row says
- * what kind of check it was without needing the full rule list.
+ * recon. The strongest rule is promoted to a readable label.
  */
 
 // Strongest first. The first match is what the row is really about.
 const KIND = [
-  { rule: "explicit-honeypot-string", label: "names the honeypot", tone: "text-green-200 border-green-400/60" },
-  { rule: "hypervisor-by-name", label: "hypervisor check", tone: "text-emerald-200 border-emerald-400/60" },
-  { rule: "virt-detection-tool", label: "hypervisor check", tone: "text-emerald-200 border-emerald-400/60" },
-  { rule: "dmi-identity", label: "firmware identity", tone: "text-emerald-200 border-emerald-400/60" },
-  { rule: "writability-probe", label: "capability probe", tone: "text-emerald-300 border-emerald-600/60" },
-  { rule: "shell-capability-probe", label: "capability probe", tone: "text-emerald-300 border-emerald-600/60" },
-  { rule: "echo-roundtrip", label: "capability probe", tone: "text-emerald-300 border-emerald-600/60" },
+  { rule: "explicit-honeypot-string", label: "names the honeypot", tone: "danger" },
+  { rule: "hypervisor-by-name", label: "hypervisor check", tone: "warn" },
+  { rule: "virt-detection-tool", label: "hypervisor check", tone: "warn" },
+  { rule: "dmi-identity", label: "firmware identity", tone: "warn" },
+  { rule: "writability-probe", label: "capability probe", tone: "neutral" },
+  { rule: "shell-capability-probe", label: "capability probe", tone: "neutral" },
+  { rule: "echo-roundtrip", label: "capability probe", tone: "neutral" },
 ];
 
-const kindOf = (rules = []) =>
-  KIND.find((k) => rules.includes(k.rule)) ?? {
-    label: "fingerprinting",
-    tone: "text-emerald-500 border-emerald-800/70",
-  };
+const kindOf = (rules = []) => KIND.find((k) => rules.includes(k.rule)) ?? { label: "fingerprinting", tone: "muted" };
 
 const ProbeRow = ({ row }) => {
   const [open, setOpen] = useState(false);
@@ -37,33 +34,27 @@ const ProbeRow = ({ row }) => {
   const long = (row.command?.length ?? 0) > 150;
 
   return (
-    <div className="px-4 py-2 hover:bg-emerald-500/5">
-      <div className="flex items-center gap-2 flex-wrap">
+    <li className="px-4 py-3 sm:px-5 hover:bg-surface-2/60">
+      <div className="flex flex-wrap items-center gap-2">
         <span
-          className="text-[0.6rem] px-1.5 py-0.5 rounded border border-emerald-600/60 text-green-200 tabular-nums shrink-0"
+          className="inline-flex h-5 min-w-[1.5rem] items-center justify-center rounded bg-surface-3 px-1 text-xs font-semibold text-fg tabular-nums"
           title="Accumulated rule weight"
         >
           {row.probe_score}
         </span>
-        <span className={`text-[0.58rem] px-1.5 py-0.5 rounded-full border ${kind.tone}`}>{kind.label}</span>
-        {/* The rule names are the auditability of the score, but printing
-            eight chips per row was most of what made this panel unreadable.
-            The count carries them on hover instead. */}
-        <span
-          className="text-[0.55rem] text-emerald-700 tabular-nums ml-auto"
-          title={(row.probe_rules ?? []).join(", ")}
-        >
-          {row.probe_rules?.length ?? 0} rules · {row.total} hits · {row.unique_ips} IPs
+        <Badge tone={kind.tone}>{kind.label}</Badge>
+        {/* The rule names are the auditability of the score; the count
+            carries them on hover rather than as eight chips per row. */}
+        <span className="ml-auto text-xs text-fg-subtle tabular-nums" title={(row.probe_rules ?? []).join(", ")}>
+          {row.probe_rules?.length ?? 0} rules · {formatNumber(row.total)} hits · {formatNumber(row.unique_ips)} IPs
         </span>
       </div>
 
-      {/* No `block` here. Tailwind emits .block after .line-clamp-2, so
-          display:block wins the cascade and the clamp silently does nothing —
-          which is exactly what happened in the first attempt at this fix.
-          line-clamp-2 sets display:-webkit-box itself; when expanded, `block`
-          is applied instead. */}
+      {/* No `block` with line-clamp: Tailwind emits .block after
+          .line-clamp-2, so display:block would win and the clamp would
+          silently do nothing. */}
       <code
-        className={`mt-1 text-[0.65rem] text-emerald-300/90 break-all leading-snug ${
+        className={`mt-1.5 font-mono text-[0.8125rem] text-fg-muted break-all leading-snug ${
           open ? "block" : "line-clamp-2"
         }`}
       >
@@ -74,12 +65,12 @@ const ProbeRow = ({ row }) => {
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="mt-0.5 text-[0.55rem] text-emerald-600 hover:text-emerald-300 underline underline-offset-2"
+          className="mt-1 text-xs text-fg-subtle hover:text-fg underline underline-offset-2"
         >
-          {open ? "show less" : `show all ${row.command.length} characters`}
+          {open ? "Show less" : `Show all ${formatNumber(row.command.length)} characters`}
         </button>
       )}
-    </div>
+    </li>
   );
 };
 
@@ -87,37 +78,32 @@ const ProbePanel = ({ data, loading, error }) => {
   const rows = data?.rows ?? [];
 
   return (
-    <section className="flex flex-col overflow-hidden border border-emerald-700/50 rounded-xl bg-slate-950/70 shadow-[0_10px_35px_rgba(0,0,0,0.45)] backdrop-blur-sm min-w-0">
-      <div className="flex items-center justify-between px-4 py-2.5 bg-slate-950/70 border-b border-emerald-800/60 gap-2">
-        <h2 className="text-[0.68rem] uppercase tracking-[0.18em] px-2 py-1 rounded-full border border-emerald-600/60 text-emerald-200 bg-emerald-500/5 whitespace-nowrap">
-          Am I in a honeypot?
-        </h2>
-        {data && (
-          <span className="text-[0.6rem] text-emerald-500 tabular-nums">
-            {rows.length} commands · score ≥ {data.threshold}
-          </span>
-        )}
-      </div>
-
-      <p className="px-4 py-2.5 text-[0.62rem] text-emerald-400 leading-relaxed border-b border-emerald-900/50">
-        Some attackers check whether a machine is real before committing a payload.
-        A higher score means more, or more deliberate, checks in one command.
-      </p>
-
-      {error && <div className="px-4 py-3 text-[0.7rem] text-red-400">{error}</div>}
-      {loading && !rows.length && <div className="px-4 py-3 text-[0.7rem] text-emerald-500">loading…</div>}
-      {!loading && !error && !rows.length && (
-        <div className="px-4 py-3 text-[0.7rem] text-emerald-600">Nothing has scored above the threshold yet.</div>
-      )}
-
-      {!!rows.length && (
-        <div className="max-h-[19rem] overflow-y-auto custom-scrollbar divide-y divide-emerald-900/25">
+    <Panel
+      title="Honeypot detection attempts"
+      description="Commands where an attacker checked whether the machine is real before committing a payload. Higher scores mean more, or more deliberate, checks."
+      meta={data ? `${rows.length} commands · score ≥ ${data.threshold}` : undefined}
+      actions={<ApiLink href="/api/public/cowrie/probes?limit=50" />}
+      flush
+      className="h-full"
+    >
+      {rows.length === 0 ? (
+        <div className="p-4 sm:p-5">
+          {error ? (
+            <ErrorNotice>Failed to load probes: {error}</ErrorNotice>
+          ) : loading ? (
+            <Skeleton rows={6} />
+          ) : (
+            <EmptyState title="Nothing has scored above the threshold yet." />
+          )}
+        </div>
+      ) : (
+        <ul className="max-h-[34rem] overflow-y-auto custom-scrollbar divide-y divide-line/70">
           {rows.map((r) => (
             <ProbeRow key={r.command} row={r} />
           ))}
-        </div>
+        </ul>
       )}
-    </section>
+    </Panel>
   );
 };
 

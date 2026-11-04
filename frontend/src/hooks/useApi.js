@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 /**
  * Builds a query string, dropping empties so the URL stays readable and the
@@ -17,6 +17,14 @@ export function buildUrl(base, params = {}) {
 /** The list endpoints answer { rows, total, ... }; the simple ones a bare array. */
 const asRows = (data) => (Array.isArray(data) ? data : data?.rows ?? []);
 const asTotal = (data) => (Array.isArray(data) ? data.length : Number(data?.total ?? 0));
+
+/**
+ * The dashboard-wide refresh tick (see useRefresh.js). Declared here rather
+ * than imported, because useRefresh.js imports useVisibleInterval from this
+ * file. Outside a provider the tick never moves, so isolated tests and
+ * one-off fetches behave exactly as before.
+ */
+export const RefreshTickContext = createContext(0);
 
 /**
  * One API-backed panel: data, totals, loading and error, with the previous
@@ -76,9 +84,11 @@ export function useApi(url, { enabled = true, onData } = {}) {
     }
   }, [url, enabled]);
 
+  // Re-run on the shared refresh tick as well as on a new URL.
+  const tick = useContext(RefreshTickContext);
   useEffect(() => {
     run();
-  }, [run]);
+  }, [run, tick]);
 
   // Abort whatever is in flight when the panel goes away.
   useEffect(() => () => controllerRef.current?.abort(), []);
@@ -158,22 +168,4 @@ export function useVisibleInterval(callback, intervalMs) {
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [intervalMs]);
-}
-
-/**
- * Cycles through a list of words as a loading indicator. Starts on a random
- * entry so two panels loading at once do
- * not chant in unison, and stops entirely when the caller is not loading —
- * an idle timer firing every 1.4s forever is not free.
- */
-export function useRotatingWord(words, { active = true, intervalMs = 1400 } = {}) {
-  const [index, setIndex] = useState(() => Math.floor(Math.random() * words.length));
-
-  useEffect(() => {
-    if (!active || words.length < 2) return;
-    const id = setInterval(() => setIndex((i) => (i + 1) % words.length), intervalMs);
-    return () => clearInterval(id);
-  }, [active, words.length, intervalMs]);
-
-  return words[index % words.length];
 }

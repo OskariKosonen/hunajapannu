@@ -1,0 +1,2 @@
+/** Joins truthy class names. */
+export const cx = (...parts) => parts.filter(Boolean).join(" ");
