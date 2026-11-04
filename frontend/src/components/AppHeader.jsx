@@ -128,7 +128,7 @@ const AppHeader = ({ desktop, tabs, active, onView, lastEventAt, lastUpdated, on
     <header className="sticky top-0 z-30 border-b border-line bg-canvas/90 backdrop-blur supports-[backdrop-filter]:bg-canvas/75">
       <div className="flex h-14 items-center gap-3 px-4 sm:px-6">
         <a href="/" className="flex items-center gap-2.5 shrink-0" aria-label="hunajapannu.fi — home">
-          <LogoMark />
+          <LogoMark size={24} />
           <h1 className="text-base font-semibold tracking-tight text-fg">hunajapannu.fi</h1>
         </a>
         {controls}

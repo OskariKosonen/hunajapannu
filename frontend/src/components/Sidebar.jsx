@@ -28,7 +28,7 @@ const Sidebar = ({ items, groups, view, onView, collapsed, onToggle }) => {
     >
       <div className={cx("flex h-14 shrink-0 items-center gap-2.5", collapsed ? "justify-center" : "px-5")}>
         <a href="/" className="flex items-center gap-2.5 min-w-0" aria-label="hunajapannu.fi — home">
-          <LogoMark size={24} />
+          <LogoMark size={26} />
           <h1 className={cx("text-base font-semibold tracking-tight text-fg", collapsed && "sr-only")}>
             hunajapannu.fi
           </h1>

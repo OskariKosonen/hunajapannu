@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 /**
  * The dozen icons the UI needs, as inline SVG. An icon library would be the
  * second-largest dependency in the bundle to draw these.
@@ -116,16 +118,32 @@ export const LinkedInIcon = ({ size = 16, className = "" }) => (
   </svg>
 );
 
-/** The brand mark: a hexagon cell with a dot — a honeycomb with something in it. */
-export const LogoMark = ({ size = 22, className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" className={className}>
-    <path
-      d="M12 2.5 20.2 7.25v9.5L12 21.5l-8.2-4.75v-9.5z"
-      fill="rgb(var(--accent) / 0.12)"
-      stroke="rgb(var(--accent))"
-      strokeWidth="1.6"
-      strokeLinejoin="round"
-    />
-    <circle cx="12" cy="12" r="2.6" fill="rgb(var(--accent))" />
-  </svg>
-);
+/**
+ * The brand mark: a honey drop with a shell prompt knocked out of it.
+ * Hunajapannu is Finnish for honey pot, and what it catches is typed into a
+ * terminal. The prompt is a mask rather than paint, so it shows whatever
+ * surface the mark sits on.
+ */
+const LOGO_DROP =
+  "M12 1.6C9.7 5 3.8 10.4 3.8 15a8.2 8.2 0 0 0 16.4 0C20.2 10.4 14.3 5 12 1.6Z";
+const LOGO_PROMPT = "M7.9 12.3l2.9 2.5-2.9 2.5M12.9 17.3h3.4";
+
+export const LogoMark = ({ size = 22, className = "" }) => {
+  const id = useId();
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" className={`shrink-0 ${className}`}>
+      <mask id={id}>
+        <path d={LOGO_DROP} fill="#fff" />
+        <path
+          d={LOGO_PROMPT}
+          fill="none"
+          stroke="#000"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </mask>
+      <rect width="24" height="24" fill="rgb(var(--accent))" mask={`url(#${id})`} />
+    </svg>
+  );
+};
