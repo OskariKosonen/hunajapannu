@@ -119,31 +119,36 @@ export const LinkedInIcon = ({ size = 16, className = "" }) => (
 );
 
 /**
- * The brand mark: a honey drop with a shell prompt knocked out of it.
- * Hunajapannu is Finnish for honey pot, and what it catches is typed into a
- * terminal. The prompt is a mask rather than paint, so it shows whatever
- * surface the mark sits on.
+ * The brand mark: a honey pot with a shell prompt cut out of its belly.
+ * Hunajapannu is Finnish for honey pot, and what this one catches is typed
+ * into a terminal. Honey amber is the one colour in the brand that is not the
+ * UI's emerald, so the mark reads as honey before anyone parses the shape.
+ * The prompt is a mask rather than paint, so it shows the surface beneath.
  */
-const LOGO_DROP =
-  "M12 1.6C9.7 5 3.8 10.4 3.8 15a8.2 8.2 0 0 0 16.4 0C20.2 10.4 14.3 5 12 1.6Z";
-const LOGO_PROMPT = "M7.9 12.3l2.9 2.5-2.9 2.5M12.9 17.3h3.4";
+const LOGO_RIM = "M6.4 2.8h11.2a1.6 1.6 0 0 1 0 3.2H6.4a1.6 1.6 0 0 1 0-3.2Z";
+const LOGO_BELLY =
+  "M8.3 6.9h7.4c0 .9.5 1.4 1.4 1.9 2.4 1.3 3.7 3.5 3.7 6.2 0 4-3.6 6.8-8.8 6.8s-8.8-2.8-8.8-6.8c0-2.7 1.3-4.9 3.7-6.2.9-.5 1.4-1 1.4-1.9Z";
+const LOGO_PROMPT = "M8.4 12.3l2.7 2.3-2.7 2.3M12.9 16.9h3.1";
 
 export const LogoMark = ({ size = 22, className = "" }) => {
   const id = useId();
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" className={`shrink-0 ${className}`}>
       <mask id={id}>
-        <path d={LOGO_DROP} fill="#fff" />
+        <rect width="24" height="24" fill="#fff" />
         <path
           d={LOGO_PROMPT}
           fill="none"
           stroke="#000"
-          strokeWidth="2.2"
+          strokeWidth="2.1"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
       </mask>
-      <rect width="24" height="24" fill="rgb(var(--accent))" mask={`url(#${id})`} />
+      <g fill="rgb(var(--honey))" mask={`url(#${id})`}>
+        <path d={LOGO_RIM} />
+        <path d={LOGO_BELLY} />
+      </g>
     </svg>
   );
 };

@@ -32,6 +32,7 @@ module.exports = {
         danger: token("danger"),
         warn: token("warn"),
         info: token("info"),
+        honey: token("honey"),
       },
       fontFamily: {
         sans: ['"Inter Variable"', "Inter", "ui-sans-serif", "system-ui", "sans-serif"],

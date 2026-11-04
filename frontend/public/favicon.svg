@@ -1,15 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-  <!-- A honey drop with a shell prompt knocked out of it: hunajapannu is
-       Finnish for honey pot, and what it catches is typed into a terminal.
-       The prompt is a mask, not paint, so it shows the tab behind it. The
-       drop darkens on light tab bars, where the bright emerald washes out. -->
+  <!-- A honey pot with a shell prompt cut out of it: hunajapannu is Finnish
+       for honey pot, and what this one catches is typed into a terminal.
+       The prompt is a mask, not paint, so the tab shows through it. Darker
+       amber on light tab bars, where the bright gold washes out. -->
   <style>
-    .mark { fill: #059669; }
-    @media (prefers-color-scheme: dark) { .mark { fill: #34d399; } }
+    .pot { fill: #d97706; }
+    @media (prefers-color-scheme: dark) { .pot { fill: #f5b335; } }
   </style>
   <mask id="prompt">
-    <path d="M12 1.6C9.7 5 3.8 10.4 3.8 15a8.2 8.2 0 0 0 16.4 0C20.2 10.4 14.3 5 12 1.6Z" fill="#fff"/>
-    <path d="M7.9 12.3l2.9 2.5-2.9 2.5M12.9 17.3h3.4" fill="none" stroke="#000" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect width="24" height="24" fill="#fff"/>
+    <path d="M8.4 12.3l2.7 2.3-2.7 2.3M12.9 16.9h3.1" fill="none" stroke="#000" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
   </mask>
-  <rect class="mark" width="24" height="24" mask="url(#prompt)"/>
+  <g class="pot" mask="url(#prompt)">
+    <path d="M6.4 2.8h11.2a1.6 1.6 0 0 1 0 3.2H6.4a1.6 1.6 0 0 1 0-3.2Z"/>
+    <path d="M8.3 6.9h7.4c0 .9.5 1.4 1.4 1.9 2.4 1.3 3.7 3.5 3.7 6.2 0 4-3.6 6.8-8.8 6.8s-8.8-2.8-8.8-6.8c0-2.7 1.3-4.9 3.7-6.2.9-.5 1.4-1 1.4-1.9Z"/>
+  </g>
 </svg>

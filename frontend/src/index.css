@@ -29,6 +29,9 @@
   --warn: 251 191 36;
   --info: 103 232 249;
 
+  /* The logo's honey amber. Brand only: never used for data or status. */
+  --honey: 245 179 53;
+
   color-scheme: dark;
 }
 
