@@ -68,9 +68,6 @@ export const ReplayIcon = (p) => (
 export const AlertIcon = (p) => (
   <Svg {...p}><path d="M12 3 2 20h20z" /><path d="M12 10v4M12 17h.01" /></Svg>
 );
-export const CodeIcon = (p) => (
-  <Svg {...p}><path d="m8 7-5 5 5 5M16 7l5 5-5 5" /></Svg>
-);
 export const TimelineIcon = (p) => (
   <Svg {...p}><path d="M4 6h10M4 12h16M4 18h7" /></Svg>
 );
@@ -106,9 +103,6 @@ export const NetworkIcon = (p) => (
 );
 export const InfoIcon = (p) => (
   <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 11v5.5M12 7.6h.01" /></Svg>
-);
-export const DatabaseIcon = (p) => (
-  <Svg {...p}><ellipse cx="12" cy="5.5" rx="8" ry="2.5" /><path d="M4 5.5v13c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-13M4 12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5" /></Svg>
 );
 export const GitHubIcon = ({ size = 16, className = "" }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" className={`shrink-0 ${className}`} fill="currentColor">

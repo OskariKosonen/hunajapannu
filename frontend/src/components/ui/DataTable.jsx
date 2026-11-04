@@ -74,7 +74,13 @@ const DataTable = ({
         </div>
       );
     } else if (loading) {
-      body = <Skeleton rows={skeletonRows} className="p-4" />;
+      // Hold the table's full height while it loads, so the rows arriving do
+      // not push everything below the panel down the page.
+      body = (
+        <div style={{ minHeight: maxHeight }}>
+          <Skeleton rows={skeletonRows} className="p-4" />
+        </div>
+      );
     } else {
       body = <EmptyState title={emptyTitle} hint={emptyHint} />;
     }

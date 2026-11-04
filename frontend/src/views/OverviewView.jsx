@@ -11,6 +11,7 @@ import FeaturedAttack from "../components/FeaturedAttack";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import { useApi, buildUrl } from "../hooks/useApi";
 import { useCatalogue } from "../hooks/useCatalogue";
+import { useApiDown } from "../hooks/useApiStatus";
 import { API, PAGE_SIZE } from "../lib/api";
 import { formatNumber } from "../lib/format";
 
@@ -68,6 +69,7 @@ const OverviewView = ({ onOpenSession, onNavigate }) => {
   const credsApi = useApi(buildUrl(API.CREDENTIALS, { limit: PAGE_SIZE.PREVIEW }));
   const commandsApi = useApi(buildUrl(API.COMMANDS, { limit: PAGE_SIZE.PREVIEW }));
 
+  const apiDown = useApiDown();
   const summary = summaryApi.raw;
   const summaryLoading = summaryApi.loading && !summary;
 
@@ -81,7 +83,9 @@ const OverviewView = ({ onOpenSession, onNavigate }) => {
         <OverviewHero onNavigate={onNavigate} />
       </ErrorBoundary>
 
-      {summaryApi.error && !summary && <ErrorNotice>Failed to load summary: {summaryApi.error}</ErrorNotice>}
+      {summaryApi.error && !summary && !apiDown && (
+        <ErrorNotice>Failed to load summary: {summaryApi.error}</ErrorNotice>
+      )}
 
       <ErrorBoundary name="All-time figures">
         <KpiStrip summary={summary} loading={summaryLoading} />

@@ -343,6 +343,20 @@ describe("App", () => {
     expect(screen.getByText("153")).toBeInTheDocument();
   });
 
+  it("says once, calmly, when the whole API is down", async () => {
+    // A recruiter landing during an outage should read one explanation, not
+    // a red error in every panel.
+    global.fetch = vi.fn((url) => {
+      requested.push(String(url));
+      return Promise.resolve({ ok: false, status: 502 });
+    });
+    render(<App />);
+    expect(await screen.findByText(/the api is not responding/i)).toBeInTheDocument();
+    expect(await screen.findByText("API unreachable")).toBeInTheDocument();
+    expect(screen.queryByText(/failed to load/i)).toBeNull();
+    expect(screen.getAllByText("Not available right now.").length).toBeGreaterThan(0);
+  });
+
   it("keeps rendering when one endpoint fails", async () => {
     global.fetch = vi.fn((url) => {
       const u = String(url);

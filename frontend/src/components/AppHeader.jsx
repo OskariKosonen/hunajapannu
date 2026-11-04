@@ -22,7 +22,7 @@ const STALE_AFTER_MS = 10 * 60 * 1000;
  * the failure that once went unnoticed for four days, so then it turns amber
  * and says so.
  */
-const Freshness = ({ lastEventAt, now }) => {
+const Freshness = ({ lastEventAt, now, apiDown }) => {
   const t = lastEventAt ? new Date(lastEventAt).getTime() : NaN;
   const known = Number.isFinite(t);
   const stale = known && now - t > STALE_AFTER_MS;
@@ -39,9 +39,14 @@ const Freshness = ({ lastEventAt, now }) => {
     >
       <span
         aria-hidden="true"
-        className={cx("h-1.5 w-1.5 rounded-full", !known ? "bg-fg-subtle/50" : stale ? "bg-warn" : "bg-accent")}
+        className={cx(
+          "h-1.5 w-1.5 rounded-full",
+          apiDown ? "bg-warn" : !known ? "bg-fg-subtle/50" : stale ? "bg-warn" : "bg-accent"
+        )}
       />
-      {!known ? (
+      {apiDown ? (
+        <span className="text-warn">API unreachable</span>
+      ) : !known ? (
         "Connecting…"
       ) : stale ? (
         `No attacks for ${ago.replace(" ago", "")}`
@@ -55,11 +60,11 @@ const Freshness = ({ lastEventAt, now }) => {
   );
 };
 
-const Controls = ({ lastEventAt, lastUpdated, onRefresh, now }) => {
+const Controls = ({ lastEventAt, apiDown, lastUpdated, onRefresh, now }) => {
   const [spinning, setSpinning] = useState(false);
   return (
     <div className="ml-auto flex items-center gap-1.5 sm:gap-2 min-w-0">
-      <Freshness lastEventAt={lastEventAt} now={now} />
+      <Freshness lastEventAt={lastEventAt} now={now} apiDown={apiDown} />
       <button
         type="button"
         onClick={() => {
@@ -97,12 +102,13 @@ const AppHeader = ({
   sidebarCollapsed,
   onToggleSidebar,
   lastEventAt,
+  apiDown,
   lastUpdated,
   onRefresh,
 }) => {
   // Ticks here rather than in App, so "12s ago" re-renders the header alone.
   const now = useNow(15000);
-  const controls = <Controls lastEventAt={lastEventAt} lastUpdated={lastUpdated} onRefresh={onRefresh} now={now} />;
+  const controls = <Controls lastEventAt={lastEventAt} apiDown={apiDown} lastUpdated={lastUpdated} onRefresh={onRefresh} now={now} />;
 
   if (desktop) {
     const Icon = active.Icon;

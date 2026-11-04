@@ -17,9 +17,11 @@ const Figure = ({ label, value, suffix, title, loading }) => (
   <div className="min-w-0" title={title}>
     <div className="text-xs text-fg-subtle">{label}</div>
     {loading ? (
-      <div className="mt-1 h-7 w-20 rounded bg-surface-3 animate-pulse" />
+      <div className="mt-0.5 flex h-7 items-center">
+        <div className="h-6 w-20 rounded bg-surface-3 animate-pulse" />
+      </div>
     ) : (
-      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5">
+      <div className="mt-0.5 flex min-h-7 flex-wrap items-baseline gap-x-1.5">
         <span className="text-xl font-semibold tracking-tight text-fg tabular-nums">{value}</span>
         {suffix && <span className="text-xs text-fg-subtle">{suffix}</span>}
       </div>

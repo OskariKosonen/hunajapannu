@@ -27,6 +27,7 @@ import { useUrlState } from "./hooks/useUrlState";
 import { RefreshContext, useRefresh, useRefreshClock } from "./hooks/useRefresh";
 import { CatalogueContext } from "./hooks/useCatalogue";
 import { TitleContext } from "./hooks/useTitle";
+import { ApiStatusContext } from "./hooks/useApiStatus";
 import { API, REFRESH_INTERVAL_MS } from "./lib/api";
 import { TIME_ZONE, TIME_ZONE_LABEL } from "./lib/format";
 
@@ -112,6 +113,9 @@ function Shell() {
   // Newest event, for the live/stale indicator in the header.
   const pulseApi = useApi(buildUrl(API.LATEST_EVENTS, { limit: 1 }));
   const lastEventAt = pulseApi.rows[0]?.timestamp ?? null;
+  // The newest-event request is the shell's own canary: if it fails and has
+  // never succeeded, the API is down rather than one endpoint misbehaving.
+  const apiDown = Boolean(pulseApi.error) && pulseApi.rows.length === 0;
 
   // The technique catalogue, read by every panel that renders badges.
   const mitreApi = useApi(API.MITRE);
@@ -151,87 +155,99 @@ function Shell() {
   return (
     <CatalogueContext.Provider value={catalogue}>
       <TitleContext.Provider value={setTitleDetail}>
-        {desktop && (
-          <Sidebar
-            items={TABS}
-            groups={GROUPS}
-            view={active.id}
-            onView={navigate}
-            collapsed={collapsed}
-          />
-        )}
-        <div
-          className={cx(
-            "min-h-screen flex flex-col transition-[padding] duration-200",
-            desktop && (collapsed ? "pl-[4.5rem]" : "pl-64")
-          )}
-        >
-          {/* Hidden until focused; the first thing Tab lands on. */}
-          <a
-            href="#content"
-            className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-md focus:border focus:border-accent focus:bg-surface focus:px-3 focus:py-2 focus:text-sm focus:text-fg"
-          >
-            Skip to content
-          </a>
-
-          <AppHeader
-            desktop={desktop}
-            tabs={TAB_LIST}
-            active={active}
-            onView={navigate}
-            sidebarCollapsed={collapsed}
-            onToggleSidebar={toggleSidebar}
-            lastEventAt={lastEventAt}
-            lastUpdated={lastUpdated}
-            onRefresh={refresh}
-          />
-
-          <main
-            id="content"
-            tabIndex={-1}
-            aria-label={active.label}
-            className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 focus:outline-none"
-          >
-            {/* With the phone's tab strip, the view is that tablist's panel. */}
-            <div {...(desktop ? {} : { role: "tabpanel", id: "view-panel", "aria-labelledby": `view-${active.id}` })}>
-              <ErrorBoundary key={active.id} name={active.label}>
-                <View onOpenSession={openSession} onNavigate={navigate} />
-              </ErrorBoundary>
-            </div>
-          </main>
-
-          {/* Outside <main>: a footer is a sibling landmark, not page content. */}
-          <footer className="border-t border-line">
-            <div className="mx-auto flex max-w-[1600px] flex-col gap-2 px-4 py-5 text-xs text-fg-subtle sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-              <span>
-                Times in {TIME_ZONE}
-                {TIME_ZONE_LABEL ? ` (${TIME_ZONE_LABEL})` : ""}. <em>Hunajapannu</em> is Finnish for honey pot.
-              </span>
-              <span className="flex gap-4">
-                <span>MIT licensed</span>
-                <a className="hover:text-fg" href="https://github.com/OskariKosonen/hunajapannu" target="_blank" rel="noreferrer">
-                  GitHub
-                </a>
-                <button type="button" className="hover:text-fg" onClick={() => navigate("about")}>
-                  About
-                </button>
-                <a className="hover:text-fg" href="/.well-known/security.txt">
-                  security.txt
-                </a>
-              </span>
-            </div>
-          </footer>
-
-          {openSessionId && (
-            <SessionDrawer
-              data={sessionApi.raw}
-              loading={sessionApi.loading}
-              error={sessionApi.error}
-              onClose={closeSession}
-              mitreById={catalogue.byId}
+        <ApiStatusContext.Provider value={apiDown}>
+          {desktop && (
+            <Sidebar
+              items={TABS}
+              groups={GROUPS}
+              view={active.id}
+              onView={navigate}
+              collapsed={collapsed}
             />
           )}
-        </div>
+          <div
+            className={cx(
+              "min-h-screen flex flex-col transition-[padding] duration-200",
+              desktop && (collapsed ? "pl-[4.5rem]" : "pl-64")
+            )}
+          >
+            {/* Hidden until focused; the first thing Tab lands on. */}
+            <a
+              href="#content"
+              className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-md focus:border focus:border-accent focus:bg-surface focus:px-3 focus:py-2 focus:text-sm focus:text-fg"
+            >
+              Skip to content
+            </a>
+
+            <AppHeader
+              desktop={desktop}
+              tabs={TAB_LIST}
+              active={active}
+              onView={navigate}
+              sidebarCollapsed={collapsed}
+              onToggleSidebar={toggleSidebar}
+              lastEventAt={lastEventAt}
+              apiDown={apiDown}
+              lastUpdated={lastUpdated}
+              onRefresh={refresh}
+            />
+
+            <main
+              id="content"
+              tabIndex={-1}
+              aria-label={active.label}
+              className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 focus:outline-none"
+            >
+              {apiDown && (
+              <div
+                role="status"
+                className="mb-4 rounded-lg border border-warn/30 bg-warn/5 px-4 py-3 text-sm text-fg-muted"
+              >
+                <span className="font-medium text-warn">The API is not responding at the moment.</span> The
+                honeypot keeps recording in the meantime, and this page fills in again as soon as the API is back.
+              </div>
+            )}
+            {/* With the phone's tab strip, the view is that tablist's panel. */}
+              <div {...(desktop ? {} : { role: "tabpanel", id: "view-panel", "aria-labelledby": `view-${active.id}` })}>
+                <ErrorBoundary key={active.id} name={active.label}>
+                  <View onOpenSession={openSession} onNavigate={navigate} />
+                </ErrorBoundary>
+              </div>
+            </main>
+
+            {/* Outside <main>: a footer is a sibling landmark, not page content. */}
+            <footer className="border-t border-line">
+              <div className="mx-auto flex max-w-[1600px] flex-col gap-2 px-4 py-5 text-xs text-fg-subtle sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+                <span>
+                  Times in {TIME_ZONE}
+                  {TIME_ZONE_LABEL ? ` (${TIME_ZONE_LABEL})` : ""}. <em>Hunajapannu</em> is Finnish for honey pot.
+                </span>
+                <span className="flex gap-4">
+                  <span>MIT licensed</span>
+                  <a className="hover:text-fg" href="https://github.com/OskariKosonen/hunajapannu" target="_blank" rel="noreferrer">
+                    GitHub
+                  </a>
+                  <button type="button" className="hover:text-fg" onClick={() => navigate("about")}>
+                    About
+                  </button>
+                  <a className="hover:text-fg" href="/.well-known/security.txt">
+                    security.txt
+                  </a>
+                </span>
+              </div>
+            </footer>
+
+            {openSessionId && (
+              <SessionDrawer
+                data={sessionApi.raw}
+                loading={sessionApi.loading}
+                error={sessionApi.error}
+                onClose={closeSession}
+                mitreById={catalogue.byId}
+              />
+            )}
+          </div>
+        </ApiStatusContext.Provider>
       </TitleContext.Provider>
     </CatalogueContext.Provider>
   );

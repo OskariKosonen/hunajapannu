@@ -6,21 +6,32 @@ const daysSince = (ts) => {
   return Number.isFinite(t) ? Math.max(1, Math.floor((Date.now() - t) / 86_400_000)) : null;
 };
 
-/** One tile: label, the figure, one line of context. */
+/**
+ * One tile: label, the figure, one line of context.
+ *
+ * Every row is a fixed height whether or not the data has arrived. The tiles
+ * used to grow when it did (a shorter placeholder, and a hint that wrapped to
+ * two lines on a phone), which shoved every panel below them down the page.
+ */
 const Tile = ({ label, value, title, hint, loading }) => (
   <div className="min-w-0 bg-surface px-4 py-3.5 sm:px-5 sm:py-4">
     <div className="text-sm text-fg-muted">{label}</div>
-    {loading ? (
-      <div className="mt-2 h-8 w-24 rounded bg-surface-3 animate-pulse" />
-    ) : (
-      <div
-        className="mt-1 text-2xl font-semibold tracking-tight text-fg tabular-nums sm:text-[1.75rem] sm:leading-9"
-        title={title}
-      >
-        {value}
-      </div>
-    )}
-    {hint && <div className="mt-0.5 text-xs text-fg-subtle sm:truncate">{hint}</div>}
+    <div className="mt-1 flex h-8 items-center sm:h-9">
+      {loading ? (
+        <div className="h-7 w-24 rounded bg-surface-3 animate-pulse" />
+      ) : (
+        <div
+          className="text-2xl font-semibold tracking-tight text-fg tabular-nums sm:text-[1.75rem] sm:leading-9"
+          title={title}
+        >
+          {value}
+        </div>
+      )}
+    </div>
+    {/* Two lines reserved on a phone, where the longest hints wrap; one above. */}
+    <div className="mt-0.5 min-h-8 text-xs text-fg-subtle line-clamp-2 sm:min-h-4 sm:line-clamp-1">
+      {loading ? "" : hint}
+    </div>
   </div>
 );
 

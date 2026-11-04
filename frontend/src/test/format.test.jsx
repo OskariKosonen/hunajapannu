@@ -7,7 +7,6 @@ import {
   formatDuration,
   formatRelative,
   formatEventTime,
-  formatPercent,
   countryFlag,
   networkLabel,
   placeLabel,
@@ -37,7 +36,6 @@ describe("format", () => {
     expect(formatDuration(65_000)).toBe("1m 5s");
     expect(formatDuration(3_720_000)).toBe("1h 2m");
     expect(formatDuration(null)).toBe("—");
-    expect(formatPercent(1.5, 2)).toBe("1.50%");
   });
 
   it("says how long ago, in the largest sensible unit", () => {

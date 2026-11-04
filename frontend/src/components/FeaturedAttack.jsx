@@ -176,7 +176,12 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
 
   if (loading && !data) {
     return (
-      <section className={`rounded-lg border border-line bg-surface p-5 ${className}`} aria-label="Featured session">
+      // Roughly the loaded panel's height, so the replay arriving does not
+      // shift the page.
+      <section
+        className={`min-h-[28rem] rounded-lg border border-line bg-surface p-5 ${className}`}
+        aria-label="Session replay"
+      >
         <Skeleton rows={6} />
       </section>
     );

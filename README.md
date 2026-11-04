@@ -2,7 +2,7 @@
 
 An SSH honeypot running on a Raspberry Pi at home since November 2025, plus the pipeline, CI/CD and monitoring around it. Live at **[hunajapannu.fi](https://hunajapannu.fi)**.
 
-| 8M+ | 29k | 10+ months | 50 GB |
+| 8M+ | 30k+ | 11 months | 50 GB |
 |:---:|:---:|:---:|:---:|
 | attacks logged | attacker IPs | running unattended | logs in DB |
 
@@ -19,11 +19,11 @@ An SSH honeypot running on a Raspberry Pi at home since November 2025, plus the 
 - **Forwarder** ([`forwarder/`](forwarder/)): Python, no dependencies, runs under systemd. Tails Cowrie's JSON log and POSTs batches to the API. The file offset is saved only after a successful POST, so backend downtime delays events instead of losing them. Batches the API rejects go to a dead-letter file with a separate replay unit.
 - **Hardening**: the forwarder runs as its own user with `NoNewPrivileges`, `ProtectSystem=strict` and `PrivateTmp`, and can write to one directory only ([unit file](forwarder/cowrie-forwarder.service)).
 - **Backend** ([`backend/`](backend/), [`db/`](db/)): Express 5 and PostgreSQL 16 on a VPS, behind nginx and Cloudflare, run by pm2. GeoIP and VirusTotal enrichment.
-- **Frontend** ([`frontend/`](frontend/)): React 19 + Vite.
+- **Frontend** ([`frontend/`](frontend/)): React 19 + Vite. A dashboard of what the honeypot catches, a replay of a recent attack session, and an About page with this architecture and the incidents below.
 
 ## CI/CD and monitoring
 
-- A push to `main` runs 131 integration checks against a real PostgreSQL 16 on a GitHub-hosted runner. If they pass, a self-hosted runner applies migrations, restarts the API and deploys the frontend.
+- A push to `main` runs 172 integration checks against a real PostgreSQL 16 on a GitHub-hosted runner. If they pass, a self-hosted runner applies migrations, restarts the API and deploys the frontend.
 - If the health check fails after a deploy, the code is rolled back automatically.
 - Migrations are checksummed and applied once. Editing one that already ran fails the deploy.
 - `/health` reports the age of the newest event and clock skew between the Pi and the server. A scheduled workflow polls it, because the likely failure is everything running but no data arriving.
@@ -44,7 +44,8 @@ Things that broke in production and what I changed afterwards.
 - IOC export (IPs, URLs, commands, hashes) as JSON, CSV or text, optionally defanged
 - Password lookup against the captured credentials using a 3-character hash prefix, [HIBP](https://haveibeenpwned.com/API/v3#SearchingPwnedPasswordsByRange)-style, so the password is never sent
 - Command normalization that groups randomized attacker commands into templates
-- Peer map of a Panchan P2P botnet: 1,927 peers collected from peer lists the honeypot captured
+- Peer map of a Panchan P2P botnet: 2,000+ peers collected from peer lists the honeypot captured
+- Session replay on the front page, choosing the recent session that best shows an attack from login to payload rather than the noisiest one
 
 ```sh
 curl 'https://hunajapannu.fi/api/public/cowrie/summary'
@@ -53,7 +54,7 @@ curl 'https://hunajapannu.fi/api/public/cowrie/iocs?type=ips&hours=24&format=txt
 
 ## Testing and running locally
 
-131 integration checks in CI, plus 98 backend, 150 frontend and 12 forwarder unit tests.
+172 integration checks in CI, plus 157 backend, 151 frontend and 42 forwarder unit tests.
 
 ```sh
 tools/ci-local.sh                      # CI suite against a throwaway Postgres container

@@ -1,5 +1,6 @@
 import { cx } from "../../lib/cx";
 import { AlertIcon } from "./icons";
+import { useApiDown } from "../../hooks/useApiStatus";
 
 /** Placeholder bars while a panel's first response is in flight. */
 export const Skeleton = ({ rows = 4, className = "" }) => (
@@ -22,15 +23,23 @@ export const EmptyState = ({ title, hint, className = "" }) => (
   </div>
 );
 
-/** A failed request. Inline, not a modal: the rest of the page still works. */
-export const ErrorNotice = ({ children, className = "" }) => (
-  <div
-    className={cx(
-      "flex items-start gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger",
-      className
-    )}
-  >
-    <AlertIcon size={14} className="mt-0.5" />
-    <div className="min-w-0">{children}</div>
-  </div>
-);
+/**
+ * A failed request. Inline, not a modal: the rest of the page still works.
+ * When the whole API is down the shell already says so once, at the top, so
+ * each panel stays quiet instead of repeating the error.
+ */
+export const ErrorNotice = ({ children, className = "" }) => {
+  const apiDown = useApiDown();
+  if (apiDown) return <p className={cx("text-sm text-fg-subtle", className)}>Not available right now.</p>;
+  return (
+    <div
+      className={cx(
+        "flex items-start gap-2 rounded-md border border-danger/30 bg-danger/5 px-3 py-2 text-sm text-danger",
+        className
+      )}
+    >
+      <AlertIcon size={14} className="mt-0.5" />
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+};

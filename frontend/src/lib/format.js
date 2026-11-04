@@ -144,12 +144,6 @@ export function formatCompact(n) {
   return v.toLocaleString(LOCALE);
 }
 
-export function formatPercent(n, digits = 1) {
-  const v = Number(n);
-  if (n == null || !Number.isFinite(v)) return "—";
-  return `${v.toFixed(digits)}%`;
-}
-
 export function formatBytes(bytes) {
   if (bytes == null) return "—";
   const b = Number(bytes);

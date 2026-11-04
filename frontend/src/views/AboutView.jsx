@@ -81,6 +81,10 @@ const AboutView = () => (
         <img
           src={topologySvg}
           alt="Pipeline: botnets reach the Cowrie honeypot on a Raspberry Pi, a forwarder posts events to an Express API on a VPS, which stores them in PostgreSQL and serves this site through nginx."
+          // Intrinsic size, so the browser reserves the space before the
+          // image arrives instead of pushing the text below it down.
+          width={1280}
+          height={400}
           className="min-w-[640px] w-full h-auto"
         />
       </div>

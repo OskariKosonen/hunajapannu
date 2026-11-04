@@ -43,7 +43,10 @@ export function useApi(url, { enabled = true, onData } = {}) {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [raw, setRaw] = useState(null);
-  const [loading, setLoading] = useState(false);
+  // Loading from the first render when a request is about to start. It used
+  // to start false, so the first frame showed the empty state ("No data yet")
+  // for a moment before the skeleton, and the page jumped twice.
+  const [loading, setLoading] = useState(() => Boolean(enabled && url));
   const [error, setError] = useState("");
 
   const controllerRef = useRef(null);
