@@ -14,7 +14,7 @@ const { pool } = require('../db');
 const { LIMITS } = require('../config');
 const { tagCommand } = require('../lib/mitre');
 const { cached } = require('../cache');
-const { pickFeatured, READABLE_MAX } = require('../lib/featured');
+const { pickFeatured } = require('../lib/featured');
 
 module.exports = function registerSessionRoutes(app) {
   /**
@@ -109,11 +109,10 @@ module.exports = function registerSessionRoutes(app) {
            WHERE timestamp >= $1 AND session_id IS NOT NULL
              AND command IS NOT NULL AND command <> ''
            GROUP BY session_id
-           HAVING COUNT(DISTINCT command) FILTER (WHERE length(command) <= $2) >= 3
            ORDER BY BOOL_OR(command ~* '(wget|curl|tftp)\\s') DESC,
-                    COUNT(DISTINCT command) FILTER (WHERE length(command) <= $2) DESC
-           LIMIT 200`,
-          [since, READABLE_MAX]
+                    COUNT(DISTINCT command) DESC
+           LIMIT 300`,
+          [since]
         );
 
         let chosen = null;
