@@ -166,13 +166,12 @@ function Shell() {
             view={active.id}
             onView={navigate}
             collapsed={collapsed}
-            onToggle={toggleSidebar}
           />
         )}
         <div
           className={cx(
             "min-h-screen flex flex-col transition-[padding] duration-200",
-            desktop && (collapsed ? "pl-16" : "pl-60")
+            desktop && (collapsed ? "pl-[4.5rem]" : "pl-64")
           )}
         >
           {/* Hidden until focused; the first thing Tab lands on. */}
@@ -188,6 +187,8 @@ function Shell() {
             tabs={TAB_LIST}
             active={active}
             onView={navigate}
+            sidebarCollapsed={collapsed}
+            onToggleSidebar={toggleSidebar}
             lastEventAt={lastEventAt}
             lastUpdated={lastUpdated}
             onRefresh={refresh}

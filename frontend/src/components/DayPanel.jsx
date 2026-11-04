@@ -19,7 +19,7 @@ const Figure = ({ label, value, suffix, title, loading }) => (
     {loading ? (
       <div className="mt-1 h-7 w-20 rounded bg-surface-3 animate-pulse" />
     ) : (
-      <div className="mt-0.5 flex items-baseline gap-1.5 whitespace-nowrap">
+      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5">
         <span className="text-xl font-semibold tracking-tight text-fg tabular-nums">{value}</span>
         {suffix && <span className="text-xs text-fg-subtle">{suffix}</span>}
       </div>
