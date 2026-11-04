@@ -123,17 +123,21 @@ export const LinkedInIcon = ({ size = 16, className = "" }) => (
  * Hunajapannu is Finnish for honey pot, and what this one catches is typed
  * into a terminal.
  *
- * Constructed on a 48 grid rather than drawn: the body is one circle
- * (r 15.5) cut flat at the opening and the base, the rim a 26-unit bar a
- * fixed gap above it, and a 1.6 stroke in the fill colour gives every corner
- * the same small radius. Honey amber is the one colour in the brand that is
- * not the UI's emerald. The prompt is a mask, so it shows the surface beneath.
+ * Built on a 48 grid rather than drawn: a lid (29 x 4.4) floating a fixed gap
+ * above a narrow neck (14), opening into a belly that is one circle (r 15)
+ * cut flat at the shoulder and the base. A 1.6 stroke in the fill colour gives
+ * every corner the same radius. The lid is a shade deeper than the pot, which
+ * separates the two at sizes where the gap alone would close up. Honey amber
+ * is the one colour in the brand that is not the UI's emerald. The prompt is
+ * a mask, so it shows the surface beneath.
  */
-const LOGO_BODY = "M13.29 15H34.71A15.5 15.5 0 0 1 31.44 39.8H16.56A15.5 15.5 0 0 1 13.29 15Z";
-const LOGO_PROMPT = "M17.2 22.6l4.8 4.2-4.8 4.2M25.6 31h5.6";
+const LOGO_BODY = "M14.2 17.9H33.8A15 15 0 0 1 31.58 42.2H16.42A15 15 0 0 1 14.2 17.9Z";
+const LOGO_PROMPT = "M18 27l3.7 3.2-3.7 3.2M25 33.4h5";
 
 export const LogoMark = ({ size = 22, className = "" }) => {
   const id = useId();
+  const pot = "rgb(var(--honey))";
+  const lid = "rgb(var(--honey-deep))";
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" className={`shrink-0 ${className}`}>
       <mask id={id}>
@@ -142,20 +146,15 @@ export const LogoMark = ({ size = 22, className = "" }) => {
           d={LOGO_PROMPT}
           fill="none"
           stroke="#000"
-          strokeWidth="3.2"
+          strokeWidth="2.4"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
       </mask>
-      <g
-        fill="rgb(var(--honey))"
-        stroke="rgb(var(--honey))"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-        mask={`url(#${id})`}
-      >
-        <rect x="11" y="7.6" width="26" height="4" rx="1.2" />
-        <path d={LOGO_BODY} />
+      <g strokeWidth="1.6" strokeLinejoin="round" mask={`url(#${id})`}>
+        <rect x="9.5" y="5.8" width="29" height="4.4" rx="1.2" fill={lid} stroke={lid} />
+        <rect x="17" y="13.6" width="14" height="5.3" rx="0.6" fill={pot} stroke={pot} />
+        <path d={LOGO_BODY} fill={pot} stroke={pot} />
       </g>
     </svg>
   );

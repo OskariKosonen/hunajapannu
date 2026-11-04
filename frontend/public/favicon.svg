@@ -1,21 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
   <!-- A honey pot with a shell prompt cut out of it: hunajapannu is Finnish
        for honey pot, and what this one catches is typed into a terminal.
-       Constructed, not drawn: the body is one circle (r 15.5) cut flat at the
-       opening and the base, the rim is a 26-unit bar a fixed gap above it,
-       and a 1.6 stroke of the fill colour gives every corner the same small
-       radius. The prompt is a mask, so the tab shows through it. Darker
-       amber on light tab bars, where the bright gold washes out. -->
+       Built on a 48 grid: a lid (29 x 4.4) floating a fixed gap above a
+       narrow neck (14), opening into a belly that is one circle (r 15) cut
+       flat at the shoulder and the base. A 1.6 stroke in the fill colour
+       gives every corner the same radius. The lid is a shade deeper than
+       the pot. The prompt is a mask, so the tab shows through it, and both
+       tones darken on light tab bars, where bright gold washes out. -->
   <style>
     .pot { fill: #d97706; stroke: #d97706; }
-    @media (prefers-color-scheme: dark) { .pot { fill: #f5b335; stroke: #f5b335; } }
+    .lid { fill: #b45309; stroke: #b45309; }
+    @media (prefers-color-scheme: dark) {
+      .pot { fill: #f5b335; stroke: #f5b335; }
+      .lid { fill: #d9961f; stroke: #d9961f; }
+    }
   </style>
   <mask id="cut">
     <rect width="48" height="48" fill="#fff"/>
-    <path d="M17.2 22.6l4.8 4.2-4.8 4.2M25.6 31h5.6" fill="none" stroke="#000" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M18 27l3.7 3.2-3.7 3.2M25 33.4h5" fill="none" stroke="#000" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
   </mask>
-  <g class="pot" stroke-width="1.6" stroke-linejoin="round" mask="url(#cut)">
-    <rect x="11" y="7.6" width="26" height="4" rx="1.2"/>
-    <path d="M13.29 15H34.71A15.5 15.5 0 0 1 31.44 39.8H16.56A15.5 15.5 0 0 1 13.29 15Z"/>
+  <g stroke-width="1.6" stroke-linejoin="round" mask="url(#cut)">
+    <rect class="lid" x="9.5" y="5.8" width="29" height="4.4" rx="1.2"/>
+    <rect class="pot" x="17" y="13.6" width="14" height="5.3" rx="0.6"/>
+    <path class="pot" d="M14.2 17.9H33.8A15 15 0 0 1 31.58 42.2H16.42A15 15 0 0 1 14.2 17.9Z"/>
   </g>
 </svg>
