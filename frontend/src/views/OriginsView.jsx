@@ -4,7 +4,7 @@ import OriginsShare from "../components/OriginsShare";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import { useApi, useDebounced, buildUrl } from "../hooks/useApi";
 import { useUrlState } from "../hooks/useUrlState";
-import { useTitleDetail, quoted } from "../hooks/useTitle";
+import { useTitleDetail, searchTitle } from "../hooks/useTitle";
 import { API, PAGE_SIZE, SEARCH_DEBOUNCE_MS } from "../lib/api";
 
 const OriginsView = () => {
@@ -13,7 +13,7 @@ const OriginsView = () => {
   const debounced = useDebounced(search, SEARCH_DEBOUNCE_MS);
   // The search only applies to networks, so it only shows in that view.
   useTitleDetail(
-    view === "asn" ? (debounced ? `Networks matching ${quoted(debounced)}` : "Origins by network") : ""
+    view === "asn" ? (debounced ? searchTitle(debounced, "Networks") : "Networks") : ""
   );
   const countriesApi = useApi(buildUrl(API.TOP_COUNTRIES, { limit: PAGE_SIZE.COUNTRIES }));
   const asnApi = useApi(buildUrl(API.TOP_ASN, { limit: PAGE_SIZE.ASN, search: debounced }));

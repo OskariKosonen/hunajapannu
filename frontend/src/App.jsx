@@ -68,20 +68,16 @@ const readCollapsed = () => {
   }
 };
 
-// The browser tab: "<what is on screen> · hunajapannu.fi", everywhere.
-//
-// What is on screen comes first because a tab shows ~20 characters: a row of
-// tabs reading "hunajapannu.fi · Co…", "hunajapannu.fi · Cr…" tells them
-// apart by nothing. The overview leads with what the site is rather than its
-// name, since someone arriving from a CV does not know the name yet. Views add
-// their search or filter, so a bookmark of "wget in Ingress Tool Transfer"
-// does not read the same as every other Commands bookmark.
-const SITE = "hunajapannu.fi";
+// The browser tab. A tab shows ~20 characters, so a title says what is on
+// screen and nothing else: the favicon already says which site it is. The
+// overview is the site's name; a view is its name, plus its search or filter
+// in short form, so filtered views can still be told apart in history.
+const SITE = "Hunajapannu.fi";
 const titleFor = (tab, detail, session) => {
-  if (session) return `${session.src_ip ? `Session from ${session.src_ip}` : "Session timeline"} · ${SITE}`;
-  if (detail) return `${detail} · ${SITE}`;
-  if (tab.id === "overview") return `Live SSH honeypot dashboard · ${SITE}`;
-  return `${tab.label} · ${SITE}`;
+  if (session) return session.src_ip ? `Session ${session.src_ip}` : "Session";
+  if (detail) return detail;
+  if (tab.id === "overview") return SITE;
+  return tab.label;
 };
 
 function Shell() {

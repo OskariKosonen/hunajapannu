@@ -3,8 +3,8 @@ import CommandsPanel from "../components/CommandsPanel";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import { useApi, useDebounced, buildUrl } from "../hooks/useApi";
 import { useUrlState } from "../hooks/useUrlState";
-import { useCatalogue, shortTechniqueName } from "../hooks/useCatalogue";
-import { useTitleDetail, quoted } from "../hooks/useTitle";
+import { useCatalogue } from "../hooks/useCatalogue";
+import { useTitleDetail, searchTitle } from "../hooks/useTitle";
 import { API, PAGE_SIZE, SEARCH_DEBOUNCE_MS } from "../lib/api";
 
 const CommandsView = () => {
@@ -14,14 +14,15 @@ const CommandsView = () => {
   const debounced = useDebounced(search, SEARCH_DEBOUNCE_MS);
   const [counts, setCounts] = useState({});
 
-  const technique = tag !== "all" ? shortTechniqueName(byId[tag]?.name || tag) : "";
+  // Technique by ID, not name: "Ingress Tool Transfer" alone fills a tab.
+  const technique = tag !== "all" ? tag : "";
   useTitleDetail(
     debounced && technique
-      ? `${quoted(debounced)} in ${technique}`
+      ? searchTitle(debounced, technique)
       : debounced
-        ? `Commands matching ${quoted(debounced)}`
+        ? searchTitle(debounced, "Commands")
         : technique
-          ? `${technique} commands`
+          ? `${technique} · Commands`
           : ""
   );
 
