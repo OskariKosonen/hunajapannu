@@ -53,7 +53,7 @@ curl 'https://hunajapannu.fi/api/public/cowrie/iocs?type=ips&hours=24&format=txt
 
 ## Testing and running locally
 
-131 integration checks in CI, plus 98 backend, 143 frontend and 12 forwarder unit tests.
+131 integration checks in CI, plus 98 backend, 146 frontend and 12 forwarder unit tests.
 
 ```sh
 tools/ci-local.sh                      # CI suite against a throwaway Postgres container

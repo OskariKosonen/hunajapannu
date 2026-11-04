@@ -26,6 +26,7 @@ import {
 import { useUrlState } from "./hooks/useUrlState";
 import { RefreshContext, useRefresh, useRefreshClock } from "./hooks/useRefresh";
 import { CatalogueContext } from "./hooks/useCatalogue";
+import { TitleContext } from "./hooks/useTitle";
 import { API, REFRESH_INTERVAL_MS } from "./lib/api";
 
 /**
@@ -67,16 +68,21 @@ const readCollapsed = () => {
   }
 };
 
-// The browser tab says where you are, site name last so it survives
-// truncation in a crowded tab bar as "Commands · hunaja…" rather than
-// "hunajapannu.fi · Co…".
-const SITE_TITLE = "hunajapannu.fi — Live SSH honeypot threat intelligence";
-const titleFor = (tab, sessionOpen) =>
-  sessionOpen
-    ? "Session timeline · hunajapannu.fi"
-    : tab.id === "overview"
-      ? SITE_TITLE
-      : `${tab.label} · hunajapannu.fi`;
+// The browser tab: "<what is on screen> · hunajapannu.fi", everywhere.
+//
+// What is on screen comes first because a tab shows ~20 characters: a row of
+// tabs reading "hunajapannu.fi · Co…", "hunajapannu.fi · Cr…" tells them
+// apart by nothing. The overview leads with what the site is rather than its
+// name, since someone arriving from a CV does not know the name yet. Views add
+// their search or filter, so a bookmark of "wget in Ingress Tool Transfer"
+// does not read the same as every other Commands bookmark.
+const SITE = "hunajapannu.fi";
+const titleFor = (tab, detail, session) => {
+  if (session) return `${session.src_ip ? `Session from ${session.src_ip}` : "Session timeline"} · ${SITE}`;
+  if (detail) return `${detail} · ${SITE}`;
+  if (tab.id === "overview") return `Live SSH honeypot dashboard · ${SITE}`;
+  return `${tab.label} · ${SITE}`;
+};
 
 function Shell() {
   const { lastUpdated, refresh } = useRefresh();
@@ -141,101 +147,106 @@ function Shell() {
     return () => document.removeEventListener("keydown", onKey);
   }, [openSessionId, closeSession]);
 
+  const [titleDetail, setTitleDetail] = useState("");
+  const sessionForTitle = openSessionId ? sessionApi.raw?.session || {} : null;
+  const pageTitle = titleFor(active, titleDetail, sessionForTitle);
   useEffect(() => {
-    document.title = titleFor(active, Boolean(openSessionId));
-  }, [active, openSessionId]);
+    document.title = pageTitle;
+  }, [pageTitle]);
 
   const View = active.Component;
 
   return (
     <CatalogueContext.Provider value={catalogue}>
-      {desktop && (
-        <Sidebar
-          items={TABS}
-          groups={GROUPS}
-          view={active.id}
-          onView={navigate}
-          collapsed={collapsed}
-          onToggle={toggleSidebar}
-        />
-      )}
-      <div
-        className={cx(
-          "min-h-screen flex flex-col transition-[padding] duration-200",
-          desktop && (collapsed ? "pl-16" : "pl-60")
-        )}
-      >
-        {/* Hidden until focused; the first thing Tab lands on. */}
-        <a
-          href="#content"
-          className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-md focus:border focus:border-accent focus:bg-surface focus:px-3 focus:py-2 focus:text-sm focus:text-fg"
-        >
-          Skip to content
-        </a>
-
-        <AppHeader
-          desktop={desktop}
-          tabs={TAB_LIST}
-          active={active}
-          onView={navigate}
-          lastEventAt={lastEventAt}
-          lastUpdated={lastUpdated}
-          onRefresh={refresh}
-        />
-
-        <main
-          id="content"
-          tabIndex={-1}
-          aria-label={active.label}
-          className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 focus:outline-none"
-        >
-          {/* With the phone's tab strip, the view is that tablist's panel. */}
-          <div {...(desktop ? {} : { role: "tabpanel", id: "view-panel", "aria-labelledby": `view-${active.id}` })}>
-            <ErrorBoundary key={active.id} name={active.label}>
-              <View onOpenSession={openSession} onNavigate={navigate} />
-            </ErrorBoundary>
-          </div>
-        </main>
-
-        {/* Outside <main>: a footer is a sibling landmark, not page content. */}
-        <footer className="border-t border-line">
-          <div className="mx-auto flex max-w-[1600px] flex-col gap-2 px-4 py-5 text-xs text-fg-subtle sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-            <span>
-              Built by{" "}
-              <a
-                className="text-fg-muted hover:text-fg"
-                href="https://www.linkedin.com/in/oskari-kosonen-ba2589294/"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Oskari Kosonen
-              </a>{" "}
-              · MIT licensed · <em>Hunajapannu</em> is Finnish for honeypot
-            </span>
-            <span className="flex gap-4">
-              <a className="hover:text-fg" href="https://github.com/OskariKosonen/hunajapannu" target="_blank" rel="noreferrer">
-                GitHub
-              </a>
-              <button type="button" className="hover:text-fg" onClick={() => navigate("data")}>
-                API
-              </button>
-              <a className="hover:text-fg" href="/.well-known/security.txt">
-                security.txt
-              </a>
-            </span>
-          </div>
-        </footer>
-
-        {openSessionId && (
-          <SessionDrawer
-            data={sessionApi.raw}
-            loading={sessionApi.loading}
-            error={sessionApi.error}
-            onClose={closeSession}
-            mitreById={catalogue.byId}
+      <TitleContext.Provider value={setTitleDetail}>
+        {desktop && (
+          <Sidebar
+            items={TABS}
+            groups={GROUPS}
+            view={active.id}
+            onView={navigate}
+            collapsed={collapsed}
+            onToggle={toggleSidebar}
           />
         )}
-      </div>
+        <div
+          className={cx(
+            "min-h-screen flex flex-col transition-[padding] duration-200",
+            desktop && (collapsed ? "pl-16" : "pl-60")
+          )}
+        >
+          {/* Hidden until focused; the first thing Tab lands on. */}
+          <a
+            href="#content"
+            className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[60] focus:rounded-md focus:border focus:border-accent focus:bg-surface focus:px-3 focus:py-2 focus:text-sm focus:text-fg"
+          >
+            Skip to content
+          </a>
+
+          <AppHeader
+            desktop={desktop}
+            tabs={TAB_LIST}
+            active={active}
+            onView={navigate}
+            lastEventAt={lastEventAt}
+            lastUpdated={lastUpdated}
+            onRefresh={refresh}
+          />
+
+          <main
+            id="content"
+            tabIndex={-1}
+            aria-label={active.label}
+            className="mx-auto w-full max-w-[1600px] flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 focus:outline-none"
+          >
+            {/* With the phone's tab strip, the view is that tablist's panel. */}
+            <div {...(desktop ? {} : { role: "tabpanel", id: "view-panel", "aria-labelledby": `view-${active.id}` })}>
+              <ErrorBoundary key={active.id} name={active.label}>
+                <View onOpenSession={openSession} onNavigate={navigate} />
+              </ErrorBoundary>
+            </div>
+          </main>
+
+          {/* Outside <main>: a footer is a sibling landmark, not page content. */}
+          <footer className="border-t border-line">
+            <div className="mx-auto flex max-w-[1600px] flex-col gap-2 px-4 py-5 text-xs text-fg-subtle sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+              <span>
+                Built by{" "}
+                <a
+                  className="text-fg-muted hover:text-fg"
+                  href="https://www.linkedin.com/in/oskari-kosonen-ba2589294/"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Oskari Kosonen
+                </a>{" "}
+                · MIT licensed · <em>Hunajapannu</em> is Finnish for honeypot
+              </span>
+              <span className="flex gap-4">
+                <a className="hover:text-fg" href="https://github.com/OskariKosonen/hunajapannu" target="_blank" rel="noreferrer">
+                  GitHub
+                </a>
+                <button type="button" className="hover:text-fg" onClick={() => navigate("data")}>
+                  API
+                </button>
+                <a className="hover:text-fg" href="/.well-known/security.txt">
+                  security.txt
+                </a>
+              </span>
+            </div>
+          </footer>
+
+          {openSessionId && (
+            <SessionDrawer
+              data={sessionApi.raw}
+              loading={sessionApi.loading}
+              error={sessionApi.error}
+              onClose={closeSession}
+              mitreById={catalogue.byId}
+            />
+          )}
+        </div>
+      </TitleContext.Provider>
     </CatalogueContext.Provider>
   );
 }

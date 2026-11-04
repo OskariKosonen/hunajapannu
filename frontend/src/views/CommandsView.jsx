@@ -3,7 +3,8 @@ import CommandsPanel from "../components/CommandsPanel";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import { useApi, useDebounced, buildUrl } from "../hooks/useApi";
 import { useUrlState } from "../hooks/useUrlState";
-import { useCatalogue } from "../hooks/useCatalogue";
+import { useCatalogue, shortTechniqueName } from "../hooks/useCatalogue";
+import { useTitleDetail, quoted } from "../hooks/useTitle";
 import { API, PAGE_SIZE, SEARCH_DEBOUNCE_MS } from "../lib/api";
 
 const CommandsView = () => {
@@ -12,6 +13,17 @@ const CommandsView = () => {
   const [tag, setTag] = useUrlState("tag", "all");
   const debounced = useDebounced(search, SEARCH_DEBOUNCE_MS);
   const [counts, setCounts] = useState({});
+
+  const technique = tag !== "all" ? shortTechniqueName(byId[tag]?.name || tag) : "";
+  useTitleDetail(
+    debounced && technique
+      ? `${quoted(debounced)} in ${technique}`
+      : debounced
+        ? `Commands matching ${quoted(debounced)}`
+        : technique
+          ? `${technique} commands`
+          : ""
+  );
 
   const api = useApi(buildUrl(API.COMMANDS, { limit: PAGE_SIZE.COMMANDS, search: debounced, tag }), {
     onData: (d) => d?.counts && setCounts(d.counts),

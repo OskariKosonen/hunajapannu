@@ -148,9 +148,31 @@ describe("App", () => {
 
   it("names the current view in the browser tab", async () => {
     render(<App />);
-    await waitFor(() => expect(document.title).toMatch(/^hunajapannu\.fi — Live SSH honeypot/));
+    await waitFor(() => expect(document.title).toBe("Live SSH honeypot dashboard · hunajapannu.fi"));
     fireEvent.click(await screen.findByRole("tab", { name: "Credentials" }));
     await waitFor(() => expect(document.title).toBe("Credentials · hunajapannu.fi"));
+  });
+
+  it("puts a view's search and filter in the tab title", async () => {
+    window.history.replaceState(null, "", "/?view=commands&tag=T1105&cmd=wget");
+    render(<App />);
+    await waitFor(() =>
+      expect(document.title).toBe("“wget” in Ingress Tool Transfer · hunajapannu.fi")
+    );
+  });
+
+  it("drops the filter from the title once the view is left", async () => {
+    window.history.replaceState(null, "", "/?view=credentials&cred=root");
+    render(<App />);
+    await waitFor(() => expect(document.title).toBe("Credentials matching “root” · hunajapannu.fi"));
+    fireEvent.click(screen.getByRole("tab", { name: "Malware" }));
+    await waitFor(() => expect(document.title).toBe("Malware · hunajapannu.fi"));
+  });
+
+  it("names the attacker in the title while a session is open", async () => {
+    window.history.replaceState(null, "", "/?session=abc123");
+    render(<App />);
+    await waitFor(() => expect(document.title).toBe("Session from 1.2.3.4 · hunajapannu.fi"));
   });
 
   it("says what the site is before any figures", async () => {
