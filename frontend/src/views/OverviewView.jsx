@@ -109,7 +109,7 @@ const OverviewView = ({ onOpenSession, onNavigate }) => {
         </ErrorBoundary>
       </div>
 
-      <div className={hasFeatured ? "grid gap-4 xl:grid-cols-2 xl:items-start" : ""}>
+      <div className={hasFeatured ? "grid gap-4 xl:grid-cols-2" : ""}>
         {hasFeatured && (
           <ErrorBoundary name="Featured session">
             <FeaturedAttack

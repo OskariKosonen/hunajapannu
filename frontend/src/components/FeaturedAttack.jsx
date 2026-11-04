@@ -185,7 +185,15 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
   const duration = relativeTime(lines[lines.length - 1].offset).slice(1);
 
   return (
-    <section className={`flex flex-col min-w-0 rounded-lg border border-line bg-surface ${className}`}>
+    // Expanded, it stretches to the height of whatever shares its row (the
+    // live feed on the overview) and the transcript takes up the slack.
+    // Collapsed, it keeps to its header instead of stretching into an empty
+    // box.
+    <section
+      className={`flex flex-col min-w-0 rounded-lg border border-line bg-surface ${
+        collapsed ? "self-start" : ""
+      } ${className}`}
+    >
       <header className="flex flex-wrap items-start justify-between gap-3 px-4 pt-3.5 pb-3 sm:px-5">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -265,7 +273,7 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
         ref={scrollRef}
         id={bodyId}
         hidden={collapsed}
-        className="mx-4 mb-4 sm:mx-5 flex-1 min-h-[14rem] max-h-[18rem] overflow-y-auto custom-scrollbar fade-scroll-top rounded-md border border-line bg-canvas px-3.5 py-3 font-mono text-[0.8125rem] leading-relaxed"
+        className="mx-4 mb-4 sm:mx-5 h-[16rem] xl:h-auto xl:min-h-[14rem] xl:flex-1 xl:basis-0 overflow-y-auto custom-scrollbar fade-scroll-top rounded-md border border-line bg-canvas px-3.5 py-3 font-mono text-[0.8125rem] leading-relaxed"
       >
         {visible.map((line, i) => {
           const isCurrent = i === step && !done;
