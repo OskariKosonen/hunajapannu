@@ -1,6 +1,5 @@
 import { memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import Button from "./ui/Button";
-import Badge from "./ui/Badge";
 import TechniqueBadge from "./TechniqueBadge";
 import { Skeleton } from "./ui/states";
 import { ChevronDownIcon, ChevronRightIcon, PauseIcon, PlayIcon, ReplayIcon, SkipIcon, TimelineIcon } from "./ui/icons";
@@ -206,21 +205,18 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
     >
       <header className="flex flex-wrap items-start justify-between gap-3 px-4 pt-3.5 pb-3 sm:px-5">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <Badge tone="accent">Featured session</Badge>
-            <span className="text-xs text-fg-subtle">Busiest of the past week</span>
-          </div>
-          <h2 className="mt-2 flex items-center gap-2 text-base font-semibold text-fg min-w-0">
+          <h2 className="text-base font-semibold text-fg">Session replay</h2>
+          <p className="mt-1.5 flex items-center gap-2 min-w-0 text-sm">
             <span aria-hidden="true">{countryFlag(session.country_iso)}</span>
             <span className="font-mono text-info">{session.src_ip}</span>
-          </h2>
+            <span className="text-xs text-fg-subtle">busiest session this week</span>
+          </p>
           <p className="mt-0.5 text-sm text-fg-muted truncate">
             {networkLabel(session)}
             {session.city ? ` · ${session.city}` : ""}
           </p>
           <p className="mt-0.5 text-xs text-fg-subtle">
-            {commandCount} {commandCount === 1 ? "command" : "commands"} over {duration}, replayed in
-            order
+            {commandCount} {commandCount === 1 ? "command" : "commands"} in {duration}
           </p>
         </div>
 

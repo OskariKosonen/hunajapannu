@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from "react";
-import Panel, { ApiLink } from "./ui/Panel";
+import Panel from "./ui/Panel";
 import DataTable from "./ui/DataTable";
 import SearchInput from "./ui/SearchInput";
 import TechniqueBadge from "./TechniqueBadge";
@@ -139,9 +139,6 @@ const CommandsPanel = ({
   return (
     <Panel
       title="Top commands"
-      description="Commands attackers ran after logging in, grouped by template and tagged with MITRE ATT&CK techniques."
-      meta="All time"
-      actions={<ApiLink href="/api/public/cowrie/commands?limit=100" />}
       toolbar={
         <>
           <SearchInput

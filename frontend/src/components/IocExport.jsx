@@ -109,7 +109,7 @@ const IocExport = ({ endpoint }) => {
   return (
     <Panel
       title="Export indicators"
-      description="Copy or download indicators of compromise for a block list, a SIEM or a ticket."
+      description="Indicators of compromise for a block list, a SIEM or a ticket."
       actions={<SegmentedControl label="Time window" options={WINDOWS} value={hours} onChange={setHours} />}
       flush
       footer={
@@ -134,7 +134,7 @@ const IocExport = ({ endpoint }) => {
       </ul>
       {copied === "failed" && (
         <p role="alert" className="px-4 pb-3 sm:px-5 text-sm text-danger">
-          Could not copy — the download links still work.
+          Could not copy. The download links still work.
         </p>
       )}
     </Panel>

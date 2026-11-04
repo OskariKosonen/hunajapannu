@@ -3,7 +3,7 @@ import Tabs from "./ui/Tabs";
 import { LogoMark, PanelLeftIcon, RefreshIcon } from "./ui/icons";
 import { cx } from "../lib/cx";
 import { useNow } from "../hooks/useRefresh";
-import { TIME_ZONE, TIME_ZONE_LABEL, formatClock, formatRelative } from "../lib/format";
+import { formatClock, formatRelative } from "../lib/format";
 
 // The sensor sees several events a minute. Ten quiet minutes means something
 // upstream has stopped, which is exactly the failure that once went unnoticed
@@ -56,9 +56,6 @@ const LiveControl = ({ lastEventAt, lastUpdated, onRefresh, now }) => {
         className="flex items-center gap-2 pl-3 pr-2.5"
       >
         <span className="relative flex h-2 w-2">
-          {known && !stale && (
-            <span className="absolute inline-flex h-full w-full rounded-full bg-accent opacity-60 motion-safe:animate-ping" />
-          )}
           <span
             className={cx(
               "relative inline-flex h-2 w-2 rounded-full",
@@ -87,13 +84,6 @@ const LiveControl = ({ lastEventAt, lastUpdated, onRefresh, now }) => {
 
 const Controls = ({ lastEventAt, lastUpdated, onRefresh, now }) => (
   <div className="ml-auto flex items-center gap-3 min-w-0">
-    <span
-      className="hidden xl:inline text-xs text-fg-subtle whitespace-nowrap"
-      title="All timestamps are shown in your local timezone"
-    >
-      Times in {TIME_ZONE}
-      {TIME_ZONE_LABEL ? ` (${TIME_ZONE_LABEL})` : ""}
-    </span>
     <LiveControl lastEventAt={lastEventAt} lastUpdated={lastUpdated} onRefresh={onRefresh} now={now} />
   </div>
 );
@@ -138,11 +128,6 @@ const AppHeader = ({
             </button>
             <Icon size={18} className="text-fg-subtle" />
             <span className="text-base font-semibold text-fg whitespace-nowrap">{active.label}</span>
-            {active.description && (
-              <span className="hidden truncate border-l border-line pl-3 text-sm text-fg-subtle 2xl:inline">
-                {active.description}
-              </span>
-            )}
           </div>
           {controls}
         </div>
@@ -153,7 +138,7 @@ const AppHeader = ({
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-canvas/90 backdrop-blur supports-[backdrop-filter]:bg-canvas/75">
       <div className="flex h-14 items-center gap-3 px-4 sm:px-6">
-        <a href="/" className="flex items-center gap-2.5 shrink-0" aria-label="hunajapannu.fi — home">
+        <a href="/" className="flex items-center gap-2.5 shrink-0" aria-label="hunajapannu.fi, home">
           <LogoMark size={24} />
           <h1 className="text-base font-semibold tracking-tight text-fg">hunajapannu.fi</h1>
         </a>

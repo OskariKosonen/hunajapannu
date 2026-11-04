@@ -1,5 +1,5 @@
 import { memo } from "react";
-import Panel, { ApiLink } from "./ui/Panel";
+import Panel from "./ui/Panel";
 import DataTable from "./ui/DataTable";
 import { countryFlag, formatDate, formatNumber } from "../lib/format";
 
@@ -71,8 +71,8 @@ const BotnetPeersPanel = ({ data, loading, error }) => {
       title="Botnet peers"
       description={
         <>
-          Addresses a P2P SSH worm (Panchan) was handed so it could join its mesh. These are infected machines,
-          not targets.
+          Addresses a peer-to-peer SSH worm (Panchan) was given so it could join its mesh. They are infected
+          machines, not targets.
           {data && (
             <span className="text-fg-subtle">
               {" "}
@@ -82,7 +82,6 @@ const BotnetPeersPanel = ({ data, loading, error }) => {
         </>
       }
       meta={data ? `${formatNumber(data.total)} peers · ${data.lists} lists` : undefined}
-      actions={<ApiLink href="/api/public/cowrie/peers?limit=100" />}
       toolbar={
         dist && distTotal > 0 ? (
           <div>

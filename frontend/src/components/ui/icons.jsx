@@ -104,6 +104,9 @@ export const GlobeIcon = (p) => (
 export const NetworkIcon = (p) => (
   <Svg {...p}><circle cx="12" cy="5" r="2.5" /><circle cx="5" cy="19" r="2.5" /><circle cx="19" cy="19" r="2.5" /><path d="M10.8 7.2 6.2 16.8M13.2 7.2l4.6 9.6M7.5 19h9" /></Svg>
 );
+export const InfoIcon = (p) => (
+  <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 11v5.5M12 7.6h.01" /></Svg>
+);
 export const DatabaseIcon = (p) => (
   <Svg {...p}><ellipse cx="12" cy="5.5" rx="8" ry="2.5" /><path d="M4 5.5v13c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-13M4 12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5" /></Svg>
 );

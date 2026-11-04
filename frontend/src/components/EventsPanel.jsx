@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from "react";
-import Panel, { ApiLink } from "./ui/Panel";
+import Panel from "./ui/Panel";
 import DataTable from "./ui/DataTable";
 import SegmentedControl from "./ui/SegmentedControl";
 import { EMPTY_STATES } from "../lib/flavour";
@@ -140,14 +140,13 @@ const EventsPanel = ({
   return (
     <Panel
       title="Live events"
-      description={compact ? undefined : "Every connection, login attempt and command, newest first. Select a row to open its session."}
-      meta={compact ? "Newest first" : `Latest ${events.length.toLocaleString("en-GB")}`}
+      description={compact ? undefined : "Click a row to see the whole session."}
+      meta={compact ? undefined : `Latest ${events.length.toLocaleString("en-GB")}`}
       actions={
         <>
           {!compact && (
             <SegmentedControl label="Event type" options={KIND_FILTERS} value={kind} onChange={setKind} />
           )}
-          {!compact && <ApiLink href="/api/public/cowrie/latest?limit=100" />}
 
         </>
       }

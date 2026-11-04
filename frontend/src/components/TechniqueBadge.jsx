@@ -15,7 +15,7 @@ const TechniqueBadge = ({ id, technique, active = false, dim = false, className 
   const name = technique?.name || id;
   return (
     <span
-      title={technique?.description ? `${name} — ${technique.description}` : name}
+      title={technique?.description ? `${name}: ${technique.description}` : name}
       className={cx(
         "inline-flex items-center gap-1.5 rounded border px-1.5 py-px text-2xs whitespace-nowrap transition-colors duration-300",
         active

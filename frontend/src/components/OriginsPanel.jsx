@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react";
-import Panel, { ApiLink } from "./ui/Panel";
+import Panel from "./ui/Panel";
 import DataTable from "./ui/DataTable";
 import SearchInput from "./ui/SearchInput";
 import SegmentedControl from "./ui/SegmentedControl";
@@ -101,14 +101,7 @@ const OriginsPanel = ({
   return (
     <Panel
       title="Attack origins"
-      description="Where connections come from, by the GeoIP country and network of the source address."
-      meta="All time"
-      actions={
-        <>
-          <SegmentedControl label="Origin granularity" options={options} value={view} onChange={onView} />
-          <ApiLink href={isAsn ? "/api/public/cowrie/top-asn?limit=50" : "/api/public/cowrie/top-countries?limit=50"} />
-        </>
-      }
+      actions={<SegmentedControl label="Origin granularity" options={options} value={view} onChange={onView} />}
       // Only networks are searchable server-side; countries arrive whole.
       toolbar={
         isAsn ? (

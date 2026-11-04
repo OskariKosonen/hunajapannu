@@ -88,8 +88,8 @@ const PasswordCheck = ({ endpoint, uniqueCredCount, className = "" }) => {
       title="Password check"
       description={
         uniqueCredCount != null
-          ? `Has this password been tried against the honeypot? Checked against ${formatNumber(uniqueCredCount)} captured username/password pairs.`
-          : "Has this password been tried against the honeypot?"
+          ? `Has a bot tried your password here? Checked against ${formatNumber(uniqueCredCount)} captured pairs.`
+          : "Has a bot tried your password here?"
       }
       className={className}
     >
@@ -136,14 +136,14 @@ const PasswordCheck = ({ endpoint, uniqueCredCount, className = "" }) => {
         {state.status === "done" && state.hit && (
           <div role="status" className="rounded-md border border-warn/40 bg-warn/5 p-3.5 space-y-1">
             <div className="text-sm font-semibold text-warn">
-              Yes — seen {formatNumber(state.hit.attempts)} {state.hit.attempts === 1 ? "time" : "times"}.
+              Yes. Seen {formatNumber(state.hit.attempts)} {state.hit.attempts === 1 ? "time" : "times"}.
             </div>
             <div className="text-sm text-fg-muted">
               Tried against {formatNumber(state.hit.pairs)}{" "}
               {state.hit.pairs === 1 ? "username" : "different usernames"}
               {state.hit.usernames?.length > 0 && (
                 <>
-                  {" "}— including{" "}
+                  {", including "}
                   {state.hit.usernames.map((u, i) => (
                     <span key={u}>
                       {i > 0 && ", "}
@@ -161,8 +161,8 @@ const PasswordCheck = ({ endpoint, uniqueCredCount, className = "" }) => {
           <div role="status" className="rounded-md border border-accent/30 bg-accent/5 p-3.5 space-y-1">
             <div className="text-sm font-semibold text-accent">Not in this corpus.</div>
             <div className="text-sm text-fg-muted">
-              These are the passwords bots have actually thrown at one honeypot — not a measure of whether a
-              password is strong or has leaked elsewhere.
+              This only covers what bots have tried on this one honeypot. It says nothing about whether the
+              password is strong or has leaked somewhere else.
             </div>
           </div>
         )}
@@ -170,11 +170,11 @@ const PasswordCheck = ({ endpoint, uniqueCredCount, className = "" }) => {
         <div className="rounded-md bg-surface-2/60 px-3.5 py-3 text-xs leading-relaxed text-fg-muted space-y-1.5">
           <p>
             <span className="font-medium text-fg">Your password never leaves this page.</span> It is hashed here
-            with SHA-256 and only the first {PREFIX_LENGTH} characters of the hash are sent — one of{" "}
-            {(16 ** PREFIX_LENGTH).toLocaleString("en-GB")} buckets, shared by dozens of other captured passwords,
-            so the server cannot tell which one you asked about.
+            with SHA-256 and only the first {PREFIX_LENGTH} characters of the hash are sent. That is one of{" "}
+            {(16 ** PREFIX_LENGTH).toLocaleString("en-GB")} buckets, each shared by dozens of captured passwords, so
+            the server cannot tell which one you asked about.
           </p>
-          <p className="text-warn/90">Still — don't type a password you currently use, into this or any other site.</p>
+          <p className="text-warn/90">Still, don't type a password you currently use, here or on any other site.</p>
           {state.status === "done" && (
             <p className="text-fg-subtle">
               Sent prefix <code className="font-mono text-fg-muted">{state.prefix}</code>; the server returned{" "}

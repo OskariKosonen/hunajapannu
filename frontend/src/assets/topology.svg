@@ -29,7 +29,7 @@
   <!-- ingest row -->
   <rect class="node" x="24"  y="84" width="160" height="70" rx="8"/>
   <text class="name" x="104" y="114" text-anchor="middle">Botnets</text>
-  <text class="sub"  x="104" y="133" text-anchor="middle">29,333 IPs</text>
+  <text class="sub"  x="104" y="133" text-anchor="middle">scanning the internet</text>
 
   <rect class="accent" x="254" y="76" width="212" height="86" rx="8"/>
   <text class="name" x="360" y="106" text-anchor="middle">Raspberry Pi</text>
@@ -48,7 +48,7 @@
 
   <rect class="node" x="806" y="236" width="194" height="72" rx="8"/>
   <text class="name" x="903" y="266" text-anchor="middle">PostgreSQL 16</text>
-  <text class="sub"  x="903" y="285" text-anchor="middle">8.07M events</text>
+  <text class="sub"  x="903" y="285" text-anchor="middle">events + aggregates</text>
 
   <rect class="node" x="1070" y="76" width="186" height="86" rx="8"/>
   <text class="name" x="1163" y="106" text-anchor="middle">nginx</text>

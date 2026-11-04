@@ -60,13 +60,13 @@ const KpiStrip = ({ summary: s, loading }) => (
       label="Credential pairs tried"
       loading={loading}
       value={formatNumber(s?.uniqueCredCount)}
-      hint={s?.uniqueCommands != null ? `${formatNumber(s.uniqueCommands)} distinct commands run` : undefined}
+      hint={s?.uniqueCommands != null ? `${formatNumber(s.uniqueCommands)} different commands` : undefined}
     />
     <Tile
       label="Malware samples"
       loading={loading}
       value={formatNumber(s?.malwareSamples)}
-      hint="by SHA-256, checked on VirusTotal"
+      hint="checked on VirusTotal"
     />
   </section>
 );

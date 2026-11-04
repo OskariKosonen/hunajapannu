@@ -123,10 +123,10 @@ describe("App", () => {
     });
     afterEach(() => { window.matchMedia = realMatchMedia; });
 
-    it("navigates from a grouped sidebar of real links", async () => {
+    it("navigates from a sidebar of real links", async () => {
       render(<App />);
       const nav = await screen.findByRole("navigation", { name: /dashboard sections/i });
-      expect(within(nav).getByText("Investigate")).toBeInTheDocument();
+      expect(within(nav).getByRole("link", { name: "About" })).toBeInTheDocument();
       const link = within(nav).getByRole("link", { name: "Malware" });
       // A real href, so middle-click opens the view in a new tab.
       expect(link).toHaveAttribute("href", "/?view=malware");
@@ -193,8 +193,24 @@ describe("App", () => {
   it("says what the site is before any figures", async () => {
     // Linked from a CV: the first visitor may never have heard of a honeypot.
     render(<App />);
-    const heading = await screen.findByRole("heading", { level: 2, name: /real attacks against a real server/i });
+    const heading = await screen.findByRole("heading", { level: 2, name: /ssh honeypot on a raspberry pi/i });
     expect(within(heading.closest("section")).getByRole("link", { name: "Oskari Kosonen" })).toBeInTheDocument();
+  });
+
+  it("tells the engineering story on the About page", async () => {
+    window.history.replaceState(null, "", "/?view=about");
+    render(<App />);
+    expect(await screen.findByRole("heading", { level: 2, name: "How it is built" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Incidents" })).toBeInTheDocument();
+    expect(screen.getByText("sha256(command)").tagName).toBe("CODE");
+    // The API and exports moved here from the old Data & API view.
+    expect(screen.getByRole("heading", { level: 2, name: "Public API" })).toBeInTheDocument();
+  });
+
+  it("sends the old Data & API link to About", async () => {
+    window.history.replaceState(null, "", "/?view=data");
+    render(<App />);
+    expect(await screen.findByRole("tab", { name: "About" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("opens straight into the view a shared link names", async () => {

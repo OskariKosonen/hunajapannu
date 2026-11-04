@@ -70,7 +70,7 @@ const Row = ({ path, what }) => {
 const ApiReferencePanel = () => (
   <Panel
     title="Public API"
-    description="Everything on this dashboard comes from these endpoints. JSON, no key, rate-limited."
+    description="Everything on this site comes from these endpoints. JSON, no key, rate limited."
     flush
   >
     <ul className="divide-y divide-line/70">

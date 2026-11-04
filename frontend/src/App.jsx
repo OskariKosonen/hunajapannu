@@ -10,15 +10,15 @@ import CredentialsView from "./views/CredentialsView";
 import MalwareView from "./views/MalwareView";
 import OriginsView from "./views/OriginsView";
 import BotnetView from "./views/BotnetView";
-import DataView from "./views/DataView";
+import AboutView from "./views/AboutView";
 import { useApi, buildUrl, useMediaQuery, RefreshTickContext } from "./hooks/useApi";
 import { cx } from "./lib/cx";
 import {
   ActivityIcon,
   BugIcon,
-  DatabaseIcon,
   GlobeIcon,
   GridIcon,
+  InfoIcon,
   KeyIcon,
   NetworkIcon,
   TerminalIcon,
@@ -28,6 +28,7 @@ import { RefreshContext, useRefresh, useRefreshClock } from "./hooks/useRefresh"
 import { CatalogueContext } from "./hooks/useCatalogue";
 import { TitleContext } from "./hooks/useTitle";
 import { API, REFRESH_INTERVAL_MS } from "./lib/api";
+import { TIME_ZONE, TIME_ZONE_LABEL } from "./lib/format";
 
 /**
  * The shell: header, tabs, the active view, and the session drawer.
@@ -37,26 +38,21 @@ import { API, REFRESH_INTERVAL_MS } from "./lib/api";
  * on load to fill panels most visitors never scrolled to.
  */
 
-const GROUPS = ["Monitor", "Investigate", "Resources"];
+// The dashboard, then About. The sidebar draws a hairline between groups.
+const GROUPS = ["dashboard", "project"];
 
 const TABS = [
-  { id: "overview", label: "Overview", group: "Monitor", Icon: GridIcon, Component: OverviewView,
-    description: "What the honeypot is seeing, at a glance" },
-  { id: "activity", label: "Live activity", group: "Monitor", Icon: ActivityIcon, Component: ActivityView,
-    description: "Every connection, login and command as it arrives" },
-  { id: "commands", label: "Commands", group: "Investigate", Icon: TerminalIcon, Component: CommandsView,
-    description: "What attackers run once they are in, tagged with MITRE ATT&CK" },
-  { id: "credentials", label: "Credentials", group: "Investigate", Icon: KeyIcon, Component: CredentialsView,
-    description: "The usernames and passwords bots try" },
-  { id: "malware", label: "Malware", group: "Investigate", Icon: BugIcon, Component: MalwareView,
-    description: "Captured samples and the hosts serving them" },
-  { id: "origins", label: "Origins", group: "Investigate", Icon: GlobeIcon, Component: OriginsView,
-    description: "Where the traffic comes from, by country and network" },
-  { id: "botnet", label: "Botnet", group: "Investigate", Icon: NetworkIcon, Component: BotnetView,
-    description: "A P2P worm's peer mesh, and attackers checking for honeypots" },
-  { id: "data", label: "Data & API", group: "Resources", Icon: DatabaseIcon, Component: DataView,
-    description: "Indicator exports, the public API and how it is built" },
+  { id: "overview", label: "Overview", group: "dashboard", Icon: GridIcon, Component: OverviewView },
+  { id: "activity", label: "Live activity", group: "dashboard", Icon: ActivityIcon, Component: ActivityView },
+  { id: "commands", label: "Commands", group: "dashboard", Icon: TerminalIcon, Component: CommandsView },
+  { id: "credentials", label: "Credentials", group: "dashboard", Icon: KeyIcon, Component: CredentialsView },
+  { id: "malware", label: "Malware", group: "dashboard", Icon: BugIcon, Component: MalwareView },
+  { id: "origins", label: "Origins", group: "dashboard", Icon: GlobeIcon, Component: OriginsView },
+  { id: "botnet", label: "Botnet", group: "dashboard", Icon: NetworkIcon, Component: BotnetView },
+  { id: "about", label: "About", group: "project", Icon: InfoIcon, Component: AboutView },
 ];
+// Links to views that were renamed keep working.
+const ALIASES = { data: "about" };
 const TAB_LIST = TABS.map(({ id, label }) => ({ id, label }));
 
 const SIDEBAR_KEY = "hunajapannu:sidebar-collapsed";
@@ -103,7 +99,7 @@ function Shell() {
   // Views push history entries so Back moves between them.
   const [rawView, setView] = useUrlState("view", "overview", { push: true });
   const [openSessionId, setOpenSessionId] = useUrlState("session");
-  const active = TABS.find((t) => t.id === rawView) || TABS[0];
+  const active = TABS.find((t) => t.id === (ALIASES[rawView] || rawView)) || TABS[0];
 
   const navigate = useCallback(
     (id) => {
@@ -208,23 +204,16 @@ function Shell() {
           <footer className="border-t border-line">
             <div className="mx-auto flex max-w-[1600px] flex-col gap-2 px-4 py-5 text-xs text-fg-subtle sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
               <span>
-                Built by{" "}
-                <a
-                  className="text-fg-muted hover:text-fg"
-                  href="https://www.linkedin.com/in/oskari-kosonen-ba2589294/"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Oskari Kosonen
-                </a>{" "}
-                · MIT licensed · <em>Hunajapannu</em> is Finnish for honeypot
+                Times in {TIME_ZONE}
+                {TIME_ZONE_LABEL ? ` (${TIME_ZONE_LABEL})` : ""}. <em>Hunajapannu</em> is Finnish for honey pot.
               </span>
               <span className="flex gap-4">
+                <span>MIT licensed</span>
                 <a className="hover:text-fg" href="https://github.com/OskariKosonen/hunajapannu" target="_blank" rel="noreferrer">
                   GitHub
                 </a>
-                <button type="button" className="hover:text-fg" onClick={() => navigate("data")}>
-                  API
+                <button type="button" className="hover:text-fg" onClick={() => navigate("about")}>
+                  About
                 </button>
                 <a className="hover:text-fg" href="/.well-known/security.txt">
                   security.txt

@@ -1,5 +1,5 @@
 import { useMemo, memo } from "react";
-import Panel, { ApiLink } from "./ui/Panel";
+import Panel from "./ui/Panel";
 import AreaSparkline from "./common/AreaSparkline";
 import { ErrorNotice, EmptyState } from "./ui/states";
 import { formatHourLabel, formatNumber } from "../lib/format";
@@ -19,7 +19,6 @@ const TrendPanel = ({ trend, trendError, trendLoading, height = 200 }) => {
     <Panel
       title="Events per hour"
       meta="Last 24 hours"
-      actions={<ApiLink href="/api/public/cowrie/events-per-hour?hours=24" />}
     >
       {chartData.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-x-6 gap-y-1 text-sm">

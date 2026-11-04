@@ -18,7 +18,7 @@ import { formatNumber } from "../lib/format";
 const TopList = ({ title, rows, loading, error, errorLabel, label, value, onOpen, openLabel }) => {
   const max = Math.max(0, ...rows.map((r) => Number(value(r)) || 0));
   return (
-    <Panel title={title} meta="All time" onOpen={onOpen} openLabel={openLabel} className="h-full">
+    <Panel title={title} onOpen={onOpen} openLabel={openLabel} className="h-full">
       {rows.length === 0 ? (
         error ? (
           <ErrorNotice>

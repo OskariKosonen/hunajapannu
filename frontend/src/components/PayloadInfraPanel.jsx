@@ -1,5 +1,5 @@
 import { memo } from "react";
-import Panel, { ApiLink } from "./ui/Panel";
+import Panel from "./ui/Panel";
 import Badge from "./ui/Badge";
 import { EmptyState, ErrorNotice, Skeleton } from "./ui/states";
 import { ExternalIcon } from "./ui/icons";
@@ -54,7 +54,7 @@ const HostCard = ({ h }) => {
         )}
       </div>
 
-      {cloud && <Badge tone="warn">Commercial cloud — IP reputation will not flag this</Badge>}
+      {cloud && <Badge tone="warn">Commercial cloud: IP reputation will not flag this</Badge>}
 
       <dl className="grid grid-cols-3 gap-2">
         <Fact label="Payloads">{formatNumber(h.url_count)}</Fact>
@@ -79,9 +79,8 @@ const HostCard = ({ h }) => {
 const PayloadInfraPanel = ({ hosts, error, loading, total }) => (
   <Panel
     title="Payload hosts"
-    description="Servers that attackers pulled second-stage payloads from, parsed out of captured download commands. URLs are defanged."
-    meta={total > 0 ? `${formatNumber(total)} hosts · all time` : "All time"}
-    actions={<ApiLink href="/api/public/cowrie/payload-hosts?limit=25" />}
+    description="Servers the attackers downloaded payloads from, taken from captured wget and curl commands. URLs are defanged."
+    meta={total > 0 ? `${formatNumber(total)} hosts` : undefined}
   >
     {hosts.length === 0 ? (
       error ? (

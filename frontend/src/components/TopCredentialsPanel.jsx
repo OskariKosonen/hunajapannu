@@ -1,5 +1,5 @@
 import { memo } from "react";
-import Panel, { ApiLink } from "./ui/Panel";
+import Panel from "./ui/Panel";
 import DataTable from "./ui/DataTable";
 import SearchInput from "./ui/SearchInput";
 import { formatNumber } from "../lib/format";
@@ -41,9 +41,6 @@ const COLUMNS = [
 const TopCredentialsPanel = ({ creds, credsError, credsLoading, credsTotal, search, onSearch, pageSize }) => (
   <Panel
     title="Top credentials"
-    description="Username and password pairs tried against the honeypot's SSH and Telnet login."
-    meta="All time"
-    actions={<ApiLink href="/api/public/cowrie/creds?limit=100" />}
     toolbar={
       <SearchInput
         value={search}

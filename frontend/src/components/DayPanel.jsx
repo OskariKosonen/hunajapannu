@@ -1,8 +1,8 @@
 import { memo, useMemo } from "react";
-import Panel, { ApiLink } from "./ui/Panel";
+import Panel from "./ui/Panel";
 import AreaSparkline from "./common/AreaSparkline";
 import { ErrorNotice, EmptyState } from "./ui/states";
-import { formatHourLabel, formatNumber, formatPercent } from "../lib/format";
+import { formatHourLabel, formatNumber } from "../lib/format";
 
 /**
  * The last 24 hours, as figures and a chart in one panel.
@@ -40,26 +40,18 @@ const DayPanel = ({ summary, summaryLoading, trend, trendLoading, trendError, on
   return (
     <Panel
       title="Last 24 hours"
-      meta="Events per hour"
-      actions={<ApiLink href="/api/public/cowrie/events-per-hour?hours=24" />}
       onOpen={() => onNavigate("activity")}
       openLabel="Open live activity"
       className="h-full"
     >
       <div className="grid gap-4 lg:grid-cols-[10rem_minmax(0,1fr)] lg:gap-8">
-        <div className="grid grid-cols-3 gap-4 lg:grid-cols-1 lg:content-start lg:gap-3.5">
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-1 lg:content-start lg:gap-5">
           <Figure label="Attacks" loading={summaryLoading} value={formatNumber(summary?.attacks24h)} />
           <Figure
             label="Busiest hour"
             loading={trendLoading && !peak}
             value={peak ? formatNumber(peak.value) : "—"}
             suffix={peak ? `at ${peak.label}` : undefined}
-          />
-          <Figure
-            label="Distinct IP ratio"
-            loading={summaryLoading}
-            value={summary?.uniqueIpPercent != null ? formatPercent(summary.uniqueIpPercent, 2) : "—"}
-            title="Distinct source IPs per 100 events"
           />
         </div>
 

@@ -1,5 +1,5 @@
 import { cx } from "../../lib/cx";
-import { ArrowRightIcon, CodeIcon } from "./icons";
+import { ArrowRightIcon } from "./icons";
 
 /**
  * The card every panel sits in: a titled header with room for context and
@@ -76,23 +76,6 @@ const Panel = ({
       <footer className="border-t border-line px-4 py-2.5 sm:px-5 text-xs text-fg-subtle">{footer}</footer>
     )}
   </section>
-);
-
-/**
- * The panel's data source, one click away. Replaces the "Aggregated from
- * /api/..." footers: the endpoint is still discoverable, and now it opens.
- */
-export const ApiLink = ({ href }) => (
-  <a
-    href={href}
-    target="_blank"
-    rel="noreferrer"
-    title={`Open ${href} as JSON`}
-    className="inline-flex h-6 items-center gap-1 rounded border border-line px-1.5 text-2xs font-medium text-fg-subtle hover:border-line-strong hover:text-fg transition-colors"
-  >
-    <CodeIcon size={12} />
-    API
-  </a>
 );
 
 export default Panel;

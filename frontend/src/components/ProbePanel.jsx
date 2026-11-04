@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import Panel, { ApiLink } from "./ui/Panel";
+import Panel from "./ui/Panel";
 import Badge from "./ui/Badge";
 import { EmptyState, ErrorNotice, Skeleton } from "./ui/states";
 import { formatNumber } from "../lib/format";
@@ -80,9 +80,8 @@ const ProbePanel = ({ data, loading, error }) => {
   return (
     <Panel
       title="Honeypot detection attempts"
-      description="Commands where an attacker checked whether the machine is real before committing a payload. Higher scores mean more, or more deliberate, checks."
+      description="Commands that check whether the machine is real before the attacker commits a payload. A higher score means more, or more deliberate, checks."
       meta={data ? `${rows.length} commands · score ≥ ${data.threshold}` : undefined}
-      actions={<ApiLink href="/api/public/cowrie/probes?limit=50" />}
       flush
       className="h-full"
     >

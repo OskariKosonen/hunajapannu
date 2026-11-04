@@ -17,15 +17,15 @@ const LINK = "inline-flex items-center gap-1 text-fg-muted hover:text-fg transit
 const OverviewHero = ({ onNavigate }) => (
   <section aria-labelledby="overview-title" className="pt-1">
     <h2 id="overview-title" className="text-xl font-semibold tracking-tight text-fg sm:text-2xl">
-      Real attacks against a real server, captured live
+      An SSH honeypot on a Raspberry Pi in Finland
     </h2>
     <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-fg-muted sm:text-base sm:leading-relaxed">
-      A Raspberry Pi in Finland poses as a poorly secured Linux server. Every login attempt, command and malware
-      download it attracts is recorded and published here.
+      It pretends to be a badly secured Linux server. Bots find it within minutes, log in, run commands and
+      download malware. Everything they have done to it is on this page, as it happens.
     </p>
     <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-subtle">
       <span>
-        Built by{" "}
+        Built and run by{" "}
         <a
           className="font-medium text-fg hover:text-accent transition-colors"
           href="https://www.linkedin.com/in/oskari-kosonen-ba2589294/"
@@ -41,8 +41,8 @@ const OverviewHero = ({ onNavigate }) => (
         <ExternalIcon size={12} />
       </a>
       <span aria-hidden="true">·</span>
-      <button type="button" className={LINK} onClick={() => onNavigate("data")}>
-        How it works
+      <button type="button" className={LINK} onClick={() => onNavigate("about")}>
+        How it is built
         <ChevronRightIcon size={13} />
       </button>
     </div>

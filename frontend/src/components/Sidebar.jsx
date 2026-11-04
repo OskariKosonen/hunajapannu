@@ -3,8 +3,8 @@ import { cx } from "../lib/cx";
 import { ChevronRightIcon, GitHubIcon, LinkedInIcon, LogoMark } from "./ui/icons";
 
 /**
- * Desktop navigation: sections grouped by what you are doing — watching,
- * investigating, or taking data away — with an icon each so the rail still
+ * Desktop navigation: the dashboard's views, then a hairline, then About.
+ * Eight items need no group headings. Each has an icon so the rail still
  * works collapsed.
  *
  * Items are real links (?view=...), so middle-click and "open in new tab"
@@ -81,7 +81,7 @@ const Author = ({ collapsed }) => {
       {avatar}
       <div className="min-w-0 flex-1 leading-tight mr-0.5">
         <div className="truncate text-sm font-medium text-fg">Oskari Kosonen</div>
-        <div className="text-xs text-fg-subtle">Built this</div>
+        <div className="text-xs text-fg-subtle">Author</div>
       </div>
       <a href={LINKEDIN} target="_blank" rel="noreferrer" className={iconLink} title="LinkedIn" aria-label="Oskari Kosonen on LinkedIn">
         <LinkedInIcon size={14} />
@@ -108,7 +108,7 @@ const Sidebar = ({ items, groups, view, onView, collapsed }) => {
       )}
     >
       <div className={cx("flex h-14 shrink-0 items-center", collapsed ? "justify-center" : "px-5")}>
-        <a href="/" className="flex items-center gap-2.5 min-w-0" aria-label="hunajapannu.fi — home">
+        <a href="/" className="flex items-center gap-2.5 min-w-0" aria-label="hunajapannu.fi, home">
           <LogoMark size={28} />
           <h1 className={cx("text-lg font-semibold tracking-tight text-fg", collapsed && "sr-only")}>
             hunajapannu.fi
@@ -121,12 +121,8 @@ const Sidebar = ({ items, groups, view, onView, collapsed }) => {
         className={cx("flex-1 overflow-y-auto hide-native-scrollbar pb-4", collapsed ? "px-3" : "px-3.5")}
       >
         {groups.map((group, i) => (
-          <div key={group} className={i === 0 ? "mt-3" : "mt-6"}>
-            {collapsed ? (
-              // A hairline where the heading was keeps the groups apart in the rail.
-              i > 0 && <div className="mx-2 mb-3 border-t border-line" aria-hidden="true" />
-            ) : null}
-            <div className={cx("mb-2 px-3 text-xs font-medium text-fg-subtle", collapsed && "sr-only")}>{group}</div>
+          <div key={group} className="mt-3">
+            {i > 0 && <div className="mx-2 mb-3 border-t border-line" aria-hidden="true" />}
             <ul className="space-y-1">
               {items
                 .filter((item) => item.group === group)

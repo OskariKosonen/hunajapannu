@@ -166,7 +166,7 @@ const SessionDrawer = ({ data, loading, error, onClose, mitreById = {} }) => {
 
           {session.truncated && (
             <p className="mt-5 text-xs text-warn">
-              Timeline truncated — this session has more events than the display limit.
+              Timeline truncated. This session has more events than can be shown.
             </p>
           )}
         </div>

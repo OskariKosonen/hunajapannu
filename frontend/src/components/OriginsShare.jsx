@@ -42,7 +42,6 @@ const OriginsShare = ({ countries, lifetimeEvents, loading, error, onOpen, class
   return (
     <Panel
       title={onOpen ? "Attack origins" : "Share of all attacks"}
-      meta={onOpen ? "Share of all attacks" : "Top 5 countries"}
       onOpen={onOpen}
       openLabel="Open attack origins"
       className={className}
