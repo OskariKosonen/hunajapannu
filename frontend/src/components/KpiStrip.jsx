@@ -1,6 +1,11 @@
 import { memo } from "react";
 import { formatCompact, formatLongDate, formatNumber } from "../lib/format";
 
+const daysSince = (ts) => {
+  const t = ts ? Date.parse(ts) : NaN;
+  return Number.isFinite(t) ? Math.max(1, Math.floor((Date.now() - t) / 86_400_000)) : null;
+};
+
 /** One tile: label, the figure, one line of context. */
 const Tile = ({ label, value, title, hint, loading }) => (
   <div className="min-w-0 bg-surface px-4 py-3.5 sm:px-5 sm:py-4">
@@ -33,7 +38,11 @@ const KpiStrip = ({ summary: s, loading }) => (
       loading={loading}
       value={formatCompact(s?.lifetimeEvents)}
       title={`${formatNumber(s?.lifetimeEvents)} events`}
-      hint={s?.firstEventAt ? `since ${formatLongDate(s.firstEventAt)}` : "all time"}
+      hint={
+        s?.firstEventAt
+          ? `since ${formatLongDate(s.firstEventAt)} · ${formatNumber(daysSince(s.firstEventAt))} days`
+          : "all time"
+      }
     />
     <Tile
       label="Unique attacker IPs"

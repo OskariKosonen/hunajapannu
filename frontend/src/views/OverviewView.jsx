@@ -78,7 +78,7 @@ const OverviewView = ({ onOpenSession, onNavigate }) => {
   return (
     <div className="space-y-4">
       <ErrorBoundary name="Introduction">
-        <OverviewHero summary={summary} onNavigate={onNavigate} />
+        <OverviewHero onNavigate={onNavigate} />
       </ErrorBoundary>
 
       {summaryApi.error && !summary && <ErrorNotice>Failed to load summary: {summaryApi.error}</ErrorNotice>}

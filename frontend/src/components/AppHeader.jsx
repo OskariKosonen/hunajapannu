@@ -1,6 +1,5 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import Tabs from "./ui/Tabs";
-import Button from "./ui/Button";
 import { LogoMark, RefreshIcon } from "./ui/icons";
 import { cx } from "../lib/cx";
 import { useNow } from "../hooks/useRefresh";
@@ -11,7 +10,16 @@ import { TIME_ZONE, TIME_ZONE_LABEL, formatClock, formatRelative } from "../lib/
 // for four days while every service reported healthy.
 const STALE_AFTER_MS = 10 * 60 * 1000;
 
-const StatusPill = ({ lastEventAt, now }) => {
+/**
+ * Freshness and refresh as one control.
+ *
+ * These were a status pill ("Live · last event 3m ago") beside a button
+ * reading "Updated 14:42": two clocks answering the same question. The pill
+ * says how fresh the data is; the refresh is an icon on the end of it, and
+ * when the page last refreshed is on its tooltip for whoever wants it.
+ */
+const LiveControl = ({ lastEventAt, lastUpdated, onRefresh, now }) => {
+  const [spinning, setSpinning] = useState(false);
   const t = lastEventAt ? new Date(lastEventAt).getTime() : NaN;
   const known = Number.isFinite(t);
   const stale = known && now - t > STALE_AFTER_MS;
@@ -22,36 +30,56 @@ const StatusPill = ({ lastEventAt, now }) => {
       ? `No events for ${formatRelative(lastEventAt, now).replace(" ago", "")}`
       : `Live · last event ${formatRelative(lastEventAt, now)}`;
 
+  const refreshTitle = lastUpdated
+    ? `Refresh now · last refreshed ${formatClock(lastUpdated)}, automatic every 2 minutes`
+    : "Refresh now";
+
   return (
-    <span
-      role="status"
-      title={known ? `Newest event: ${new Date(t).toISOString()}` : undefined}
+    <div
       className={cx(
-        "inline-flex h-7 items-center gap-2 rounded-full border px-2.5 text-xs whitespace-nowrap tabular-nums",
+        "inline-flex h-8 items-center rounded-full border text-xs whitespace-nowrap tabular-nums",
         !known && "border-line text-fg-subtle",
         known && !stale && "border-accent/30 bg-accent/5 text-fg-muted",
         stale && "border-warn/40 bg-warn/10 text-warn"
       )}
     >
-      <span className="relative flex h-2 w-2">
-        {known && !stale && (
-          <span className="absolute inline-flex h-full w-full rounded-full bg-accent opacity-60 motion-safe:animate-ping" />
-        )}
-        <span
-          className={cx(
-            "relative inline-flex h-2 w-2 rounded-full",
-            !known ? "bg-fg-subtle" : stale ? "bg-warn" : "bg-accent"
+      <span
+        role="status"
+        title={known ? `Newest event: ${new Date(t).toISOString()}` : undefined}
+        className="flex items-center gap-2 pl-3 pr-2.5"
+      >
+        <span className="relative flex h-2 w-2">
+          {known && !stale && (
+            <span className="absolute inline-flex h-full w-full rounded-full bg-accent opacity-60 motion-safe:animate-ping" />
           )}
-        />
+          <span
+            className={cx(
+              "relative inline-flex h-2 w-2 rounded-full",
+              !known ? "bg-fg-subtle" : stale ? "bg-warn" : "bg-accent"
+            )}
+          />
+        </span>
+        {label}
       </span>
-      {label}
-    </span>
+      <button
+        type="button"
+        onClick={() => {
+          onRefresh();
+          setSpinning(true);
+          setTimeout(() => setSpinning(false), 700);
+        }}
+        aria-label="Refresh data"
+        title={refreshTitle}
+        className="flex h-full items-center rounded-r-full border-l border-inherit px-2.5 opacity-80 hover:bg-surface-2 hover:opacity-100 transition-colors"
+      >
+        <RefreshIcon size={13} className={spinning ? "motion-safe:animate-spin" : ""} />
+      </button>
+    </div>
   );
 };
 
 const Controls = ({ lastEventAt, lastUpdated, onRefresh, now }) => (
-  <div className="ml-auto flex items-center gap-2 sm:gap-3 min-w-0">
-    <StatusPill lastEventAt={lastEventAt} now={now} />
+  <div className="ml-auto flex items-center gap-3 min-w-0">
     <span
       className="hidden xl:inline text-xs text-fg-subtle whitespace-nowrap"
       title="All timestamps are shown in your local timezone"
@@ -59,17 +87,7 @@ const Controls = ({ lastEventAt, lastUpdated, onRefresh, now }) => (
       Times in {TIME_ZONE}
       {TIME_ZONE_LABEL ? ` (${TIME_ZONE_LABEL})` : ""}
     </span>
-    <Button
-      variant="secondary"
-      onClick={onRefresh}
-      title={lastUpdated ? `Last updated ${formatClock(lastUpdated)} · refreshes every 2 minutes` : "Refresh"}
-      aria-label="Refresh data"
-    >
-      <RefreshIcon size={14} />
-      <span className="hidden sm:inline tabular-nums">
-        {lastUpdated ? `Updated ${formatClock(lastUpdated)}` : "Refresh"}
-      </span>
-    </Button>
+    <LiveControl lastEventAt={lastEventAt} lastUpdated={lastUpdated} onRefresh={onRefresh} now={now} />
   </div>
 );
 
