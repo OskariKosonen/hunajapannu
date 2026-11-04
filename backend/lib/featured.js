@@ -18,9 +18,35 @@ const READABLE_MAX = 200;
 // Past this it is a payload pushed through the shell, not a command.
 const BLOB_MIN = 400;
 // More readable commands than this stop counting: a 120-line script is not
-// six times the story of a 20-line one.
-const READABLE_CAP = 25;
+// ten times the story of a 12-line one.
+const READABLE_CAP = 12;
 const MIN_READABLE = 3;
+// Distinct programs run, up to this many, are worth more than raw lines.
+const VERB_CAP = 8;
+
+/**
+ * The programs a command runs: the first word of each piece between ; && ||
+ * and |, without wrappers like sudo or sh -c and without a path.
+ *
+ * Variety is what separates an attack worth watching (uname, cat, wget,
+ * chmod, ./x) from a probe script that runs printf forty times with
+ * different arguments. Distinct command strings could not tell them apart.
+ */
+function verbsOf(command) {
+  return command
+    .split(/;|&&|\|\||\|/)
+    .map((part) =>
+      part
+        .trim()
+        .replace(/^(?:(?:\S*\/)?(?:sudo|nohup|busybox|exec|command)\s+|(?:\S*\/)?(?:ba)?sh\s+-c\s+['"]?)+/, "")
+        .match(/^[\w./-]+/)?.[0]
+        ?.split("/")
+        .pop()
+    )
+    // Program-shaped names only: "f_check_53245978362c..." is a function a
+    // probe script defined, and forty of them are not forty programs.
+    .filter((v) => v && /^[a-z][\w.+-]{0,19}$/i.test(v));
+}
 
 /**
  * @param {string[]} commands every command the session ran, in any order
@@ -33,12 +59,16 @@ function scoreSession(commands) {
 
   const blobs = distinct.filter((c) => c.length > BLOB_MIN).length;
   const techniques = new Set(distinct.flatMap((c) => tagCommand(c)));
+  const verbs = new Set(distinct.flatMap(verbsOf));
 
   return (
     4 * techniques.size +
-    Math.min(readable, READABLE_CAP) +
+    2 * Math.min(verbs.size, VERB_CAP) +
+    // At most three readable lines per program count, so forty variations of
+    // one printf earn little over four of them.
+    Math.min(readable, 3 * verbs.size, READABLE_CAP) +
     // Fetching a payload is the turning point of most sessions worth watching.
-    (techniques.has('T1105') ? 5 : 0) -
+    (techniques.has('T1105') ? 6 : 0) -
     6 * blobs
   );
 }
@@ -57,4 +87,4 @@ function pickFeatured(candidates) {
   return best ? best.id : null;
 }
 
-module.exports = { scoreSession, pickFeatured, READABLE_MAX };
+module.exports = { scoreSession, pickFeatured, verbsOf, READABLE_MAX };

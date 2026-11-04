@@ -98,10 +98,11 @@ module.exports = function registerSessionRoutes(app) {
         // Bounded by idx_events_timestamp: a week is tens of thousands of rows,
         // not the 7.7M-row scan that used to starve the pool.
         //
-        // Shortlist the sessions with the most readable commands, then let
-        // pickFeatured() choose the one that tells a story (lib/featured.js).
-        // Ranking by distinct commands alone, as this used to, featured
-        // scripted droppers: a hundred lines of noise and base64 blobs.
+        // Shortlist, then let pickFeatured() choose the one that tells a story
+        // (lib/featured.js). Sessions that download something come first: a
+        // shortlist ordered by command count alone was all scripted probes,
+        // and a short real attack (log in, look around, fetch, run) never made
+        // it onto the list to be scored.
         const { rows: shortlist } = await pool.query(
           `SELECT session_id
            FROM cowrie_events
@@ -109,8 +110,9 @@ module.exports = function registerSessionRoutes(app) {
              AND command IS NOT NULL AND command <> ''
            GROUP BY session_id
            HAVING COUNT(DISTINCT command) FILTER (WHERE length(command) <= $2) >= 3
-           ORDER BY COUNT(DISTINCT command) FILTER (WHERE length(command) <= $2) DESC
-           LIMIT 40`,
+           ORDER BY BOOL_OR(command ~* '(wget|curl|tftp)\\s') DESC,
+                    COUNT(DISTINCT command) FILTER (WHERE length(command) <= $2) DESC
+           LIMIT 200`,
           [since, READABLE_MAX]
         );
 
