@@ -238,7 +238,7 @@ describe("App", () => {
     // The fixture's newest event is months old.
     render(<App />);
     await waitFor(() =>
-      expect(screen.getAllByRole("status").some((el) => /no events for/i.test(el.textContent))).toBe(true)
+      expect(screen.getAllByRole("status").some((el) => /no attacks for/i.test(el.textContent))).toBe(true)
     );
   });
 
@@ -252,7 +252,7 @@ describe("App", () => {
     });
     render(<App />);
     await waitFor(() =>
-      expect(screen.getAllByRole("status").some((el) => /live · last event/i.test(el.textContent))).toBe(true)
+      expect(screen.getAllByRole("status").some((el) => /last attack 20s ago/i.test(el.textContent))).toBe(true)
     );
   });
 

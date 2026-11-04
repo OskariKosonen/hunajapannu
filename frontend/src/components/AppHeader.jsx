@@ -3,7 +3,7 @@ import Tabs from "./ui/Tabs";
 import { LogoMark, PanelLeftIcon, RefreshIcon } from "./ui/icons";
 import { cx } from "../lib/cx";
 import { useNow } from "../hooks/useRefresh";
-import { formatClock, formatRelative } from "../lib/format";
+import { formatClock, formatRelative, formatTimestamp } from "../lib/format";
 
 // The sensor sees several events a minute. Ten quiet minutes means something
 // upstream has stopped, which is exactly the failure that once went unnoticed
@@ -11,60 +11,55 @@ import { formatClock, formatRelative } from "../lib/format";
 const STALE_AFTER_MS = 10 * 60 * 1000;
 
 /**
- * Freshness and refresh as one control.
+ * How fresh the data is, said as a sentence: "Last attack 1m ago".
  *
- * These were a status pill ("Live · last event 3m ago") beside a button
- * reading "Updated 14:42": two clocks answering the same question. The pill
- * says how fresh the data is; the refresh is an icon on the end of it, and
- * when the page last refreshed is on its tooltip for whoever wants it.
+ * It used to be a tinted, bordered pill reading "Live · last event 1m ago"
+ * with the refresh button fused onto its end, which is the stock status
+ * badge of every generated dashboard. Plain text next to a small dot says the
+ * same thing, and "attack" is the word the rest of the site uses.
+ *
+ * Ten quiet minutes means something upstream has stopped, which is exactly
+ * the failure that once went unnoticed for four days, so then it turns amber
+ * and says so.
  */
-const LiveControl = ({ lastEventAt, lastUpdated, onRefresh, now }) => {
-  const [spinning, setSpinning] = useState(false);
+const Freshness = ({ lastEventAt, now }) => {
   const t = lastEventAt ? new Date(lastEventAt).getTime() : NaN;
   const known = Number.isFinite(t);
   const stale = known && now - t > STALE_AFTER_MS;
-
-  // The long form does not fit beside the brand on a small phone, which
-  // pushed the refresh button off the screen at 320px.
-  const label = !known ? (
-    "Connecting…"
-  ) : stale ? (
-    `No events for ${formatRelative(lastEventAt, now).replace(" ago", "")}`
-  ) : (
-    <>
-      <span className="sm:hidden">Live · {formatRelative(lastEventAt, now)}</span>
-      <span className="hidden sm:inline">Live · last event {formatRelative(lastEventAt, now)}</span>
-    </>
-  );
-
-  const refreshTitle = lastUpdated
-    ? `Refresh now · last refreshed ${formatClock(lastUpdated)}, automatic every 2 minutes`
-    : "Refresh now";
+  const ago = known ? formatRelative(lastEventAt, now) : "";
 
   return (
-    <div
+    <span
+      role="status"
+      title={known ? `Newest event at ${formatTimestamp(lastEventAt)}` : undefined}
       className={cx(
-        "inline-flex h-8 items-center rounded-full border text-xs whitespace-nowrap tabular-nums",
-        !known && "border-line text-fg-subtle",
-        known && !stale && "border-accent/30 bg-accent/5 text-fg-muted",
-        stale && "border-warn/40 bg-warn/10 text-warn"
+        "flex items-center gap-2 text-sm whitespace-nowrap tabular-nums",
+        stale ? "text-warn" : "text-fg-subtle"
       )}
     >
       <span
-        role="status"
-        title={known ? `Newest event: ${new Date(t).toISOString()}` : undefined}
-        className="flex items-center gap-2 pl-3 pr-2.5"
-      >
-        <span className="relative flex h-2 w-2">
-          <span
-            className={cx(
-              "relative inline-flex h-2 w-2 rounded-full",
-              !known ? "bg-fg-subtle" : stale ? "bg-warn" : "bg-accent"
-            )}
-          />
+        aria-hidden="true"
+        className={cx("h-1.5 w-1.5 rounded-full", !known ? "bg-fg-subtle/50" : stale ? "bg-warn" : "bg-accent")}
+      />
+      {!known ? (
+        "Connecting…"
+      ) : stale ? (
+        `No attacks for ${ago.replace(" ago", "")}`
+      ) : (
+        <span>
+          <span className="hidden min-[380px]:inline">Last attack </span>
+          <span className="text-fg-muted">{ago}</span>
         </span>
-        {label}
-      </span>
+      )}
+    </span>
+  );
+};
+
+const Controls = ({ lastEventAt, lastUpdated, onRefresh, now }) => {
+  const [spinning, setSpinning] = useState(false);
+  return (
+    <div className="ml-auto flex items-center gap-1.5 sm:gap-2 min-w-0">
+      <Freshness lastEventAt={lastEventAt} now={now} />
       <button
         type="button"
         onClick={() => {
@@ -73,20 +68,18 @@ const LiveControl = ({ lastEventAt, lastUpdated, onRefresh, now }) => {
           setTimeout(() => setSpinning(false), 700);
         }}
         aria-label="Refresh data"
-        title={refreshTitle}
-        className="flex h-full items-center rounded-r-full border-l border-inherit px-2.5 opacity-80 hover:bg-surface-2 hover:opacity-100 transition-colors"
+        title={
+          lastUpdated
+            ? `Refresh now. Last refreshed ${formatClock(lastUpdated)}; it also refreshes every 2 minutes.`
+            : "Refresh now"
+        }
+        className="flex h-8 w-8 items-center justify-center rounded-md text-fg-subtle hover:bg-surface-2 hover:text-fg transition-colors"
       >
-        <RefreshIcon size={13} className={spinning ? "motion-safe:animate-spin" : ""} />
+        <RefreshIcon size={15} className={spinning ? "motion-safe:animate-spin" : ""} />
       </button>
     </div>
   );
 };
-
-const Controls = ({ lastEventAt, lastUpdated, onRefresh, now }) => (
-  <div className="ml-auto flex items-center gap-3 min-w-0">
-    <LiveControl lastEventAt={lastEventAt} lastUpdated={lastUpdated} onRefresh={onRefresh} now={now} />
-  </div>
-);
 
 /**
  * The bar above the content.
