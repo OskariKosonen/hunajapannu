@@ -24,6 +24,12 @@ import { EmptyState, ErrorNotice, Skeleton } from "./states";
  *   primary?: boolean,      // the card's headline on mobile
  *   hideOnMobile?: boolean,
  * }>} columns
+ * @param {(row: any) => React.ReactNode} [renderCard]  Replaces the generic
+ *   label/value card on mobile, for rows that read better as a sentence.
+ * @param {string} [maxHeight]  Scroll inside the table past this height.
+ *   "none" lets the table run the page's length instead, with its header
+ *   sticking under the top bar: a scroll box inside a scrolling page is
+ *   easy to get stuck in.
  */
 const DataTable = ({
   columns,
@@ -38,10 +44,12 @@ const DataTable = ({
   rowLabel,
   rowClassName,
   maxHeight = "28rem",
+  renderCard,
   skeletonRows = 6,
   className = "",
 }) => {
   const isMobile = useMediaQuery("(max-width: 767px)");
+  const scrolls = maxHeight !== "none";
   const keyOf = (row, i) => (rowKey ? rowKey(row, i) : i);
   const cell = (col, row, i) => (col.render ? col.render(row, i) : row[col.key] ?? "—");
 
@@ -77,7 +85,7 @@ const DataTable = ({
       // Hold the table's full height while it loads, so the rows arriving do
       // not push everything below the panel down the page.
       body = (
-        <div style={{ minHeight: maxHeight }}>
+        <div style={{ minHeight: scrolls ? maxHeight : undefined }}>
           <Skeleton rows={skeletonRows} className="p-4" />
         </div>
       );
@@ -91,7 +99,10 @@ const DataTable = ({
     const primary = columns.find((c) => c.primary) || columns[0];
     const rest = columns.filter((c) => c !== primary && !c.hideOnMobile);
     return (
-      <div className={cx("divide-y divide-line overflow-y-auto custom-scrollbar", className)} style={{ maxHeight }}>
+      <div
+        className={cx("divide-y divide-line", scrolls && "overflow-y-auto custom-scrollbar", className)}
+        style={scrolls ? { maxHeight } : undefined}
+      >
         {rows.map((row, i) => (
           <div
             key={keyOf(row, i)}
@@ -102,17 +113,28 @@ const DataTable = ({
             )}
             {...clickProps(row, true)}
           >
-            <div className={cx("text-sm text-fg break-words", primary.mono && "font-mono")}>
-              {cell(primary, row, i)}
-            </div>
-            {rest.map((col) => (
-              <div key={col.key} className="flex items-baseline justify-between gap-3 text-xs">
-                <span className="text-fg-subtle shrink-0">{col.header}</span>
-                <span className={cx("text-fg-muted text-right min-w-0 break-words tabular-nums", col.mono && "font-mono")}>
-                  {cell(col, row, i)}
-                </span>
-              </div>
-            ))}
+            {renderCard ? (
+              renderCard(row, i)
+            ) : (
+              <>
+                <div className={cx("text-sm text-fg break-words", primary.mono && "font-mono")}>
+                  {cell(primary, row, i)}
+                </div>
+                {rest.map((col) => (
+                  <div key={col.key} className="flex items-baseline justify-between gap-3 text-xs">
+                    <span className="text-fg-subtle shrink-0">{col.header}</span>
+                    <span
+                      className={cx(
+                        "text-fg-muted text-right min-w-0 break-words tabular-nums",
+                        col.mono && "font-mono"
+                      )}
+                    >
+                      {cell(col, row, i)}
+                    </span>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         ))}
       </div>
@@ -124,9 +146,12 @@ const DataTable = ({
   const fixed = columns.some((c) => c.width);
 
   return (
-    <div className={cx("overflow-auto custom-scrollbar", className)} style={{ maxHeight }}>
+    <div
+      className={cx(scrolls && "overflow-auto custom-scrollbar", className)}
+      style={scrolls ? { maxHeight } : undefined}
+    >
       <table className={cx("w-full text-sm", fixed && "table-fixed")}>
-        <thead className="sticky top-0 z-10 bg-surface">
+        <thead className={cx("sticky z-10 bg-surface", scrolls ? "top-0" : "top-14")}>
           <tr>
             {columns.map((col) => (
               <th

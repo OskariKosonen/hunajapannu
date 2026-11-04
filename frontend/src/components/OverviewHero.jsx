@@ -25,7 +25,9 @@ const OverviewHero = ({ onNavigate }) => (
     </p>
     <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-subtle">
       <span>
-        Built and run by{" "}
+        {/* Shorter on a phone, so the byline stays on one line. */}
+        <span className="sm:hidden">By </span>
+        <span className="hidden sm:inline">Built and run by </span>
         <a
           className="font-medium text-fg hover:text-accent transition-colors"
           href="https://www.linkedin.com/in/oskari-kosonen-ba2589294/"

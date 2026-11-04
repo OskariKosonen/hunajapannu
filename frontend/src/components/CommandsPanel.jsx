@@ -2,8 +2,9 @@ import { memo, useMemo, useState } from "react";
 import Panel from "./ui/Panel";
 import DataTable from "./ui/DataTable";
 import SearchInput from "./ui/SearchInput";
-import TechniqueBadge from "./TechniqueBadge";
 import { cx } from "../lib/cx";
+import ListFooter from "./ui/ListFooter";
+import { useShowMore } from "../hooks/useShowMore";
 import { formatNumber } from "../lib/format";
 import { shortTechniqueName } from "../hooks/useCatalogue";
 
@@ -54,7 +55,7 @@ const TechniqueFilter = ({ techniques, counts, value, onChange }) => {
 // so a single row does not fill the screen.
 const CLAMP_AT = 240;
 
-const CommandCell = ({ row, mitreById }) => {
+const CommandCell = ({ row }) => {
   const [open, setOpen] = useState(false);
   const long = (row.command?.length ?? 0) > CLAMP_AT;
   return (
@@ -77,16 +78,29 @@ const CommandCell = ({ row, mitreById }) => {
           {open ? "Show less" : `Show all ${formatNumber(row.command.length)} characters`}
         </button>
       )}
-      {row.tags?.length > 0 && (
-        <div className="mt-1.5 flex flex-wrap gap-1">
-          {row.tags.map((id) => (
-            <TechniqueBadge key={id} id={id} technique={mitreById[id]} />
-          ))}
-        </div>
-      )}
     </div>
   );
 };
+
+// Techniques sit in their own column as plain text. As a boxed badge under
+// every command, "System Info Discovery T1082" repeated down the whole table
+// and drowned out the commands.
+const Techniques = ({ tags, mitreById }) =>
+  tags?.length ? (
+    <ul className="space-y-0.5 text-xs leading-5">
+      {tags.map((id) => {
+        const t = mitreById[id];
+        return (
+          <li key={id} title={t?.description ? `${t.name}: ${t.description}` : t?.name || id}>
+            <span className="text-fg-muted">{shortTechniqueName(t?.name || id)}</span>{" "}
+            <span className="font-mono text-2xs text-fg-subtle">{id}</span>
+          </li>
+        );
+      })}
+    </ul>
+  ) : (
+    <span className="text-xs text-fg-subtle">—</span>
+  );
 
 /**
  * Top commands. Search and technique filtering are applied server-side, so
@@ -104,9 +118,9 @@ const CommandsPanel = ({
   mitreById = {},
   search,
   onSearch,
-  pageSize,
 }) => {
   const filtered = commandFilter !== "all" || Boolean(search);
+  const page = useShowMore(commands, { resetKey: `${commandFilter}|${search}`, total: commandsTotal });
 
   const columns = useMemo(
     () => [
@@ -114,7 +128,13 @@ const CommandsPanel = ({
         key: "command",
         header: "Command",
         primary: true,
-        render: (row) => <CommandCell row={row} mitreById={mitreById} />,
+        render: (row) => <CommandCell row={row} />,
+      },
+      {
+        key: "techniques",
+        header: "Techniques",
+        width: "13rem",
+        render: (row) => <Techniques tags={row.tags} mitreById={mitreById} />,
       },
       {
         key: "total",
@@ -157,22 +177,18 @@ const CommandsPanel = ({
           )}
         </>
       }
-      footer={
-        commandsTotal > commands.length
-          ? `Showing the top ${formatNumber(Math.min(pageSize, commands.length))} of ${formatNumber(commandsTotal)}`
-          : undefined
-      }
+      footer={page.footer && <ListFooter {...page.footer} />}
       flush
     >
       <DataTable
         columns={columns}
-        rows={commands}
+        rows={page.shown}
         rowKey={(row, i) => `${row.command}-${i}`}
         loading={commandsLoading}
         error={commandsError}
         errorLabel="Failed to load commands"
         emptyTitle={filtered ? "No commands match the current search or filter." : "No command statistics yet."}
-        maxHeight="max(24rem, calc(100vh - 21rem))"
+        maxHeight="none"
       />
     </Panel>
   );

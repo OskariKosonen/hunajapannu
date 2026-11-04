@@ -17,13 +17,22 @@ import { memo, useId, useState, useRef, useLayoutEffect } from "react";
  * @param {number} [max] Lower bound for the y-axis; the axis never ends below it.
  */
 
-/** Rounds an axis maximum up to a 1/2/5 x 10^n step so tick labels read cleanly. */
-const niceCeil = (value) => {
-  if (value <= 0) return 1;
-  const magnitude = 10 ** Math.floor(Math.log10(value));
-  const normalised = value / magnitude;
-  const step = normalised <= 1 ? 1 : normalised <= 2 ? 2 : normalised <= 5 ? 5 : 10;
-  return step * magnitude;
+/**
+ * Picks gridlines for a peak: the smallest 1/2/2.5/5 x 10^n step that covers
+ * it in at most five intervals. Rounding the maximum alone to 1/2/5 x 10^n
+ * wasted up to half the plot: a peak of 2,258 got an axis to 5,000.
+ */
+const axisTicks = (value) => {
+  const peak = Math.max(value, 1);
+  // Counts are whole numbers, so steps are too.
+  const magnitude = Math.max(1, 10 ** Math.floor(Math.log10(peak / 5)));
+  for (const m of [1, 2, 2.5, 5, 10, 20]) {
+    const step = m * magnitude;
+    if (!Number.isInteger(step)) continue;
+    const count = Math.ceil(peak / step);
+    if (count <= 5) return Array.from({ length: count + 1 }, (_, i) => i * step);
+  }
+  return [0, peak];
 };
 
 const AreaSparkline = ({ data, max, height = 160 }) => {
@@ -62,8 +71,9 @@ const AreaSparkline = ({ data, max, height = 160 }) => {
   const plotH = Math.max(H - PAD.top - PAD.bottom, 1);
 
   const dataPeak = Math.max(...data.map((d) => d.value), 0);
-  // Round the axis up so gridlines land on 0 / 500 / 1000 rather than 0 / 410 / 819.
-  const axisMax = niceCeil(Math.max(dataPeak, max || 0, 1));
+  // Gridlines land on 0 / 500 / 1000 rather than 0 / 410 / 819.
+  const ticks = axisTicks(Math.max(dataPeak, max || 0, 1));
+  const axisMax = ticks[ticks.length - 1];
 
   const x = (i) => PAD.left + (data.length === 1 ? plotW / 2 : (i / (data.length - 1)) * plotW);
   const y = (v) => PAD.top + plotH - (v / axisMax) * plotH;
@@ -74,7 +84,6 @@ const AreaSparkline = ({ data, max, height = 160 }) => {
   const baseline = (PAD.top + plotH).toFixed(1);
   const area = `${line} L${x(data.length - 1).toFixed(1)},${baseline} L${x(0).toFixed(1)},${baseline} Z`;
 
-  const yTicks = [0, 0.25, 0.5, 0.75, 1];
   // Roughly 52px per label, so narrow screens thin them out instead of colliding.
   const maxLabels = Math.max(2, Math.floor(plotW / 60));
   const xStep = Math.max(1, Math.ceil(data.length / maxLabels));
@@ -100,10 +109,11 @@ const AreaSparkline = ({ data, max, height = 160 }) => {
           </linearGradient>
         </defs>
 
-        {yTicks.map((f) => {
+        {ticks.map((t) => {
+          const f = t / axisMax;
           const gy = PAD.top + plotH - f * plotH;
           return (
-            <g key={f}>
+            <g key={t}>
               <line
                 x1={PAD.left}
                 x2={W - PAD.right}
@@ -113,7 +123,7 @@ const AreaSparkline = ({ data, max, height = 160 }) => {
                 strokeDasharray={f === 0 ? undefined : "2 4"}
               />
               <text x={PAD.left - 8} y={gy + 4} textAnchor="end" fontSize="11" fill="rgb(var(--fg-subtle))">
-                {Math.round(axisMax * f).toLocaleString("en-GB")}
+                {t.toLocaleString("en-GB")}
               </text>
             </g>
           );

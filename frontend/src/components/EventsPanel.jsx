@@ -2,6 +2,8 @@ import { memo, useMemo, useState } from "react";
 import Panel from "./ui/Panel";
 import DataTable from "./ui/DataTable";
 import SegmentedControl from "./ui/SegmentedControl";
+import ListFooter from "./ui/ListFooter";
+import { useShowMore } from "../hooks/useShowMore";
 import { EMPTY_STATES } from "../lib/flavour";
 import { countryFlag, formatEventTime, formatTimestamp, networkLabel, placeLabel } from "../lib/format";
 
@@ -71,6 +73,26 @@ const Activity = ({ ev, compact }) => {
   return <div className="text-xs text-fg-subtle">Connection only · port {ev.dest_port ?? 22}</div>;
 };
 
+// On a phone a row is two lines: who and when, then what they did. The
+// generic card repeated "Time" and "Activity" labels on every row.
+const EventCard = ({ ev }) => (
+  <>
+    <div className="flex items-baseline justify-between gap-3">
+      <div className="flex min-w-0 items-baseline gap-2">
+        <span className="font-mono text-[0.8125rem] text-info">{ev.src_ip}</span>
+        <span className="truncate text-xs text-fg-subtle">
+          <span aria-hidden="true">{countryFlag(ev.country_iso)}</span> {placeLabel(ev)}
+        </span>
+      </div>
+      <span className="shrink-0 text-xs text-fg-subtle tabular-nums" title={formatTimestamp(ev.timestamp)}>
+        {formatEventTime(ev.timestamp)}
+      </span>
+    </div>
+    <Activity ev={ev} compact />
+  </>
+);
+const renderCard = (ev) => <EventCard ev={ev} />;
+
 const EventsPanel = ({
   events,
   eventLimit,
@@ -83,10 +105,12 @@ const EventsPanel = ({
 }) => {
   const [kind, setKind] = useState("all");
 
-  const shown = useMemo(() => {
+  const filteredRows = useMemo(() => {
     const limited = events.slice(0, eventLimit);
     return kind === "all" ? limited : limited.filter((ev) => classify(ev) === kind);
   }, [events, eventLimit, kind]);
+  const page = useShowMore(filteredRows, { resetKey: kind, searchable: false });
+  const shown = compact ? filteredRows : page.shown;
 
   const columns = useMemo(
     () => [
@@ -150,6 +174,7 @@ const EventsPanel = ({
 
         </>
       }
+      footer={!compact && page.footer && <ListFooter {...page.footer} />}
       onOpen={compact ? onViewAll : undefined}
       openLabel="Open live activity"
       flush
@@ -167,7 +192,10 @@ const EventsPanel = ({
         rowClassName={(ev) => ROW_TONE[classify(ev)]}
         onRowClick={onOpenSession ? (ev) => ev.session_id && onOpenSession(ev.session_id) : undefined}
         rowLabel={(ev) => `Open session from ${ev.src_ip}`}
-        maxHeight={compact ? "27rem" : "calc(100vh - 16rem)"}
+        // The overview shows a fixed handful, whole; the full feed runs the
+        // page's length.
+        maxHeight="none"
+        renderCard={renderCard}
         skeletonRows={compact ? 8 : 12}
       />
     </Panel>

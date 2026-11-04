@@ -247,7 +247,11 @@ jobs:
             "$PUB/mitre" \
             "$PUB/sessions/featured" \
             "$PUB/peers" \
-            "$PUB/probes" ; do
+            "$PUB/probes" \
+            "$PUB/creds/anatomy" \
+            "$PUB/origins/concentration" \
+            "$PUB/clients" \
+            "$PUB/tunnels" ; do
             assert "200 ${path#"$API/"}" "200" "$(status "$path")"
           done
 
@@ -823,6 +827,27 @@ jobs:
             "$(status -X POST -H 'Content-Type: application/json' -H "Authorization: Bearer $INGEST_API_KEY" \
                -d '{"events":[{"kind":"client","src_ip":"203.0.113.8","session_id":"ci-fp2","hassh":"abc"}]}' \
                "$API/api/cowrie/events")"
+
+          echo "--- insight endpoints ---"
+          # Both seeded samples have engines flagging them and no vt_found.
+          assert "files counts verdicts over the whole set" "2" \
+            "$(jq_get "$PUB/files?limit=1" '.verdicts.malicious')"
+          assert "every sample has exactly one verdict" "true" \
+            "$(jq_get "$PUB/files?limit=1" '(.verdicts | add) == .total')"
+          assert "every attempt has exactly one password kind" "true" \
+            "$(jq_get "$PUB/creds/anatomy" '(.kinds | add) == .attempts')"
+          assert "and exactly one length bucket" "true" \
+            "$(jq_get "$PUB/creds/anatomy" '([.lengths[].attempts] | add // 0) == .attempts')"
+          assert "half the traffic needs at least one network" "true" \
+            "$(jq_get "$PUB/origins/concentration" '.thresholds[0].networks >= 1 and .thresholds[0].networks <= .networks')"
+          # The client and tunnel rows above are dated 2026-08-16, outside the
+          # default 30 days, which is also why these use their own cache key.
+          assert "clients reports the posted banner" "true" \
+            "$(jq_get "$PUB/clients?days=365" '[.versions[].client_version] | index("SSH-2.0-libssh2_1.9.0") != null')"
+          assert "clients links sessions by fingerprint" "true" \
+            "$(jq_get "$PUB/clients?days=365" '[.hassh[].hassh] | index("06046964c022c6407d15a27b12a6a4fb") != null')"
+          assert "tunnels groups by destination" "smtp.example.com:25" \
+            "$(jq_get "$PUB/tunnels?days=365" '.hosts[0] | "\(.dst_host):\(.dst_port)"')"
 
           exit $fail
 

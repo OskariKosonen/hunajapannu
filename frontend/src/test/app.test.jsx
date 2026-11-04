@@ -42,6 +42,10 @@ function payloadFor(url) {
     };
   }
   if (url.includes("/commands")) return { rows: [{ command: "wget http://a/b.sh", total: 9, unique_ips: 3, tags: ["T1105"] }], total: 1, counts: { T1105: 1 }, allTotal: 1 };
+  if (url.includes("/creds/anatomy")) return { attempts: 4, pairs: 1, passwords: 1, usernames: 1, kinds: { same: 0, digits: 4, letters: 0, mixed: 0, empty: 0 }, lengths: [{ length: 6, attempts: 4 }], topUsernames: [{ username: "root", total: 4 }] };
+  if (url.includes("/origins/concentration")) return { events: 7, networks: 1, thresholds: [{ share: 0.5, networks: 1 }, { share: 0.8, networks: 1 }, { share: 0.9, networks: 1 }], top: [{ asn: 4134, org: "Chinanet", total: 7, cumulative: 1 }] };
+  if (url.includes("/clients")) return { days: 30, sessions: 1, ips: 1, fingerprints: 1, versioned: 1, versionCount: 1, versions: [{ client_version: "SSH-2.0-Go", sessions: 1, ips: 1 }], hassh: [{ hassh: "abcdef0123456789", sessions: 1, ips: 1, countries: 1, networks: 1, client_version: "SSH-2.0-Go" }] };
+  if (url.includes("/tunnels")) return { days: 30, requests: 0, sources: 0, destinations: 0, ports: [], hosts: [] };
   if (url.includes("/creds")) return { rows: [{ username: "root", password: "123456", total: 4, unique_ips: 2 }], total: 1 };
   if (url.includes("/files")) return { rows: [{ sha256: "deadbeef", size_bytes: 512, first_seen: "2026-08-16T09:00:00Z", vt_type: "ELF" }], total: 1 };
   if (url.includes("/top-asn")) return { rows: [{ asn: 4134, org: "Chinanet", total: 7, unique_ips: 3 }], total: 1 };
@@ -216,7 +220,9 @@ describe("App", () => {
   it("opens straight into the view a shared link names", async () => {
     window.history.replaceState(null, "", "/?view=origins&origins=asn");
     render(<App />);
-    expect(await screen.findByText("AS4134")).toBeInTheDocument();
+    // The networks table, not the concentration panel beside it, which
+    // names the same network.
+    expect(await screen.findByRole("columnheader", { name: "Network" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Origins" })).toHaveAttribute("aria-selected", "true");
   });
 
@@ -411,6 +417,14 @@ describe("App", () => {
 
   describe("phase 3 and 5 panels", () => {
     beforeEach(() => { window.history.replaceState(null, "", "/?view=botnet"); });
+
+    it("shows the attack tools and leaves out an empty relay panel", async () => {
+      render(<App />);
+      expect(await screen.findByText(/one tool, many machines/)).toBeInTheDocument();
+      // No relay attempts in the window: the panel stands down rather than
+      // fill half the row with an empty state.
+      await waitFor(() => expect(screen.queryByRole("heading", { name: "Relay attempts" })).toBeNull());
+    });
 
     it("shows the persistent peers with their recurrence", async () => {
       render(<App />);

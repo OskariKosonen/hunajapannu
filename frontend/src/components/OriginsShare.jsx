@@ -2,6 +2,7 @@ import { memo, useMemo } from "react";
 import Panel from "./ui/Panel";
 import { ErrorNotice, EmptyState, Skeleton } from "./ui/states";
 import { countryFlag, countryName, formatNumber } from "../lib/format";
+import { REMAINDER, SERIES } from "../lib/palette";
 
 /**
  * Share of all attacks by source country: one thin segmented bar for the
@@ -15,8 +16,7 @@ import { countryFlag, countryName, formatNumber } from "../lib/format";
  * colour alone, because every swatch has its name beside it. The remainder is
  * neutral, not a sixth hue.
  */
-const SERIES = ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181"];
-const OTHER = "rgb(var(--fg-subtle) / 0.45)";
+const OTHER = REMAINDER;
 
 const OriginsShare = ({ countries, lifetimeEvents, loading, error, onOpen, className = "h-full" }) => {
   const parts = useMemo(() => {

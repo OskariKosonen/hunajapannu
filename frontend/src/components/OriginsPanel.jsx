@@ -1,4 +1,6 @@
 import { memo, useMemo } from "react";
+import ListFooter from "./ui/ListFooter";
+import { useShowMore } from "../hooks/useShowMore";
 import Panel from "./ui/Panel";
 import DataTable from "./ui/DataTable";
 import SearchInput from "./ui/SearchInput";
@@ -33,10 +35,14 @@ const OriginsPanel = ({
   asnTotal,
   search,
   onSearch,
-  pageSize,
 }) => {
   const isAsn = view === "asn";
   const rows = isAsn ? topAsn : topCountries;
+  const page = useShowMore(rows, {
+    resetKey: `${view}|${search}`,
+    total: isAsn ? asnTotal : undefined,
+    searchable: isAsn,
+  });
   const max = useMemo(() => Math.max(0, ...rows.map((r) => Number(r.total) || 0)), [rows]);
 
   const columns = useMemo(
@@ -113,22 +119,18 @@ const OriginsPanel = ({
           />
         ) : undefined
       }
-      footer={
-        isAsn && asnTotal > topAsn.length
-          ? `Showing the top ${formatNumber(Math.min(pageSize, topAsn.length))} of ${formatNumber(asnTotal)}`
-          : undefined
-      }
+      footer={page.footer && <ListFooter {...page.footer} />}
       flush
     >
       <DataTable
         columns={columns}
-        rows={rows}
+        rows={page.shown}
         rowKey={(row, i) => (isAsn ? `${row.asn}-${i}` : `${row.country_iso}-${i}`)}
         loading={isAsn ? asnLoading : countriesLoading}
         error={isAsn ? asnError : countriesError}
         errorLabel={isAsn ? "Failed to load networks" : "Failed to load countries"}
         emptyTitle={isAsn && search ? "No networks match that search." : "No origin data yet."}
-        maxHeight={isAsn ? "max(24rem, calc(100vh - 18rem))" : "max(24rem, calc(100vh - 14.5rem))"}
+        maxHeight="none"
       />
     </Panel>
   );

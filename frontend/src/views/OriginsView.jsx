@@ -1,6 +1,6 @@
 import { memo } from "react";
 import OriginsPanel from "../components/OriginsPanel";
-import OriginsShare from "../components/OriginsShare";
+import ConcentrationPanel from "../components/ConcentrationPanel";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 import { useApi, useDebounced, buildUrl } from "../hooks/useApi";
 import { useUrlState } from "../hooks/useUrlState";
@@ -17,7 +17,7 @@ const OriginsView = () => {
   );
   const countriesApi = useApi(buildUrl(API.TOP_COUNTRIES, { limit: PAGE_SIZE.COUNTRIES }));
   const asnApi = useApi(buildUrl(API.TOP_ASN, { limit: PAGE_SIZE.ASN, search: debounced }));
-  const summaryApi = useApi(API.SUMMARY);
+  const concentrationApi = useApi(API.CONCENTRATION);
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] xl:items-start">
@@ -34,15 +34,15 @@ const OriginsView = () => {
           asnTotal={asnApi.total}
           search={search}
           onSearch={setSearch}
-          pageSize={PAGE_SIZE.ASN}
         />
       </ErrorBoundary>
-      <ErrorBoundary name="Share of all attacks">
-        <OriginsShare
-          countries={countriesApi.rows}
-          lifetimeEvents={summaryApi.raw?.lifetimeEvents}
-          loading={countriesApi.loading || (summaryApi.loading && !summaryApi.raw)}
-          error={countriesApi.error}
+      {/* The overview already shows each country's share; this side answers
+          the question a defender asks next. */}
+      <ErrorBoundary name="Concentration">
+        <ConcentrationPanel
+          data={concentrationApi.raw}
+          loading={concentrationApi.loading}
+          error={concentrationApi.error}
           className="xl:sticky xl:top-[4.5rem]"
         />
       </ErrorBoundary>

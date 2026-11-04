@@ -23,7 +23,7 @@ An SSH honeypot running on a Raspberry Pi at home since November 2025, plus the 
 
 ## CI/CD and monitoring
 
-- A push to `main` runs 172 integration checks against a real PostgreSQL 16 on a GitHub-hosted runner. If they pass, a self-hosted runner applies migrations, restarts the API and deploys the frontend.
+- A push to `main` runs 184 integration checks against a real PostgreSQL 16 on a GitHub-hosted runner. If they pass, a self-hosted runner applies migrations, restarts the API and deploys the frontend.
 - If the health check fails after a deploy, the code is rolled back automatically.
 - Migrations are checksummed and applied once. Editing one that already ran fails the deploy.
 - `/health` reports the age of the newest event and clock skew between the Pi and the server. A scheduled workflow polls it, because the likely failure is everything running but no data arriving.
@@ -46,6 +46,8 @@ Things that broke in production and what I changed afterwards.
 - Command normalization that groups randomized attacker commands into templates
 - Peer map of a Panchan P2P botnet: 2,000+ peers collected from peer lists the honeypot captured
 - Session replay on the front page, choosing the recent session that best shows an attack from login to payload rather than the noisiest one
+- Attack tools: SSH client banners and HASSH fingerprints, showing how many addresses one client build connects from
+- Findings with their denominators: how many networks carry half of all attacks, and what shape the guessed passwords take
 
 ```sh
 curl 'https://hunajapannu.fi/api/public/cowrie/summary'
@@ -54,7 +56,7 @@ curl 'https://hunajapannu.fi/api/public/cowrie/iocs?type=ips&hours=24&format=txt
 
 ## Testing and running locally
 
-172 integration checks in CI, plus 159 backend, 152 frontend and 42 forwarder unit tests.
+184 integration checks in CI, plus 164 backend, 169 frontend and 42 forwarder unit tests.
 
 ```sh
 tools/ci-local.sh                      # CI suite against a throwaway Postgres container

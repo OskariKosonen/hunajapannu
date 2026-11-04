@@ -1,6 +1,8 @@
 import { memo } from "react";
 import Panel from "./ui/Panel";
 import DataTable from "./ui/DataTable";
+import ListFooter from "./ui/ListFooter";
+import { useShowMore } from "../hooks/useShowMore";
 import { countryFlag, formatDate, formatNumber } from "../lib/format";
 
 /**
@@ -65,6 +67,8 @@ const BotnetPeersPanel = ({ data, loading, error }) => {
   const rows = data?.rows ?? [];
   const dist = data?.distribution;
   const distTotal = dist ? dist.once + dist.few + dist.some + dist.core : 0;
+  // Ten at a time keeps the table level with the detection list beside it.
+  const page = useShowMore(rows, { step: 10, total: data?.total, searchable: false });
 
   return (
     <Panel
@@ -103,18 +107,20 @@ const BotnetPeersPanel = ({ data, loading, error }) => {
           </div>
         ) : undefined
       }
+      footer={page.footer && <ListFooter {...page.footer} />}
       flush
       className="h-full"
     >
       <DataTable
         columns={COLUMNS}
-        rows={rows}
+        rows={page.shown}
         rowKey={(r) => r.peer_ip}
         loading={loading}
         error={error}
         errorLabel="Failed to load peers"
         emptyTitle="No peer lists captured yet."
-        maxHeight="28rem"
+        maxHeight="none"
+        skeletonRows={10}
       />
     </Panel>
   );

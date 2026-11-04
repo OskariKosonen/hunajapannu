@@ -44,7 +44,6 @@ const CommandsView = () => {
         mitreById={byId}
         search={search}
         onSearch={setSearch}
-        pageSize={PAGE_SIZE.COMMANDS}
       />
     </ErrorBoundary>
   );

@@ -17,6 +17,10 @@ export const API = {
   IOCS: "/api/public/cowrie/iocs",
   PAYLOAD_HOSTS: "/api/public/cowrie/payload-hosts",
   MITRE: "/api/public/cowrie/mitre",
+  CREDS_ANATOMY: "/api/public/cowrie/creds/anatomy",
+  CONCENTRATION: "/api/public/cowrie/origins/concentration",
+  CLIENTS: "/api/public/cowrie/clients",
+  TUNNELS: "/api/public/cowrie/tunnels",
 };
 
 // Only what is displayed is fetched. These used to be limit=3000/1000, which
@@ -26,7 +30,7 @@ export const PAGE_SIZE = {
   CREDS: 100,
   FILES: 50,
   ASN: 50,
-  COUNTRIES: 50,
+  COUNTRIES: 200, // every country, revealed a page at a time
   EVENTS: 100, // the API caps /latest at 200
   PREVIEW: 5,
 };

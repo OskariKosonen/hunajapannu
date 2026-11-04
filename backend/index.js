@@ -29,6 +29,7 @@ const registerSessionRoutes = require('./routes/sessions');
 const registerInfrastructureRoutes = require('./routes/infrastructure');
 const registerSummaryRoutes = require('./routes/summary');
 const registerBotnetRoutes = require('./routes/botnet');
+const registerInsightRoutes = require('./routes/insights');
 
 // ============================================================================
 // Application Setup
@@ -78,6 +79,7 @@ registerSessionRoutes(app);
 registerInfrastructureRoutes(app);
 registerSummaryRoutes(app);
 registerBotnetRoutes(app);
+registerInsightRoutes(app);
 
 // ============================================================================
 // Graceful Shutdown

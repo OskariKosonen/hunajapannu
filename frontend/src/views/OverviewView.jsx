@@ -58,13 +58,17 @@ const TopList = ({ title, rows, loading, error, errorLabel, label, value, onOpen
  * on a tight 16px grid so a laptop screen shows the first live panels without
  * scrolling and the row below always peeks in.
  */
+// Eight whole rows set the height of the replay beside them; a scroll box
+// here cut the last row in half.
+const FEED_ROWS = 8;
+
 const OverviewView = ({ onOpenSession, onNavigate }) => {
   const { byId: mitreById, techniques } = useCatalogue();
 
   const summaryApi = useApi(API.SUMMARY);
   const trendApi = useApi(API.TRENDS);
   const featuredApi = useApi(API.FEATURED_SESSION);
-  const eventsApi = useApi(buildUrl(API.LATEST_EVENTS, { limit: 12 }));
+  const eventsApi = useApi(buildUrl(API.LATEST_EVENTS, { limit: FEED_ROWS }));
   const countriesApi = useApi(buildUrl(API.TOP_COUNTRIES, { limit: PAGE_SIZE.PREVIEW }));
   const credsApi = useApi(buildUrl(API.CREDENTIALS, { limit: PAGE_SIZE.PREVIEW }));
   const commandsApi = useApi(buildUrl(API.COMMANDS, { limit: PAGE_SIZE.PREVIEW }));
@@ -131,7 +135,7 @@ const OverviewView = ({ onOpenSession, onNavigate }) => {
           <EventsPanel
             compact
             events={eventsApi.rows}
-            eventLimit={12}
+            eventLimit={FEED_ROWS}
             loading={eventsApi.loading}
             error={eventsApi.error}
             onOpenSession={onOpenSession}
@@ -152,7 +156,7 @@ const OverviewView = ({ onOpenSession, onNavigate }) => {
               <span className="font-mono text-[0.8125rem]">
                 <span className="text-fg">{r.username}</span>
                 <span className="text-fg-subtle"> / </span>
-                <span className="text-danger">{r.password}</span>
+                <span className="text-fg">{r.password}</span>
               </span>
             )}
             value={(r) => r.total}

@@ -26,6 +26,8 @@ const KIND = [
   { rule: "echo-roundtrip", label: "capability probe", tone: "neutral" },
 ];
 
+const plural = (n, word) => `${formatNumber(n)} ${word}${Number(n) === 1 ? "" : "s"}`;
+
 const kindOf = (rules = []) => KIND.find((k) => rules.includes(k.rule)) ?? { label: "fingerprinting", tone: "muted" };
 
 const ProbeRow = ({ row }) => {
@@ -46,7 +48,7 @@ const ProbeRow = ({ row }) => {
         {/* The rule names are the auditability of the score; the count
             carries them on hover rather than as eight chips per row. */}
         <span className="ml-auto text-xs text-fg-subtle tabular-nums" title={(row.probe_rules ?? []).join(", ")}>
-          {row.probe_rules?.length ?? 0} rules · {formatNumber(row.total)} hits · {formatNumber(row.unique_ips)} IPs
+          {plural(row.probe_rules?.length ?? 0, "rule")} · {plural(row.total, "hit")} · {plural(row.unique_ips, "IP")}
         </span>
       </div>
 

@@ -223,7 +223,7 @@ module.exports = function registerLeaderboardRoutes(app) {
           : '';
         const params = like ? [like] : [];
 
-        const [list, count] = await Promise.all([
+        const [list, count, verdicts] = await Promise.all([
           pool.query(
             `SELECT
                sha256,
@@ -249,9 +249,37 @@ module.exports = function registerLeaderboardRoutes(app) {
             [...params, limit, offset]
           ),
           pool.query(`SELECT COUNT(*) AS total FROM cowrie_files_agg ${where}`, params),
+          // VirusTotal's verdicts for the whole matching set, so the page can
+          // say how much of it is malware rather than leave that to be
+          // counted off one page of rows. Same precedence as the table's
+          // badge: not found, malicious, suspicious, clean, still pending.
+          pool.query(
+            `SELECT
+               COUNT(*) FILTER (WHERE vt_found IS FALSE)                                   AS not_found,
+               COUNT(*) FILTER (WHERE vt_found IS NOT FALSE AND COALESCE(vt_malicious, 0) > 0) AS malicious,
+               COUNT(*) FILTER (WHERE vt_found IS NOT FALSE AND COALESCE(vt_malicious, 0) = 0
+                                  AND COALESCE(vt_suspicious, 0) > 0)                      AS suspicious,
+               COUNT(*) FILTER (WHERE vt_found IS TRUE AND COALESCE(vt_malicious, 0) = 0
+                                  AND COALESCE(vt_suspicious, 0) = 0)                      AS clean,
+               COUNT(*) FILTER (WHERE vt_found IS NULL AND COALESCE(vt_malicious, 0) = 0
+                                  AND COALESCE(vt_suspicious, 0) = 0)                      AS pending
+             FROM cowrie_files_agg ${where}`,
+            params
+          ),
         ]);
 
-        return { rows: list.rows, total: Number(count.rows[0]?.total || 0) };
+        const v = verdicts.rows[0] || {};
+        return {
+          rows: list.rows,
+          total: Number(count.rows[0]?.total || 0),
+          verdicts: {
+            malicious: Number(v.malicious || 0),
+            suspicious: Number(v.suspicious || 0),
+            clean: Number(v.clean || 0),
+            notFound: Number(v.not_found || 0),
+            pending: Number(v.pending || 0),
+          },
+        };
       });
       res.json(payload);
     } catch (err) {

@@ -68,10 +68,10 @@ const KpiStrip = ({ summary: s, loading }) => (
       }
     />
     <Tile
-      label="Credential pairs tried"
+      label="Passwords tried"
       loading={loading}
       value={formatNumber(s?.uniqueCredCount)}
-      hint={s?.uniqueCommands != null ? `${formatNumber(s.uniqueCommands)} different commands` : undefined}
+      hint="different username and password pairs"
     />
     <Tile
       label="Malware samples"
